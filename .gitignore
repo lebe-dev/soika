@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+.claude
+
+# Frontend
+node_modules
+/frontend/build
+/frontend/.svelte-kit
+/frontend/dist
+/web/dist
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+
+*.md
+!/docs/**/*.md
+!README.md
+!DEV.md

@@ -1,0 +1,33 @@
+# Keep the build context small and reproducible. The image builds the frontend
+# and the Rust binary from source inside the stages; host artifacts are noise.
+
+# Rust build artifacts
+/target
+
+# SQLite databases (never bake a local db into the image)
+*.db
+*.db-shm
+*.db-wal
+
+# Frontend artifacts — rebuilt inside the frontend stage
+**/node_modules
+/frontend/build
+/frontend/.svelte-kit
+/frontend/dist
+/web/dist
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Docs, VCS, editor, CI noise
+.git
+.gitignore
+.github
+.claude
+*.md
+.DS_Store
+*.swp
+Dockerfile
+.dockerignore
