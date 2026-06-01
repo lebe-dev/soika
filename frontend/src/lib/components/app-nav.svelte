@@ -7,11 +7,14 @@
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { cn } from '$lib/utils';
+  import { toggleMode, mode } from 'mode-watcher';
   import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
   import Users from '@lucide/svelte/icons/users';
   import Shield from '@lucide/svelte/icons/shield';
   import UserIcon from '@lucide/svelte/icons/user';
   import LogOut from '@lucide/svelte/icons/log-out';
+  import Sun from '@lucide/svelte/icons/sun';
+  import Moon from '@lucide/svelte/icons/moon';
 
   let { user }: { user: User } = $props();
 
@@ -70,7 +73,15 @@
       {/each}
     </nav>
 
-    <div class="ml-auto">
+    <div class="ml-auto flex items-center gap-1">
+      <Button variant="ghost" size="icon" onclick={toggleMode} aria-label="Toggle theme">
+        {#if mode.current === 'dark'}
+          <Sun class="size-4" />
+        {:else}
+          <Moon class="size-4" />
+        {/if}
+      </Button>
+
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           <Button variant="ghost" size="sm" class="gap-2">
