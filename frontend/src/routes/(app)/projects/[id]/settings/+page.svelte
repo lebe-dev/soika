@@ -1,0 +1,368 @@
+<script lang="ts">
+  import { untrack } from 'svelte';
+  import { goto } from '$app/navigation';
+  import {
+    projects,
+    errorMessage,
+    type Invite,
+    type Project,
+    type ProjectMember,
+    type Role
+  } from '$lib/api';
+  import { authStore } from '$lib/stores/auth.svelte';
+  import * as Card from '$lib/components/ui/card';
+  import * as Table from '$lib/components/ui/table';
+  import { Button } from '$lib/components/ui/button';
+  import { Input } from '$lib/components/ui/input';
+  import { Badge } from '$lib/components/ui/badge';
+  import { toast } from '$lib/components/ui/sonner';
+  import CopyField from '$lib/components/copy-field.svelte';
+  import { formatRelative } from '$lib/format';
+  import type { PageData } from './$types';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import UserPlus from '@lucide/svelte/icons/user-plus';
+
+  // Project Settings (MVP §8.2): retention, project mute, members list, and
+  // invite generation with a copyable link. Admin actions are gated; non-admins
+  // see read-only sections (the API also enforces this).
+  let { data }: { data: PageData } = $props();
+
+  // Local copy of the project (from the parent layout) so mute/retention edits
+  // reflect immediately without a reload.
+  let project = $state<Project>(untrack(() => data.project));
+  $effect(() => {
+    project = data.project;
+  });
+
+  let members = $state<ProjectMember[]>(untrack(() => data.members));
+  $effect(() => {
+    members = data.members;
+  });
+
+  let invites = $state<Invite[]>(untrack(() => data.invites));
+  $effect(() => {
+    invites = data.invites;
+  });
+
+  // The current user is a project admin if they are the instance admin or hold
+  // the admin role here. We infer the latter from the members list.
+  const isAdmin = $derived(
+    authStore.isAdmin || members.some((m) => m.user_id === authStore.user?.id && m.role === 'admin')
+  );
+
+  // --- General: name + retention -----------------------------------------
+  let name = $state(untrack(() => data.project.name));
+  let retention = $state<number>(untrack(() => data.project.retention_events));
+  let savingGeneral = $state(false);
+  $effect(() => {
+    name = data.project.name;
+    retention = data.project.retention_events;
+  });
+
+  async function saveGeneral(event: SubmitEvent) {
+    event.preventDefault();
+    savingGeneral = true;
+    try {
+      const updated = await projects.update(project.id, {
+        name: name.trim(),
+        retention_events: retention
+      });
+      project = updated;
+      toast.success('Project updated');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Update failed'));
+    } finally {
+      savingGeneral = false;
+    }
+  }
+
+  // --- Mute ----------------------------------------------------------------
+  let mutating = $state(false);
+  async function toggleMute() {
+    mutating = true;
+    try {
+      const updated = await projects.mute(project.id, !project.muted);
+      project = updated;
+      toast.success(project.muted ? 'Project muted' : 'Project unmuted');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update mute'));
+    } finally {
+      mutating = false;
+    }
+  }
+
+  // --- Members -------------------------------------------------------------
+  async function removeMember(member: ProjectMember) {
+    if (!confirm(`Remove ${member.display_name} from this project?`)) return;
+    try {
+      await projects.removeMember(project.id, member.user_id);
+      members = members.filter((m) => m.user_id !== member.user_id);
+      toast.success(`Removed ${member.display_name}`);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to remove member'));
+    }
+  }
+
+  // --- Invites -------------------------------------------------------------
+  let inviteEmail = $state('');
+  let inviteRole = $state<Role>('member');
+  let creatingInvite = $state(false);
+
+  async function createInvite(event: SubmitEvent) {
+    event.preventDefault();
+    creatingInvite = true;
+    try {
+      const email = inviteEmail.trim();
+      const invite = await projects.createInvite(project.id, {
+        role: inviteRole,
+        email: email.length > 0 ? email : undefined
+      });
+      invites = [invite, ...invites];
+      inviteEmail = '';
+      toast.success(invite.email_sent ? 'Invite created and emailed' : 'Invite link created');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to create invite'));
+    } finally {
+      creatingInvite = false;
+    }
+  }
+
+  async function revokeInvite(invite: Invite) {
+    try {
+      await projects.revokeInvite(project.id, invite.token);
+      invites = invites.filter((i) => i.token !== invite.token);
+      toast.success('Invite revoked');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to revoke invite'));
+    }
+  }
+
+  // Pending = not yet accepted (§9). Accepted invites are kept out of the list.
+  const pendingInvites = $derived(invites.filter((i) => !i.accepted_at));
+
+  // --- Danger zone ---------------------------------------------------------
+  let deleting = $state(false);
+  async function deleteProject() {
+    if (!confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
+    deleting = true;
+    try {
+      await projects.remove(project.id);
+      toast.success('Project deleted');
+      await goto('/');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete project'));
+      deleting = false;
+    }
+  }
+</script>
+
+<div class="space-y-6">
+  <!-- General settings -->
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>General</Card.Title>
+      <Card.Description>Project name and event retention (MVP §13).</Card.Description>
+    </Card.Header>
+    <form onsubmit={saveGeneral}>
+      <Card.Content class="space-y-4">
+        <div class="space-y-2">
+          <label for="name" class="text-sm font-medium">Name</label>
+          <Input id="name" bind:value={name} disabled={!isAdmin} required />
+        </div>
+        <div class="space-y-2">
+          <label for="retention" class="text-sm font-medium">Retention (max events)</label>
+          <Input
+            id="retention"
+            type="number"
+            min={1}
+            bind:value={retention}
+            disabled={!isAdmin}
+            required
+          />
+          <p class="text-muted-foreground text-xs">
+            Keep at most this many recent events; older events are pruned. Issue counters are
+            preserved.
+          </p>
+        </div>
+      </Card.Content>
+      {#if isAdmin}
+        <Card.Footer>
+          <Button type="submit" disabled={savingGeneral}>
+            {savingGeneral ? 'Saving…' : 'Save changes'}
+          </Button>
+        </Card.Footer>
+      {/if}
+    </form>
+  </Card.Root>
+
+  <!-- Mute -->
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>Notifications</Card.Title>
+      <Card.Description>
+        Muting suppresses notifications for all issues in this project. Ingestion and counting
+        continue (MVP §8.2).
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex items-center justify-between gap-4">
+      <div class="text-sm">
+        Status:
+        {#if project.muted}
+          <Badge variant="secondary">Muted</Badge>
+        {:else}
+          <Badge variant="outline">Active</Badge>
+        {/if}
+      </div>
+      {#if isAdmin}
+        <Button variant="outline" disabled={mutating} onclick={toggleMute}>
+          {project.muted ? 'Unmute project' : 'Mute project'}
+        </Button>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
+  <!-- Members -->
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>Members</Card.Title>
+      <Card.Description>People with access to this project (MVP §10.2).</Card.Description>
+    </Card.Header>
+    <Card.Content>
+      {#if members.length === 0}
+        <p class="text-muted-foreground text-sm">No members to display.</p>
+      {:else}
+        <Table.Root>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>Member</Table.Head>
+              <Table.Head>Role</Table.Head>
+              {#if isAdmin}
+                <Table.Head class="w-10"></Table.Head>
+              {/if}
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {#each members as member (member.user_id)}
+              <Table.Row>
+                <Table.Cell>
+                  <div class="font-medium">{member.display_name}</div>
+                  <div class="text-muted-foreground text-xs">{member.email}</div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant={member.role === 'admin' ? 'default' : 'outline'}>
+                    {member.role}
+                  </Badge>
+                </Table.Cell>
+                {#if isAdmin}
+                  <Table.Cell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="size-8"
+                      onclick={() => removeMember(member)}
+                      aria-label={`Remove ${member.display_name}`}
+                    >
+                      <Trash2 class="text-destructive size-4" />
+                    </Button>
+                  </Table.Cell>
+                {/if}
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
+  <!-- Invites (admin only) -->
+  {#if isAdmin}
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Invites</Card.Title>
+        <Card.Description>
+          Generate an invite link to add someone to this project. The link works even without email;
+          if SMTP is configured and you provide an address, it is also emailed (MVP §9).
+        </Card.Description>
+      </Card.Header>
+      <Card.Content class="space-y-4">
+        <form class="flex flex-wrap items-end gap-3" onsubmit={createInvite}>
+          <div class="min-w-48 flex-1 space-y-2">
+            <label for="invite-email" class="text-sm font-medium">Email (optional)</label>
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="teammate@example.com"
+              bind:value={inviteEmail}
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="invite-role" class="text-sm font-medium">Role</label>
+            <select
+              id="invite-role"
+              bind:value={inviteRole}
+              class="border-input bg-background focus-visible:ring-ring/50 h-9 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none"
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <Button type="submit" disabled={creatingInvite}>
+            <UserPlus class="size-4" />
+            {creatingInvite ? 'Creating…' : 'Create invite'}
+          </Button>
+        </form>
+
+        {#if pendingInvites.length > 0}
+          <div class="space-y-3">
+            {#each pendingInvites as invite (invite.token)}
+              <div class="space-y-2 rounded-md border p-3">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 text-sm">
+                    <Badge variant={invite.role === 'admin' ? 'default' : 'outline'}
+                      >{invite.role}</Badge
+                    >
+                    {#if invite.email}
+                      <span>{invite.email}</span>
+                    {:else}
+                      <span class="text-muted-foreground">Anyone with the link</span>
+                    {/if}
+                    <span class="text-muted-foreground text-xs"
+                      >· expires {formatRelative(invite.expires_at)}</span
+                    >
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-8"
+                    onclick={() => revokeInvite(invite)}
+                    aria-label="Revoke invite"
+                  >
+                    <Trash2 class="text-destructive size-4" />
+                  </Button>
+                </div>
+                <CopyField value={invite.link} label="invite link" />
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-muted-foreground text-sm">No pending invites.</p>
+        {/if}
+      </Card.Content>
+    </Card.Root>
+
+    <!-- Danger zone -->
+    <Card.Root class="border-destructive/40">
+      <Card.Header>
+        <Card.Title class="text-destructive">Danger zone</Card.Title>
+        <Card.Description
+          >Deleting a project removes its issues and events permanently.</Card.Description
+        >
+      </Card.Header>
+      <Card.Footer>
+        <Button variant="destructive" disabled={deleting} onclick={deleteProject}>
+          {deleting ? 'Deleting…' : 'Delete project'}
+        </Button>
+      </Card.Footer>
+    </Card.Root>
+  {/if}
+</div>
