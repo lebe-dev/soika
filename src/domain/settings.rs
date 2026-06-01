@@ -1,0 +1,14 @@
+//! Service settings domain type (MVP §14).
+
+use super::Timestamp;
+use serde::{Deserialize, Serialize};
+
+/// Instance-wide settings, managed by the built-in/instance admin (§14).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceSettings {
+    /// Enable/disable public self-registration (mirrors `ALLOW_SIGNUP`).
+    pub allow_signup: bool,
+    /// Organization display name (`ORGANIZATION_NAME`).
+    pub org_name: String,
+    pub updated_at: Timestamp,
+}

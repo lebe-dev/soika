@@ -1,0 +1,85 @@
+//! soika — lightweight, Sentry-compatible error tracking (library crate).
+//!
+//! Hexagonal architecture (MVP §2.2): domain & service logic depend on the
+//! repository TRAITS in [`ports`]; infrastructure in [`adapters`] implements
+//! them. The lib crate uses `thiserror` (see [`error::Error`]); the bin crate
+//! uses `anyhow`.
+
+pub mod adapters;
+pub mod api;
+pub mod auth;
+pub mod config;
+pub mod domain;
+pub mod error;
+pub mod grouping;
+pub mod ingest;
+pub mod mail;
+pub mod notify;
+pub mod ports;
+pub mod router;
+pub mod scheduler;
+pub mod state;
+pub mod web;
+
+pub use config::Config;
+pub use error::{Error, Result};
+pub use state::AppState;
+
+use std::str::FromStr;
+use std::sync::Arc;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::SqlitePool;
+
+/// Embedded SQL migrations (MVP §4 schema), run at startup.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+/// Connect to the database and create the pool. The bin crate owns running
+/// migrations via [`MIGRATOR`].
+///
+/// `foreign_keys` is enabled per connection so `ON DELETE CASCADE` fires for
+/// sessions / memberships / team_members / invites (SQLite leaves FKs off by
+/// default). SQLite-specific connection setup is isolated here / in `main`.
+pub async fn connect_pool(database_url: &str) -> Result<SqlitePool> {
+    let options = SqliteConnectOptions::from_str(database_url)
+        .map_err(crate::error::Error::Db)?
+        .foreign_keys(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect_with(options)
+        .await?;
+    Ok(pool)
+}
+
+/// Build the [`AppState`] from a connected pool and resolved config, wiring the
+/// SQLite adapters and the SMTP-or-noop mailer.
+pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
+    use adapters::clock::SystemClock;
+    use adapters::mailer::{NoopMailer, SmtpMailer};
+    use adapters::sqlite::{
+        SqliteEventRepository, SqliteInviteRepository, SqliteIssueRepository,
+        SqliteMembershipRepository, SqliteProjectRepository, SqliteSessionRepository,
+        SqliteSettingsRepository, SqliteTeamRepository, SqliteUserRepository,
+    };
+    use ports::Mailer;
+
+    let mailer: Arc<dyn Mailer> = match config.smtp.clone() {
+        Some(smtp) => Arc::new(SmtpMailer::new(smtp)),
+        None => Arc::new(NoopMailer),
+    };
+
+    AppState {
+        config: Arc::new(config),
+        users: Arc::new(SqliteUserRepository::new(pool.clone())),
+        sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
+        teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
+        memberships: Arc::new(SqliteMembershipRepository::new(pool.clone())),
+        projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
+        issues: Arc::new(SqliteIssueRepository::new(pool.clone())),
+        events: Arc::new(SqliteEventRepository::new(pool.clone())),
+        invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
+        settings: Arc::new(SqliteSettingsRepository::new(pool)),
+        mailer,
+        clock: Arc::new(SystemClock),
+    }
+}

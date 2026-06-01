@@ -1,0 +1,65 @@
+//! Issue domain type and status (MVP §7, §8.1).
+
+use super::{Id, Timestamp};
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+
+/// Issue lifecycle state (§8.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IssueStatus {
+    Unresolved,
+    Resolved,
+    /// Issue-level mute: events still accepted/counted, no notifications (§8.1).
+    Muted,
+}
+
+impl IssueStatus {
+    /// Stable string form persisted in the database.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            IssueStatus::Unresolved => "unresolved",
+            IssueStatus::Resolved => "resolved",
+            IssueStatus::Muted => "muted",
+        }
+    }
+}
+
+impl fmt::Display for IssueStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for IssueStatus {
+    type Err = crate::error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "unresolved" => Ok(IssueStatus::Unresolved),
+            "resolved" => Ok(IssueStatus::Resolved),
+            "muted" => Ok(IssueStatus::Muted),
+            other => Err(crate::error::Error::validation(format!(
+                "invalid issue status: {other}"
+            ))),
+        }
+    }
+}
+
+/// A group of events sharing a fingerprint; carries status & counters (§7).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub id: Id,
+    pub project_id: Id,
+    pub fingerprint: String,
+    pub title: String,
+    pub culprit: Option<String>,
+    pub level: Option<String>,
+    pub status: IssueStatus,
+    pub first_seen: Timestamp,
+    pub last_seen: Timestamp,
+    pub event_count: i64,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
