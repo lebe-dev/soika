@@ -1,0 +1,9 @@
+services:
+  mailcrab:
+    container_name: mailcrab
+    # https://hub.docker.com/r/marlonb/mailcrab/tags
+    image: marlonb/mailcrab:v1.7.0
+    restart: always
+    ports:
+      - "1025:1025"
+      - "1080:1080"
