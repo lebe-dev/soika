@@ -9,7 +9,7 @@
   import type { LayoutData } from './$types';
   import Inbox from '@lucide/svelte/icons/inbox';
 
-  // Issues list for a project with status filter (MVP §8, §15). The project is
+  // Issues list for a project with status filter. The project is
   // provided by the parent layout load; issues are fetched reactively here so
   // the status filter does not require a full navigation/load.
   let { data }: { data: LayoutData } = $props();

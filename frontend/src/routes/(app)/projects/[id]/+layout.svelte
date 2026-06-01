@@ -10,7 +10,7 @@
   import Settings from '@lucide/svelte/icons/settings';
   import VolumeX from '@lucide/svelte/icons/volume-x';
 
-  // Project area shell (MVP §8, §15): header with project name/DSN status and
+  // Project area shell header with project name/DSN status and
   // sub-navigation across Issues, SDK Setup, and Settings. The project is loaded
   // once in +layout.ts and shared with every child route.
   let { data, children }: { data: LayoutData; children: Snippet } = $props();

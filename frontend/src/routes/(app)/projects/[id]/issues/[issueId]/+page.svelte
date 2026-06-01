@@ -17,7 +17,7 @@
   import VolumeX from '@lucide/svelte/icons/volume-x';
 
   // Issue detail with stacktrace viewer, event navigation, and resolve/mute
-  // actions (MVP §8.1, §15). Members and admins may both resolve/mute (§10.2).
+  // actions. Members and admins may both resolve/mute.
   let { data }: { data: PageData } = $props();
 
   const projectId = $derived(data.issue.project_id);
@@ -217,7 +217,7 @@
       </Card.Root>
     {/if}
 
-    <!-- Stacktrace viewer (§6) -->
+    <!-- Stacktrace viewer -->
     {#if parsed?.stacktrace}
       <StacktraceViewer stacktrace={parsed.stacktrace} />
     {:else}

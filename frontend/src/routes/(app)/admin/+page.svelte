@@ -17,7 +17,7 @@
   import MailX from '@lucide/svelte/icons/mail-x';
   import type { PageData } from './$types';
 
-  // Admin — service settings, users, and teams overview (MVP §11, §14, §15).
+  // Admin — service settings, users, and teams overview.
   // Visible only to the instance admin (guarded in +page.ts).
   let { data }: { data: PageData } = $props();
 
@@ -77,7 +77,7 @@
       <Tabs.Trigger value="teams">Teams ({data.teams.length})</Tabs.Trigger>
     </Tabs.List>
 
-    <!-- Service settings (MVP §14) -->
+    <!-- Service settings -->
     <Tabs.Content value="settings" class="space-y-6">
       <Card.Root>
         <Card.Header>
@@ -172,7 +172,7 @@
       </div>
     </Tabs.Content>
 
-    <!-- Users overview (MVP §15) -->
+    <!-- Users overview -->
     <Tabs.Content value="users">
       <Card.Root>
         <Card.Header>
@@ -229,7 +229,7 @@
       </Card.Root>
     </Tabs.Content>
 
-    <!-- Teams overview (MVP §15) -->
+    <!-- Teams overview -->
     <Tabs.Content value="teams">
       <Card.Root>
         <Card.Header>

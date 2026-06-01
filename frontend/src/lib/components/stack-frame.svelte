@@ -4,7 +4,7 @@
   import { type Frame, frameFile, frameLocation, hasSourceContext, isInApp } from '$lib/stacktrace';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
-  // A single stack frame row with collapsible source context (MVP §6). Source
+  // A single stack frame row with collapsible source context. Source
   // lines render exactly as the SDK reported them — no demangling / source maps.
   let { frame, expanded = false }: { frame: Frame; expanded?: boolean } = $props();
 

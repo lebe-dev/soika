@@ -34,7 +34,7 @@
       <Card.Title>Sign in to soika</Card.Title>
       <Card.Description>Enter your credentials to continue.</Card.Description>
     </Card.Header>
-    <form onsubmit={submit}>
+    <form onsubmit={submit} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="email" class="text-sm font-medium">Email</label>

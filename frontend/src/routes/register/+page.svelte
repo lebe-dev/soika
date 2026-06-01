@@ -55,7 +55,7 @@
         <Card.Title>Create your account</Card.Title>
         <Card.Description>Registration must be enabled by an administrator.</Card.Description>
       </Card.Header>
-      <form onsubmit={submit}>
+      <form onsubmit={submit} class="contents">
         <Card.Content class="space-y-4">
           <div class="space-y-2">
             <label for="name" class="text-sm font-medium">Display name</label>

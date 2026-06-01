@@ -2,7 +2,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import type { IssueStatus } from '$lib/api';
 
-  // Maps an issue status (MVP §8.1) to a labelled, colour-coded badge.
+  // Maps an issue status to a labelled, colour-coded badge.
   let { status }: { status: IssueStatus } = $props();
 
   const config: Record<

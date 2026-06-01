@@ -13,8 +13,8 @@
   import Users from '@lucide/svelte/icons/users';
   import type { PageData } from './$types';
 
-  // Teams — team list (MVP §15). Any authenticated user can browse teams;
-  // creating a team is restricted to the instance admin (§11, §10.2).
+  // Teams — team list. Any authenticated user can browse teams;
+  // creating a team is restricted to the instance admin.
   let { data }: { data: PageData } = $props();
 
   const isAdmin = $derived(authStore.isAdmin);

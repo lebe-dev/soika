@@ -6,7 +6,7 @@
   import type { PageData } from './$types';
 
   // SDK Setup — per-project, language-aware snippets showing the DSN and minimal
-  // init code (Go, Rust, Svelte/JS, generic) to start sending events (MVP §8.2).
+  // init code (Go, Rust, Svelte/JS, generic) to start sending events.
   let { data }: { data: PageData } = $props();
 
   const setup = $derived(data.setup);

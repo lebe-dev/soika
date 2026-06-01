@@ -6,7 +6,7 @@
   import Check from '@lucide/svelte/icons/check';
 
   // A read-only value with a copy-to-clipboard button. Used for DSNs and
-  // copyable invite links (MVP §8.2, §9). `block` renders a multi-line code
+  // copyable invite links. `block` renders a multi-line code
   // block (e.g. SDK snippets); otherwise a single-line inline field.
   let {
     value,

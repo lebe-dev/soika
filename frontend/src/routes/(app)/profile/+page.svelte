@@ -1,6 +1,6 @@
 <script lang="ts">
   // Profile — change display name, notifications toggle, change password
-  // (MVP §10.3, §15). Wires to GET/PATCH /profile via the shared API client.
+  // Wires to GET/PATCH /profile via the shared API client.
   import { profile as profileApi, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -102,7 +102,7 @@
       <Card.Title>Account</Card.Title>
       <Card.Description>Your display name and account email.</Card.Description>
     </Card.Header>
-    <form onsubmit={saveProfile}>
+    <form onsubmit={saveProfile} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="email" class="text-sm font-medium">Email</label>
@@ -133,7 +133,7 @@
     <Card.Header>
       <Card.Title>Notifications</Card.Title>
       <Card.Description>
-        Email notifications for new issues and regressions (MVP §12).
+        Email notifications for new issues and regressions.
       </Card.Description>
     </Card.Header>
     <Card.Content>
@@ -177,7 +177,7 @@
       <Card.Title>Password</Card.Title>
       <Card.Description>Change the password used to sign in.</Card.Description>
     </Card.Header>
-    <form onsubmit={changePassword}>
+    <form onsubmit={changePassword} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="current-password" class="text-sm font-medium">Current password</label>

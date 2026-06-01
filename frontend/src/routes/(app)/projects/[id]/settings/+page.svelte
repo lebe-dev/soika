@@ -161,9 +161,9 @@
   <Card.Root>
     <Card.Header>
       <Card.Title>General</Card.Title>
-      <Card.Description>Project name and event retention (MVP §13).</Card.Description>
+      <Card.Description>Project name and event retention.</Card.Description>
     </Card.Header>
-    <form onsubmit={saveGeneral}>
+    <form onsubmit={saveGeneral} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="name" class="text-sm font-medium">Name</label>
@@ -201,7 +201,7 @@
       <Card.Title>Notifications</Card.Title>
       <Card.Description>
         Muting suppresses notifications for all issues in this project. Ingestion and counting
-        continue (MVP §8.2).
+        continue.
       </Card.Description>
     </Card.Header>
     <Card.Content class="flex items-center justify-between gap-4">
@@ -225,7 +225,7 @@
   <Card.Root>
     <Card.Header>
       <Card.Title>Members</Card.Title>
-      <Card.Description>People with access to this project (MVP §10.2).</Card.Description>
+      <Card.Description>People with access to this project.</Card.Description>
     </Card.Header>
     <Card.Content>
       {#if members.length === 0}
@@ -281,7 +281,7 @@
         <Card.Title>Invites</Card.Title>
         <Card.Description>
           Generate an invite link to add someone to this project. The link works even without email;
-          if SMTP is configured and you provide an address, it is also emailed (MVP §9).
+          if SMTP is configured and you provide an address, it is also emailed.
         </Card.Description>
       </Card.Header>
       <Card.Content class="space-y-4">

@@ -5,7 +5,7 @@
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
   import Layers from '@lucide/svelte/icons/layers';
 
-  // Stacktrace viewer (MVP §6): renders the most relevant (in-app) frame first,
+  // Stacktrace viewer renders the most relevant (in-app) frame first,
   // with expand/collapse for the full trace and per-frame source context. By
   // default only application frames are shown; system/library frames are folded
   // away behind a toggle, mirroring Sentry's default "in-app only" view.

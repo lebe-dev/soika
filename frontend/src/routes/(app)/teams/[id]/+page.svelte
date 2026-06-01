@@ -17,7 +17,7 @@
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import type { PageData } from './$types';
 
-  // Team detail (MVP §15): members + assigned projects, with admin-only rename,
+  // Team detail members + assigned projects, with admin-only rename,
   // delete, and member management.
   let { data }: { data: PageData } = $props();
 

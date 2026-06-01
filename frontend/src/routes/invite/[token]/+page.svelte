@@ -61,7 +61,7 @@
           <Badge variant="secondary">{data.preview.role}</Badge>
         </Card.Description>
       </Card.Header>
-      <form onsubmit={accept}>
+      <form onsubmit={accept} class="contents">
         <Card.Content class="space-y-4">
           <div class="space-y-2">
             <label for="email" class="text-sm font-medium">Email</label>
