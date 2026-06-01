@@ -53,10 +53,12 @@
   // --- General: name + retention -----------------------------------------
   let name = $state(untrack(() => data.project.name));
   let retention = $state<number>(untrack(() => data.project.retention_events));
+  let retentionDays = $state<number>(untrack(() => data.project.retention_days));
   let savingGeneral = $state(false);
   $effect(() => {
     name = data.project.name;
     retention = data.project.retention_events;
+    retentionDays = data.project.retention_days;
   });
 
   async function saveGeneral(event: SubmitEvent) {
@@ -65,7 +67,8 @@
     try {
       const updated = await projects.update(project.id, {
         name: name.trim(),
-        retention_events: retention
+        retention_events: retention,
+        retention_days: retentionDays
       });
       project = updated;
       toast.success('Project updated');
@@ -88,6 +91,27 @@
       toast.error(errorMessage(err, 'Failed to update mute'));
     } finally {
       mutating = false;
+    }
+  }
+
+  // --- Webhook (Story 6.2) -------------------------------------------------
+  let webhookUrl = $state(untrack(() => data.project.webhook_url ?? ''));
+  let savingWebhook = $state(false);
+  $effect(() => {
+    webhookUrl = data.project.webhook_url ?? '';
+  });
+
+  async function saveWebhook(event: SubmitEvent) {
+    event.preventDefault();
+    savingWebhook = true;
+    try {
+      const updated = await projects.update(project.id, { webhook_url: webhookUrl.trim() });
+      project = updated;
+      toast.success('Webhook updated');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update webhook'));
+    } finally {
+      savingWebhook = false;
     }
   }
 
@@ -161,7 +185,7 @@
   <Card.Root>
     <Card.Header>
       <Card.Title>General</Card.Title>
-      <Card.Description>Project name and event retention.</Card.Description>
+      <Card.Description>Project name and event retention (by count and age).</Card.Description>
     </Card.Header>
     <form onsubmit={saveGeneral} class="contents">
       <Card.Content class="space-y-4">
@@ -184,6 +208,20 @@
             preserved.
           </p>
         </div>
+        <div class="space-y-2">
+          <label for="retention-days" class="text-sm font-medium">Retention (days)</label>
+          <Input
+            id="retention-days"
+            type="number"
+            min={0}
+            bind:value={retentionDays}
+            disabled={!isAdmin}
+          />
+          <p class="text-muted-foreground text-xs">
+            0 = keep events regardless of age; otherwise events older than this many days are
+            pruned. Issue counters are preserved.
+          </p>
+        </div>
       </Card.Content>
       {#if isAdmin}
         <Card.Footer>
@@ -204,20 +242,41 @@
         continue.
       </Card.Description>
     </Card.Header>
-    <Card.Content class="flex items-center justify-between gap-4">
-      <div class="text-sm">
-        Status:
-        {#if project.muted}
-          <Badge variant="secondary">Muted</Badge>
-        {:else}
-          <Badge variant="outline">Active</Badge>
+    <Card.Content class="space-y-6">
+      <div class="flex items-center justify-between gap-4">
+        <div class="text-sm">
+          Status:
+          {#if project.muted}
+            <Badge variant="secondary">Muted</Badge>
+          {:else}
+            <Badge variant="outline">Active</Badge>
+          {/if}
+        </div>
+        {#if isAdmin}
+          <Button variant="outline" disabled={mutating} onclick={toggleMute}>
+            {project.muted ? 'Unmute project' : 'Mute project'}
+          </Button>
         {/if}
       </div>
-      {#if isAdmin}
-        <Button variant="outline" disabled={mutating} onclick={toggleMute}>
-          {project.muted ? 'Unmute project' : 'Mute project'}
-        </Button>
-      {/if}
+
+      <form onsubmit={saveWebhook} class="space-y-2">
+        <label for="webhook-url" class="text-sm font-medium">Webhook URL</label>
+        <Input
+          id="webhook-url"
+          type="url"
+          placeholder="https://..."
+          bind:value={webhookUrl}
+          disabled={!isAdmin}
+        />
+        <p class="text-muted-foreground text-xs">
+          POST new-issue and regression notifications as JSON to this URL. Leave empty to disable.
+        </p>
+        {#if isAdmin}
+          <Button type="submit" variant="outline" disabled={savingWebhook}>
+            {savingWebhook ? 'Saving…' : 'Save webhook'}
+          </Button>
+        {/if}
+      </form>
     </Card.Content>
   </Card.Root>
 

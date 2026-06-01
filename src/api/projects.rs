@@ -9,11 +9,11 @@
 // which is fine here (these are control-flow short-circuits, never hot paths).
 #![allow(clippy::result_large_err)]
 
-use axum::extract::{FromRequestParts, Path, Query, State};
-use axum::http::request::Parts;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::extract::{FromRequestParts, Path, Query, State};
+use axum::http::StatusCode;
+use axum::http::request::Parts;
+use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{Id, Membership, Project, Role, User};
@@ -85,6 +85,19 @@ pub fn json_error(status: StatusCode, message: impl Into<String>) -> Response {
         }),
     )
         .into_response()
+}
+
+/// Whether `value` is a well-formed http(s) URL (Story 6.2 webhook channel).
+///
+/// The API is the real trust boundary (the browser's `type="url"` hint does not
+/// cover programmatic callers), so a malformed URL is rejected at save time
+/// rather than being persisted and then silently failing on every later
+/// delivery attempt — turning a typo into a permanent, log-only failure.
+fn is_valid_webhook_url(value: &str) -> bool {
+    match reqwest::Url::parse(value) {
+        Ok(url) => matches!(url.scheme(), "http" | "https"),
+        Err(_) => false,
+    }
 }
 
 /// Map a [`crate::error::Error`] to an HTTP JSON response (§16 error mapping).
@@ -196,7 +209,11 @@ pub struct ProjectView {
     pub dsn_public_key: String,
     pub dsn: String,
     pub retention_events: i64,
+    /// Age-based retention in days; 0 disables age-based pruning (Story 7.1).
+    pub retention_days: i64,
     pub muted: bool,
+    /// Optional per-project webhook URL for notifications (Story 6.2).
+    pub webhook_url: Option<String>,
     pub created_at: crate::domain::Timestamp,
     pub updated_at: crate::domain::Timestamp,
 }
@@ -212,7 +229,9 @@ impl ProjectView {
             dsn_public_key: project.dsn_public_key,
             dsn,
             retention_events: project.retention_events,
+            retention_days: project.retention_days,
             muted: project.muted,
+            webhook_url: project.webhook_url,
             created_at: project.created_at,
             updated_at: project.updated_at,
         }
@@ -257,6 +276,12 @@ pub struct CreateProjectRequest {
     /// Optional retention override; defaults to `DEFAULT_EVENTS_RETENTION`.
     #[serde(default)]
     pub retention_events: Option<i64>,
+    /// Optional age-based retention in days (Story 7.1); 0/omitted disables.
+    #[serde(default)]
+    pub retention_days: Option<i64>,
+    /// Optional per-project webhook URL for notifications (Story 6.2).
+    #[serde(default)]
+    pub webhook_url: Option<String>,
 }
 
 /// `POST /projects` — create a project.
@@ -299,12 +324,30 @@ pub async fn create(
         .filter(|r| *r > 0)
         .unwrap_or(state.config.default_events_retention);
 
+    // Age-based retention is opt-in; non-positive (or omitted) means disabled (0).
+    let retention_days = req.retention_days.filter(|d| *d > 0).unwrap_or(0);
+
+    // Normalize + validate the optional webhook URL: a blank/whitespace value is
+    // treated as "unset"; a present value must be a valid http(s) URL (Story 6.2).
+    let webhook_url = match req.webhook_url.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(url) if is_valid_webhook_url(url) => Some(url.to_string()),
+        Some(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "webhook_url must be a valid http(s) URL",
+            );
+        }
+    };
+
     let new = crate::ports::NewProject {
         team_id: req.team_id,
         name: name.to_string(),
         slug,
         dsn_public_key: generate_dsn_key(),
         retention_events,
+        retention_days,
+        webhook_url,
     };
 
     match state.projects.create(new).await {
@@ -355,8 +398,16 @@ pub struct UpdateProjectRequest {
     pub name: Option<String>,
     #[serde(default)]
     pub retention_events: Option<i64>,
+    /// Age-based retention in days (Story 7.1); 0 disables, `None` leaves it.
+    #[serde(default)]
+    pub retention_days: Option<i64>,
     #[serde(default)]
     pub muted: Option<bool>,
+    /// Per-project webhook URL (Story 6.2). An absent key leaves it unchanged; a
+    /// present value sets it, and a present empty/whitespace string clears the
+    /// webhook (disables the channel) — see [`update`] for the mapping.
+    #[serde(default)]
+    pub webhook_url: Option<String>,
 }
 
 /// `PATCH /projects/{id}` — update settings/retention/mute (admin, §8.2).
@@ -385,11 +436,39 @@ pub async fn update(
     {
         return json_error(StatusCode::BAD_REQUEST, "retention_events must be positive");
     }
+    // Age-based retention: 0 disables, so only negatives are rejected (Story 7.1).
+    if let Some(days) = req.retention_days
+        && days < 0
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "retention_days must not be negative",
+        );
+    }
+
+    // Map the flat request field into ProjectUpdate's double-`Option`: an absent
+    // key (`None`) leaves the webhook unchanged; a trimmed empty string maps to
+    // `Some(None)` (clear intent); a present non-empty value must be a valid
+    // http(s) URL and maps to `Some(Some(url))`. The adapter's CASE-based update
+    // honours all three: leave / clear-to-NULL / set (Story 6.2).
+    let webhook_url = match req.webhook_url.as_deref().map(str::trim) {
+        None => None,
+        Some("") => Some(None),
+        Some(url) if is_valid_webhook_url(url) => Some(Some(url.to_string())),
+        Some(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "webhook_url must be a valid http(s) URL",
+            );
+        }
+    };
 
     let update = crate::ports::ProjectUpdate {
         name: req.name.map(|n| n.trim().to_string()),
         retention_events: req.retention_events,
+        retention_days: req.retention_days,
         muted: req.muted,
+        webhook_url,
     };
 
     match state.projects.update(project_id, update).await {
@@ -744,5 +823,21 @@ mod tests {
             let resp = error_response(err);
             assert_eq!(resp.status(), expected);
         }
+    }
+
+    #[test]
+    fn valid_webhook_url_accepts_http_and_https() {
+        assert!(is_valid_webhook_url("https://hooks.example.com/abc"));
+        assert!(is_valid_webhook_url("http://10.0.0.1:9000/ingest"));
+    }
+
+    #[test]
+    fn valid_webhook_url_rejects_missing_scheme_and_other_schemes() {
+        // No scheme, wrong scheme, and outright garbage are all rejected so the
+        // misconfiguration surfaces at save time rather than as a silent
+        // per-event delivery failure (Story 6.2).
+        assert!(!is_valid_webhook_url("hooks.example.com/abc"));
+        assert!(!is_valid_webhook_url("ftp://example.com/x"));
+        assert!(!is_valid_webhook_url("not a url"));
     }
 }

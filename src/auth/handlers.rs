@@ -10,10 +10,10 @@
 //!
 //! Errors render as `{ "error": "..." }` JSON with the mapped HTTP status.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{Id, Invite, Role, User};

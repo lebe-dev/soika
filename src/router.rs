@@ -4,8 +4,8 @@
 //! Routes are grouped: ingestion (DSN auth), auth/invite, internal JSON API
 //! (session-cookie auth), health, and the SPA fallback.
 
-use axum::routing::{delete, get, post};
 use axum::Router;
+use axum::routing::{delete, get, patch, post};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
@@ -60,6 +60,10 @@ pub fn build(state: AppState) -> Router {
         .route("/issues/:id/resolve", post(api::issues::resolve))
         .route("/issues/:id/mute", post(api::issues::mute))
         .route("/issues/:id/unresolve", post(api::issues::unresolve))
+        .route(
+            "/issues/:id/fingerprint",
+            patch(api::issues::update_fingerprint),
+        )
         // --- Events (§6) ---
         .route("/events/:id", get(api::events::get))
         // --- Teams (§4.1) ---

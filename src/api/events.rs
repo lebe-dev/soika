@@ -2,13 +2,13 @@
 //!
 //! Session-cookie auth; access scoped to the project the event belongs to.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 
 use crate::api::issues::EventView;
-use crate::api::projects::{error_response, json_error, parse_id, require_member, CurrentUser};
+use crate::api::projects::{CurrentUser, error_response, json_error, parse_id, require_member};
 use crate::state::AppState;
 
 /// `GET /events/{id}` — single event detail (full payload / stacktrace, §6).

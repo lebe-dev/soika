@@ -56,6 +56,10 @@ pub struct Issue {
     pub title: String,
     pub culprit: Option<String>,
     pub level: Option<String>,
+    /// Sentry top-level `environment` (e.g. `production`, `staging`), if any.
+    pub environment: Option<String>,
+    /// Sentry top-level `release` (version/build identifier), if any.
+    pub release: Option<String>,
     pub status: IssueStatus,
     pub first_seen: Timestamp,
     pub last_seen: Timestamp,

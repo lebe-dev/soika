@@ -4,8 +4,8 @@
 //! (verify old → re-hash new), and the user-level `notifications_enabled`
 //! email opt-out. Session auth via the shared [`AuthUser`] extractor.
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{ApiError, AuthUser};

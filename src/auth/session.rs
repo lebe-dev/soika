@@ -8,8 +8,8 @@
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue};
 use chrono::Duration;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use crate::config::Config;
 use crate::domain::{Id, Session};
@@ -28,8 +28,8 @@ pub const SESSION_TTL_DAYS: i64 = 30;
 pub fn generate_session_id() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
@@ -135,9 +135,10 @@ mod tests {
         let a = generate_session_id();
         let b = generate_session_id();
         assert_ne!(a, b);
-        assert!(a
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(
+            a.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        );
     }
 
     #[test]
@@ -206,6 +207,7 @@ mod tests {
             admin_email: None,
             admin_password: None,
             default_events_retention: 1000,
+            default_retention_days: 0,
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
         }

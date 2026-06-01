@@ -76,7 +76,11 @@ export interface Project {
   dsn_public_key: string;
   dsn: string;
   retention_events: number;
+  /** Age-based retention in days (Story 7.1); 0 disables age-based pruning. */
+  retention_days: number;
   muted: boolean;
+  /** Per-project webhook URL for notifications (Story 6.2); null when unset. */
+  webhook_url: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -86,12 +90,16 @@ export interface CreateProjectRequest {
   team_id: Id;
   slug?: string;
   retention_events?: number;
+  retention_days?: number;
+  webhook_url?: string;
 }
 
 export interface UpdateProjectRequest {
   name?: string;
   retention_events?: number;
+  retention_days?: number;
   muted?: boolean;
+  webhook_url?: string;
 }
 
 export interface Dsn {
@@ -148,6 +156,8 @@ export interface Issue {
   title: string;
   culprit: string | null;
   level: string | null;
+  environment: string | null;
+  release: string | null;
   status: IssueStatus;
   first_seen: Timestamp;
   last_seen: Timestamp;
@@ -170,9 +180,17 @@ export type IssueDetail = Issue & {
 
 export interface IssueListQuery {
   status?: IssueStatus;
+  /** Exact-match severity level (`error`, `warning`, ...); free-form per Sentry. */
+  level?: string;
+  /** Exact-match environment (`production`, `staging`, ...). */
+  environment?: string;
+  /** Exact-match release (version/build identifier). */
+  release?: string;
   query?: string;
   limit?: number;
   offset?: number;
+  /** Result ordering: `last_seen` (recency, default) or `event_count` (frequency). */
+  sort?: 'last_seen' | 'event_count';
 }
 
 // --- Teams (src/api/teams.rs) ---

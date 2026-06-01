@@ -12,6 +12,10 @@ pub struct NewProject {
     pub slug: String,
     pub dsn_public_key: String,
     pub retention_events: i64,
+    /// Age-based retention in days; 0 disables age-based pruning (Story 7.1).
+    pub retention_days: i64,
+    /// Optional per-project webhook URL for notifications (Story 6.2).
+    pub webhook_url: Option<String>,
 }
 
 /// Editable project settings (MVP §8.2). `None` leaves a field unchanged.
@@ -19,7 +23,15 @@ pub struct NewProject {
 pub struct ProjectUpdate {
     pub name: Option<String>,
     pub retention_events: Option<i64>,
+    /// Age-based retention in days; `None` leaves it unchanged (Story 7.1).
+    pub retention_days: Option<i64>,
     pub muted: Option<bool>,
+    /// Per-project webhook URL (Story 6.2). Double-`Option` distinguishes the
+    /// three partial-update intents: `None` leaves it unchanged,
+    /// `Some(Some(url))` sets it, and `Some(None)` clears it to NULL (disabling
+    /// the webhook channel). The SQLite adapter writes a CASE-based SET clause so
+    /// all three intents are honoured.
+    pub webhook_url: Option<Option<String>>,
 }
 
 /// CRUD + ingestion/listing lookups for projects.

@@ -6,11 +6,11 @@
 //! while a matching, unexpired, unaccepted invite exists. Tokens are generated
 //! with a CSPRNG, making them practically unguessable.
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::domain::{Invite, Timestamp};
 use crate::error::{Error, Result};
@@ -68,9 +68,10 @@ mod tests {
         let a = generate_invite_token();
         let b = generate_invite_token();
         assert_ne!(a, b);
-        assert!(a
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(
+            a.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        );
     }
 
     #[test]

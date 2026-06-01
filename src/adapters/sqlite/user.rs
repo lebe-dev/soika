@@ -1,7 +1,7 @@
 //! SQLite [`UserRepository`] adapter.
 
 use super::{
-    bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db, Db,
+    Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
 use crate::domain::{Id, Timestamp, User};
 use crate::error::{Error, Result};
@@ -192,11 +192,12 @@ mod tests {
         let by_email = repo.find_by_email("a@example.com").await.unwrap().unwrap();
         assert_eq!(by_email.id, created.id);
 
-        assert!(repo
-            .find_by_email("missing@example.com")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            repo.find_by_email("missing@example.com")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 //! SQLite [`SessionRepository`] adapter.
 
-use super::{id_from_db, id_to_db, ts_from_db, ts_to_db, Db};
+use super::{Db, id_from_db, id_to_db, ts_from_db, ts_to_db};
 use crate::domain::{Id, Session, Timestamp};
 use crate::error::Result;
 use crate::ports::SessionRepository;

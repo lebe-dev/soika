@@ -2,14 +2,14 @@
 //!
 //! Listing requires any project role; removal requires project admin (§8.2).
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Serialize;
 
 use crate::api::projects::{
-    error_response, json_error, parse_id, require_admin, require_member, CurrentUser,
+    CurrentUser, error_response, json_error, parse_id, require_admin, require_member,
 };
 use crate::domain::{Id, Role};
 use crate::state::AppState;

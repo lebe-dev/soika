@@ -79,6 +79,11 @@ pub async fn ingest_normalized(
     let title = title_from_normalized(&input.normalized);
     let culprit = culprit_from_normalized(&input.normalized);
     let level = input.normalized.level.clone();
+    // environment/release are top-level Sentry fields not carried on
+    // NormalizedEvent, so read them straight from the verbatim payload
+    // (Stories 4.4 / 5.2). Trim empties to match the `string_field` convention.
+    let environment = payload_string(&input.payload, "environment");
+    let release = payload_string(&input.payload, "release");
 
     // 1. Upsert the issue by (project_id, fingerprint). This is the SINGLE
     //    source of counter truth: the repository bumps `event_count` (+1) and
@@ -93,6 +98,8 @@ pub async fn ingest_normalized(
             title,
             culprit,
             level,
+            environment,
+            release,
             seen_at,
         })
         .await?;
@@ -134,6 +141,17 @@ fn notify_kind(upsert: &crate::ports::UpsertOutcome) -> NotifyKind {
     NotifyKind::None
 }
 
+/// Read a top-level string field from the raw event payload, trimming and
+/// dropping empties (mirrors the `string_field` convention in `stacktrace.rs`).
+fn payload_string(payload: &serde_json::Value, key: &str) -> Option<String> {
+    payload
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +178,8 @@ mod tests {
             title: upsert.title.clone(),
             culprit: upsert.culprit.clone(),
             level: upsert.level.clone(),
+            environment: upsert.environment.clone(),
+            release: upsert.release.clone(),
             status: IssueStatus::Unresolved,
             first_seen: upsert.seen_at,
             last_seen: upsert.seen_at,
@@ -243,6 +263,43 @@ mod tests {
 
         async fn list(&self, _project_id: Id, _filter: IssueFilter) -> Result<Vec<Issue>> {
             Ok(self.rows.lock().unwrap().clone())
+        }
+
+        async fn override_fingerprint(
+            &self,
+            issue_id: Id,
+            new_fingerprint: String,
+        ) -> Result<Issue> {
+            let mut rows = self.rows.lock().unwrap();
+            // Snapshot the target's identifying fields before mutating to avoid
+            // overlapping borrows.
+            let (project_id, current_fp) = rows
+                .iter()
+                .find(|i| i.id == issue_id)
+                .map(|i| (i.project_id, i.fingerprint.clone()))
+                .ok_or_else(|| Error::not_found("issue"))?;
+
+            if current_fp == new_fingerprint {
+                let issue = rows.iter().find(|i| i.id == issue_id).unwrap().clone();
+                return Ok(issue);
+            }
+
+            // Collision in the same project → merge source into target.
+            if let Some(src_idx) = rows.iter().position(|i| {
+                i.project_id == project_id && i.fingerprint == new_fingerprint && i.id != issue_id
+            }) {
+                let source = rows.remove(src_idx);
+                let target = rows.iter_mut().find(|i| i.id == issue_id).unwrap();
+                target.event_count += source.event_count;
+                target.first_seen = target.first_seen.min(source.first_seen);
+                target.last_seen = target.last_seen.max(source.last_seen);
+                target.fingerprint = new_fingerprint;
+                return Ok(target.clone());
+            }
+
+            let target = rows.iter_mut().find(|i| i.id == issue_id).unwrap();
+            target.fingerprint = new_fingerprint;
+            Ok(target.clone())
         }
 
         async fn delete(&self, id: Id) -> Result<()> {
@@ -355,6 +412,16 @@ mod tests {
         })
     }
 
+    /// Like [`exc`] but injects the top-level Sentry `environment`/`release`
+    /// fields the pipeline reads from the raw payload.
+    fn exc_with_env(ty: &str, environment: &str, release: &str) -> serde_json::Value {
+        let mut value = exc(ty);
+        let map = value.as_object_mut().unwrap();
+        map.insert("environment".into(), json!(environment));
+        map.insert("release".into(), json!(release));
+        value
+    }
+
     #[tokio::test]
     async fn first_event_creates_issue_and_flags_new() {
         let issues = FakeIssues::default();
@@ -369,6 +436,39 @@ mod tests {
         assert_eq!(out.issue.event_count, 1);
         assert_eq!(out.issue.status, IssueStatus::Unresolved);
         assert_eq!(events.count_for_project(project).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn populates_environment_and_release() {
+        let issues = FakeIssues::default();
+        let events = FakeEvents::default();
+        let project = Id::new_v4();
+
+        let out = ingest_normalized(
+            &issues,
+            &events,
+            input(project, exc_with_env("ValueError", "prod", "1.2.3")),
+            ts(100),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out.issue.environment.as_deref(), Some("prod"));
+        assert_eq!(out.issue.release.as_deref(), Some("1.2.3"));
+    }
+
+    #[tokio::test]
+    async fn missing_environment_and_release_default_to_none() {
+        let issues = FakeIssues::default();
+        let events = FakeEvents::default();
+        let project = Id::new_v4();
+
+        let out = ingest_normalized(&issues, &events, input(project, exc("ValueError")), ts(100))
+            .await
+            .unwrap();
+
+        assert_eq!(out.issue.environment, None);
+        assert_eq!(out.issue.release, None);
     }
 
     #[tokio::test]

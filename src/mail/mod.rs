@@ -13,10 +13,10 @@
 //! When SMTP is unset the app degrades gracefully — the no-op mailer simply drops
 //! messages, and invite **links** still work (§3, §9).
 
-use lettre::message::header::ContentType;
 use lettre::message::Mailbox;
-use lettre::transport::smtp::authentication::Credentials;
+use lettre::message::header::ContentType;
 use lettre::transport::smtp::AsyncSmtpTransport;
+use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncTransport, Message, Tokio1Executor};
 
 use crate::config::{Config, SmtpConfig};
@@ -187,6 +187,7 @@ mod tests {
             admin_email: None,
             admin_password: None,
             default_events_retention: 1000,
+            default_retention_days: 0,
             retention_cron: "0 */15 * * * *".to_string(),
             smtp: None,
         }
@@ -210,9 +211,11 @@ mod tests {
         let email = invite_email(&test_config(), "dev@example.com", &test_invite());
         assert_eq!(email.to, "dev@example.com");
         // base_url has a trailing slash; the link must not double it.
-        assert!(email
-            .body
-            .contains("https://errors.example.com/invite/tok-123"));
+        assert!(
+            email
+                .body
+                .contains("https://errors.example.com/invite/tok-123")
+        );
         assert!(!email.body.contains("com//invite"));
         assert!(email.subject.contains("Acme"));
         assert!(email.body.contains("2026-01-08"));

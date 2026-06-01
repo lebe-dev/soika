@@ -4,7 +4,7 @@
 //! with a SPA fallback to `index.html` for client-side routes.
 
 use axum::body::Body;
-use axum::http::{header, StatusCode, Uri};
+use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::RustEmbed;
 

@@ -28,8 +28,8 @@ pub use state::AppState;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 /// Embedded SQL migrations (MVP §4 schema), run at startup.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");

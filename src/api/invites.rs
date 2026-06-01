@@ -5,17 +5,17 @@
 //! returned so it can be **emailed** (when SMTP is configured) AND/OR copied
 //! manually — invites work even on instances without email (§9, §12).
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Duration;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::api::projects::{error_response, json_error, parse_id, require_admin, CurrentUser};
+use crate::api::projects::{CurrentUser, error_response, json_error, parse_id, require_admin};
 use crate::domain::{Id, Invite, Role};
 use crate::ports::{NewInvite, OutboundEmail};
 use crate::state::AppState;

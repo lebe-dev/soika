@@ -20,7 +20,7 @@ mod user;
 pub use clock::Clock;
 pub use event::{EventRepository, NewEvent};
 pub use invite::{InviteRepository, NewInvite};
-pub use issue::{IssueFilter, IssueRepository, IssueUpsert, UpsertOutcome};
+pub use issue::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
 pub use mailer::{Mailer, OutboundEmail};
 pub use membership::MembershipRepository;
 pub use project::{NewProject, ProjectRepository, ProjectUpdate};

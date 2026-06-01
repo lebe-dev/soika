@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::domain::stacktrace::{Frame, NormalizedEvent, Stacktrace};
 
-pub use pipeline::{ingest_normalized, IngestInput, IngestOutcome, NotifyKind};
+pub use pipeline::{IngestInput, IngestOutcome, NotifyKind, ingest_normalized};
 
 /// The literal Sentry placeholder that expands to the default fingerprint when
 /// it appears inside a custom `fingerprint` array.

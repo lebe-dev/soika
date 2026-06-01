@@ -30,17 +30,18 @@ pub async fn bootstrap_admin(
     users: &dyn UserRepository,
     config: &Config,
 ) -> Result<BootstrapOutcome> {
-    let (email, password) =
-        match (
-            config.admin_email.as_deref(),
-            config.admin_password.as_deref(),
-        ) {
-            (None, None) => return Ok(BootstrapOutcome::Skipped),
-            (Some(email), Some(password)) => (email.trim(), password),
-            _ => return Err(Error::validation(
+    let (email, password) = match (
+        config.admin_email.as_deref(),
+        config.admin_password.as_deref(),
+    ) {
+        (None, None) => return Ok(BootstrapOutcome::Skipped),
+        (Some(email), Some(password)) => (email.trim(), password),
+        _ => {
+            return Err(Error::validation(
                 "ADMIN_EMAIL and ADMIN_PASSWORD must both be set to bootstrap the built-in admin",
-            )),
-        };
+            ));
+        }
+    };
 
     if email.is_empty() {
         return Err(Error::validation("ADMIN_EMAIL must not be empty"));
@@ -95,6 +96,7 @@ mod tests {
             admin_email: admin_email.map(str::to_string),
             admin_password: admin_password.map(str::to_string),
             default_events_retention: 1000,
+            default_retention_days: 0,
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
         }

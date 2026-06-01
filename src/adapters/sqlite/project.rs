@@ -4,6 +4,7 @@
 //!   * `id` / `team_id` are stored as TEXT (UUID v4 string form).
 //!   * Timestamps are TEXT in RFC3339/ISO-8601 (UTC).
 //!   * `muted` is INTEGER 0/1.
+//!   * `webhook_url` is TEXT and nullable (NULL = no webhook channel).
 //!
 //! SQL is kept ANSI-friendly so a Postgres backend can drop in later (MVP §2.2);
 //! the only SQLite-specific bit is the runtime row decoding of TEXT columns,
@@ -29,7 +30,7 @@ impl SqliteProjectRepository {
 
 /// Columns selected for a `Project`, in a fixed order shared by every query.
 const PROJECT_COLS: &str = "id, team_id, name, slug, dsn_public_key, \
-     retention_events, muted, created_at, updated_at";
+     retention_events, retention_days, muted, webhook_url, created_at, updated_at";
 
 /// Map a row (selected via [`PROJECT_COLS`]) into a domain [`Project`].
 ///
@@ -43,7 +44,9 @@ fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Result<Project> {
         slug: row.try_get("slug")?,
         dsn_public_key: row.try_get("dsn_public_key")?,
         retention_events: row.try_get("retention_events")?,
+        retention_days: row.try_get("retention_days")?,
         muted: row.try_get::<i64, _>("muted")? != 0,
+        webhook_url: row.try_get("webhook_url")?,
         created_at: parse_ts(row.try_get::<String, _>("created_at")?)?,
         updated_at: parse_ts(row.try_get::<String, _>("updated_at")?)?,
     })
@@ -66,8 +69,8 @@ impl ProjectRepository for SqliteProjectRepository {
         let now = chrono::Utc::now();
         let sql = format!(
             "INSERT INTO projects \
-                (id, team_id, name, slug, dsn_public_key, retention_events, muted, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?) \
+                (id, team_id, name, slug, dsn_public_key, retention_events, retention_days, muted, webhook_url, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) \
              RETURNING {PROJECT_COLS}"
         );
         let row = sqlx::query(&sql)
@@ -77,6 +80,8 @@ impl ProjectRepository for SqliteProjectRepository {
             .bind(new.slug)
             .bind(new.dsn_public_key)
             .bind(new.retention_events)
+            .bind(new.retention_days)
+            .bind(new.webhook_url)
             .bind(now.to_rfc3339())
             .bind(now.to_rfc3339())
             .fetch_one(&self.db)
@@ -145,20 +150,35 @@ impl ProjectRepository for SqliteProjectRepository {
     async fn update(&self, id: Id, update: ProjectUpdate) -> Result<Project> {
         // Build a dynamic SET clause from the provided fields. COALESCE-style
         // partial update keeps the query ANSI-friendly without per-field SQL.
+        //
+        // `webhook_url` is the exception: it must support all three
+        // double-`Option` intents — `None` leaves it unchanged, `Some(None)`
+        // clears it to NULL, and `Some(Some(url))` sets it. COALESCE cannot
+        // express clear-to-NULL (a NULL bind is indistinguishable from "leave"),
+        // so a CASE driven by an explicit "is this field present?" flag is used
+        // instead: when the flag is 0 (`None`) the old value is kept; when it is
+        // 1 the bound value (which may itself be NULL) is written.
         let now = chrono::Utc::now();
         let sql = format!(
             "UPDATE projects SET \
                 name = COALESCE(?, name), \
                 retention_events = COALESCE(?, retention_events), \
+                retention_days = COALESCE(?, retention_days), \
                 muted = COALESCE(?, muted), \
+                webhook_url = CASE WHEN ? = 1 THEN ? ELSE webhook_url END, \
                 updated_at = ? \
              WHERE id = ? \
              RETURNING {PROJECT_COLS}"
         );
+        let webhook_present = i64::from(update.webhook_url.is_some());
+        let webhook_value = update.webhook_url.flatten();
         let row = sqlx::query(&sql)
             .bind(update.name)
             .bind(update.retention_events)
+            .bind(update.retention_days)
             .bind(update.muted.map(|m| if m { 1_i64 } else { 0 }))
+            .bind(webhook_present)
+            .bind(webhook_value)
             .bind(now.to_rfc3339())
             .bind(id.to_string())
             .fetch_optional(&self.db)
@@ -238,6 +258,8 @@ mod tests {
             slug: slug.to_string(),
             dsn_public_key: dsn.to_string(),
             retention_events: 1000,
+            retention_days: 0,
+            webhook_url: None,
         }
     }
 
@@ -299,5 +321,130 @@ mod tests {
         assert!(updated.muted);
         assert_eq!(updated.name, p.name, "name preserved by COALESCE update");
         assert_eq!(updated.retention_events, 1000);
+        assert_eq!(updated.retention_days, 0, "retention_days untouched");
+    }
+
+    #[tokio::test]
+    async fn webhook_url_round_trips_through_create_and_partial_update() {
+        let pool = pool().await;
+        let team_id = seed_team(&pool).await;
+        let repo = SqliteProjectRepository::new(pool);
+
+        // Create without a webhook URL: NULL round-trips to None.
+        let without = repo
+            .create(new_project(team_id, "no-hook", "dsn-no-hook"))
+            .await
+            .unwrap();
+        assert_eq!(without.webhook_url, None);
+        let reread = repo.find_by_id(without.id).await.unwrap().unwrap();
+        assert_eq!(reread.webhook_url, None);
+
+        // Create WITH a webhook URL: it survives the round-trip.
+        let mut new = new_project(team_id, "hook", "dsn-hook");
+        new.webhook_url = Some("https://hook.example/x".into());
+        let with = repo.create(new).await.unwrap();
+        assert_eq!(with.webhook_url.as_deref(), Some("https://hook.example/x"));
+        let reread = repo.find_by_id(with.id).await.unwrap().unwrap();
+        assert_eq!(
+            reread.webhook_url.as_deref(),
+            Some("https://hook.example/x")
+        );
+
+        // Some(Some(url)) sets the webhook URL on an existing project.
+        let set = repo
+            .update(
+                without.id,
+                ProjectUpdate {
+                    webhook_url: Some(Some("https://h".into())),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(set.webhook_url.as_deref(), Some("https://h"));
+
+        // None (e.g. a muted-only update) leaves the existing webhook unchanged.
+        let unchanged = repo
+            .update(
+                without.id,
+                ProjectUpdate {
+                    muted: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(unchanged.muted);
+        assert_eq!(
+            unchanged.webhook_url.as_deref(),
+            Some("https://h"),
+            "None leaves webhook_url unchanged"
+        );
+
+        // Some(None) clears the webhook to NULL (disable the channel). This must
+        // actually persist NULL, not silently keep the old value.
+        let cleared = repo
+            .update(
+                without.id,
+                ProjectUpdate {
+                    webhook_url: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            cleared.webhook_url, None,
+            "Some(None) clears webhook_url to NULL"
+        );
+        let reread = repo.find_by_id(without.id).await.unwrap().unwrap();
+        assert_eq!(reread.webhook_url, None, "cleared NULL is persisted");
+        assert!(
+            reread.muted,
+            "clearing webhook_url leaves other fields (muted) intact"
+        );
+    }
+
+    #[tokio::test]
+    async fn retention_days_round_trips_through_create_and_update() {
+        let pool = pool().await;
+        let team_id = seed_team(&pool).await;
+        let repo = SqliteProjectRepository::new(pool);
+
+        // Create with an explicit age-based retention window.
+        let mut new = new_project(team_id, "beta", "dsn-beta");
+        new.retention_days = 7;
+        let created = repo.create(new).await.unwrap();
+        assert_eq!(created.retention_days, 7, "created value persisted");
+
+        // Some(value) updates the column.
+        let updated = repo
+            .update(
+                created.id,
+                ProjectUpdate {
+                    retention_days: Some(30),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.retention_days, 30, "Some(value) updates the column");
+
+        // None leaves the column unchanged.
+        let unchanged = repo
+            .update(
+                created.id,
+                ProjectUpdate {
+                    name: Some("Renamed".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            unchanged.retention_days, 30,
+            "None leaves retention_days unchanged"
+        );
+        assert_eq!(unchanged.name, "Renamed");
     }
 }

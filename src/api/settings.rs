@@ -5,8 +5,8 @@
 //! organization display name. SMTP is config-only in the MVP and surfaced
 //! READ-ONLY here (§14). All endpoints require an instance admin.
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{AdminUser, ApiError};

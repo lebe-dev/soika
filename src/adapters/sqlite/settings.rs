@@ -3,7 +3,7 @@
 //! Service settings live in a single-row table (`id = 1`), seeded by the
 //! 0001 migration, so reads never miss and updates always target row 1.
 
-use super::{bool_from_db, bool_to_db, ts_from_db, ts_to_db, Db};
+use super::{Db, bool_from_db, bool_to_db, ts_from_db, ts_to_db};
 use crate::domain::ServiceSettings;
 use crate::error::Result;
 use crate::ports::SettingsRepository;

@@ -1,6 +1,6 @@
 //! SQLite [`TeamRepository`] adapter.
 
-use super::{bool_from_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db, Db};
+use super::{Db, bool_from_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
 use crate::domain::{Id, Team, TeamMember, Timestamp, User};
 use crate::error::{Error, Result};
 use crate::ports::TeamRepository;

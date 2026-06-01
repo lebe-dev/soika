@@ -9,12 +9,12 @@ mod ratelimit;
 
 use std::io::Read;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::stacktrace::NormalizedEvent;
@@ -391,8 +391,8 @@ mod tests {
 
     #[test]
     fn decodes_gzip_body_via_content_encoding() {
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let mut enc = GzEncoder::new(Vec::new(), Compression::default());
@@ -407,8 +407,8 @@ mod tests {
 
     #[test]
     fn decodes_gzip_body_via_sniffing() {
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let mut enc = GzEncoder::new(Vec::new(), Compression::default());
@@ -423,8 +423,8 @@ mod tests {
 
     #[test]
     fn decodes_zlib_body() {
-        use flate2::write::ZlibEncoder;
         use flate2::Compression;
+        use flate2::write::ZlibEncoder;
         use std::io::Write;
 
         let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());

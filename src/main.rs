@@ -5,13 +5,13 @@
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::ConnectOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use tokio::net::TcpListener;
 use tokio::signal;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use soika::{auth, build_state, scheduler, Config, MIGRATOR};
+use soika::{Config, MIGRATOR, auth, build_state, scheduler};
 
 #[tokio::main]
 async fn main() -> Result<()> {

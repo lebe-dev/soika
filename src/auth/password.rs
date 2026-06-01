@@ -4,8 +4,8 @@
 //! which embed the algorithm, parameters and salt, so verification is
 //! self-describing and future parameter changes remain backward-compatible.
 
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rand::rngs::OsRng;
 
 use crate::error::{Error, Result};

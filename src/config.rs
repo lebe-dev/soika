@@ -34,6 +34,9 @@ pub struct Config {
     pub admin_password: Option<String>,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
+    /// Default age-based retention in days when a project's own value is 0
+    /// (`DEFAULT_RETENTION_DAYS`); 0 disables age-based pruning (Story 7.1).
+    pub default_retention_days: i64,
     /// Cron schedule for the retention cleanup job (`RETENTION_CRON`).
     pub retention_cron: String,
     /// Optional SMTP settings (`SMTP_*`).
@@ -65,6 +68,10 @@ impl Config {
             .parse::<i64>()
             .map_err(|e| Error::validation(format!("DEFAULT_EVENTS_RETENTION: {e}")))?;
 
+        let default_retention_days = env_or("DEFAULT_RETENTION_DAYS", "0")
+            .parse::<i64>()
+            .map_err(|e| Error::validation(format!("DEFAULT_RETENTION_DAYS: {e}")))?;
+
         let retention_cron = env_or("RETENTION_CRON", "0 */15 * * * *");
 
         let smtp = Self::smtp_from_env()?;
@@ -79,6 +86,7 @@ impl Config {
             admin_email,
             admin_password,
             default_events_retention,
+            default_retention_days,
             retention_cron,
             smtp,
         })

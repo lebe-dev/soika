@@ -1,8 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { goto } from '$app/navigation';
   import { issues as issuesApi, errorMessage, type Issue, type SoikaEvent } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
+  import { Input } from '$lib/components/ui/input';
   import { toast } from '$lib/components/ui/sonner';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import StacktraceViewer from '$lib/components/stacktrace-viewer.svelte';
@@ -55,6 +57,40 @@
       toast.success(`Issue ${labels[action]}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Action failed'));
+    } finally {
+      acting = false;
+    }
+  }
+
+  // Merge / edit fingerprint (Story 2.4). Opening seeds the draft from the
+  // current fingerprint; saving may MERGE into another issue, in which case the
+  // surviving issue's id differs and we navigate to it.
+  let editingFp = $state(false);
+  let fpDraft = $state('');
+
+  function openFingerprintEditor() {
+    fpDraft = issue.fingerprint;
+    editingFp = true;
+  }
+
+  async function saveFingerprint() {
+    const next = fpDraft.trim();
+    if (!next || next === issue.fingerprint) {
+      editingFp = false;
+      return;
+    }
+    acting = true;
+    try {
+      const updated = await issuesApi.setFingerprint(issue.id, next);
+      toast.success('Fingerprint updated');
+      editingFp = false;
+      if (updated.id !== issue.id) {
+        await goto(`/projects/${projectId}/issues/${updated.id}`);
+        return;
+      }
+      issue = { ...issue, ...updated };
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not update fingerprint'));
     } finally {
       acting = false;
     }
@@ -146,9 +182,41 @@
       </Card.Content>
     </Card.Root>
     <Card.Root>
-      <Card.Content class="p-4">
+      <Card.Content class="space-y-2 p-4">
         <div class="text-muted-foreground text-xs tracking-wide uppercase">Fingerprint</div>
-        <div class="truncate font-mono text-xs" title={issue.fingerprint}>{issue.fingerprint}</div>
+        {#if editingFp}
+          <div class="flex items-center gap-1.5">
+            <Input
+              class="h-7 font-mono text-xs"
+              bind:value={fpDraft}
+              disabled={acting}
+              aria-label="New fingerprint"
+              onkeydown={(e) => e.key === 'Enter' && saveFingerprint()}
+            />
+            <Button size="sm" class="h-7" disabled={acting} onclick={saveFingerprint}>Save</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7"
+              disabled={acting}
+              onclick={() => (editingFp = false)}>Cancel</Button
+            >
+          </div>
+          <p class="text-muted-foreground text-xs">
+            Setting a fingerprint already used by another issue merges them.
+          </p>
+        {:else}
+          <div class="truncate font-mono text-xs" title={issue.fingerprint}>
+            {issue.fingerprint}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7"
+            disabled={acting}
+            onclick={openFingerprintEditor}>Merge / edit</Button
+          >
+        {/if}
       </Card.Content>
     </Card.Root>
   </div>

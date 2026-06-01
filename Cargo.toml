@@ -59,6 +59,14 @@ lettre = { version = "0.11", default-features = false, features = [
     "builder",
 ] }
 
+# Outbound HTTP for the webhook notification channel (Story 6.2). rustls (not
+# native-tls) to match sqlx/lettre and avoid pulling in openssl; no
+# default-features so we drop default-tls/charset/http2 we don't need.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
+
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -5,12 +5,12 @@
 //! internal-API handlers (profile, settings) until they are promoted to a
 //! dedicated shared module — see the integration followups.
 
+use axum::Json;
 use axum::async_trait;
 use axum::extract::{FromRequestParts, Path, State};
-use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session_id_from_headers;

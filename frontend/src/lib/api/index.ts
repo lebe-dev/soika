@@ -112,7 +112,10 @@ export const issues = {
   resolve: (id: Id, ctx?: Ctx) => http.post<Issue>(`/issues/${id}/resolve`, { fetch: ctx?.fetch }),
   mute: (id: Id, ctx?: Ctx) => http.post<Issue>(`/issues/${id}/mute`, { fetch: ctx?.fetch }),
   unresolve: (id: Id, ctx?: Ctx) =>
-    http.post<Issue>(`/issues/${id}/unresolve`, { fetch: ctx?.fetch })
+    http.post<Issue>(`/issues/${id}/unresolve`, { fetch: ctx?.fetch }),
+  /** Override an issue's fingerprint (merge / split). Returns the surviving issue. */
+  setFingerprint: (id: Id, fingerprint: string, ctx?: Ctx) =>
+    http.patch<Issue>(`/issues/${id}/fingerprint`, { body: { fingerprint }, fetch: ctx?.fetch })
 };
 
 export const events = {
