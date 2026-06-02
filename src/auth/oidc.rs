@@ -23,11 +23,11 @@ use openidconnect::core::{
     CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreProviderMetadata,
 };
 use openidconnect::reqwest::async_http_client;
+use openidconnect::url::Url;
 use openidconnect::{
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge,
     PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
-use openidconnect::url::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::config::OidcConfig;
@@ -352,7 +352,9 @@ mod tests {
             IssuerUrl::new(cfg.issuer_url.clone()).unwrap(),
             AuthUrl::new(format!("{}/oauth/authorize", cfg.issuer_url)).unwrap(),
             JsonWebKeySetUrl::new(format!("{}/oauth/jwks", cfg.issuer_url)).unwrap(),
-            vec![ResponseTypes::new(vec![openidconnect::core::CoreResponseType::Code])],
+            vec![ResponseTypes::new(vec![
+                openidconnect::core::CoreResponseType::Code,
+            ])],
             vec![openidconnect::core::CoreSubjectIdentifierType::Public],
             vec![openidconnect::core::CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256],
             EmptyAdditionalProviderMetadata {},
@@ -465,7 +467,12 @@ mod tests {
 
     #[test]
     fn normalize_prefers_name_lowercases_email() {
-        let claims = claims_with(Some("Alice@Example.COM"), Some(true), Some("Alice A"), Some("alice"));
+        let claims = claims_with(
+            Some("Alice@Example.COM"),
+            Some(true),
+            Some("Alice A"),
+            Some("alice"),
+        );
         let out = normalize_claims(&claims).unwrap();
         assert_eq!(out.email, "alice@example.com");
         assert!(out.email_verified);
@@ -553,8 +560,7 @@ mod tests {
     #[test]
     fn state_cookie_rejects_forgery() {
         let now = 1_000_000;
-        let signed =
-            encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
+        let signed = encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
         let err = decode_state_cookie("different-secret", &signed, now).unwrap_err();
         assert!(matches!(err, Error::Auth(_)), "got {err:?}");
     }
@@ -562,8 +568,7 @@ mod tests {
     #[test]
     fn state_cookie_rejects_tampered_payload() {
         let now = 1_000_000;
-        let signed =
-            encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
+        let signed = encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
         // Flip a character in the payload portion, keep the signature.
         let (payload_b64, sig) = signed.split_once('.').unwrap();
         let mut chars: Vec<char> = payload_b64.chars().collect();
@@ -577,8 +582,7 @@ mod tests {
     #[test]
     fn state_cookie_rejects_expired_payload() {
         let now = 1_000_000;
-        let signed =
-            encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
+        let signed = encode_state_cookie(SECRET, "csrf", "nonce", "pkce", None, now).unwrap();
         // Verify well past expiry.
         let err = decode_state_cookie(SECRET, &signed, now + STATE_TTL_SECS + 1).unwrap_err();
         assert!(matches!(err, Error::Auth(_)), "got {err:?}");

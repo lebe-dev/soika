@@ -109,13 +109,21 @@ fn verified_claims(email: &str) -> OidcClaims {
 }
 
 /// Issue a GET and return (status, Location header, all Set-Cookie values).
-async fn get(router: &axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Option<String>, Vec<String>) {
+async fn get(
+    router: &axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, Option<String>, Vec<String>) {
     let mut builder = Request::builder().method("GET").uri(uri);
     if let Some(c) = cookie {
         builder = builder.header("cookie", c);
     }
     let request = builder.body(Body::empty()).expect("build request");
-    let response = router.clone().oneshot(request).await.expect("router response");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
     let status = response.status();
     let location = response
         .headers()
@@ -140,9 +148,15 @@ async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .expect("build request");
-    let response = router.clone().oneshot(request).await.expect("router response");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
     let status = response.status();
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("read body");
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
     let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     (status, json)
 }
@@ -168,9 +182,15 @@ async fn get_json(router: &axum::Router, uri: &str) -> (StatusCode, Value) {
         .uri(uri)
         .body(Body::empty())
         .expect("build request");
-    let response = router.clone().oneshot(request).await.expect("router response");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
     let status = response.status();
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("read body");
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
     let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     (status, json)
 }
@@ -260,7 +280,8 @@ async fn auth_config_reflects_disabled_mode() {
 #[tokio::test]
 async fn callback_happy_path_provisions_user_and_sets_session() {
     let email = "newcomer@example.com";
-    let (router, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+    let (router, state) =
+        build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
 
     // 1) /login mints the state cookie carrying the fixed CSRF state.
     let (_s, _l, cookies) = get(&router, "/auth/oidc/login", None).await;
@@ -303,7 +324,8 @@ async fn callback_happy_path_provisions_user_and_sets_session() {
 #[tokio::test]
 async fn callback_with_bad_state_redirects_with_error_and_no_session() {
     let email = "victim@example.com";
-    let (router, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+    let (router, state) =
+        build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
 
     let (_s, _l, cookies) = get(&router, "/auth/oidc/login", None).await;
     let cookie = state_cookie_header(&cookies);
@@ -326,7 +348,12 @@ async fn callback_with_bad_state_redirects_with_error_and_no_session() {
     );
     // No user created.
     assert!(
-        state.users.find_by_email(email).await.expect("query").is_none(),
+        state
+            .users
+            .find_by_email(email)
+            .await
+            .expect("query")
+            .is_none(),
         "no user provisioned on failed flow"
     );
 }
@@ -337,7 +364,8 @@ async fn callback_resolving_to_admin_is_forbidden() {
     // admin keeps password login; allowing the public IdP to assume
     // it would be an account-takeover vector. No session is issued.
     let email = "admin@example.com";
-    let (router, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+    let (router, state) =
+        build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
     seed_user(&state, email, "supersecret", true).await;
 
     let (_s, _l, cookies) = get(&router, "/auth/oidc/login", None).await;
@@ -352,7 +380,10 @@ async fn callback_resolving_to_admin_is_forbidden() {
 
     assert_eq!(status, StatusCode::FOUND);
     assert!(
-        location.as_deref().unwrap_or_default().starts_with("/login?error="),
+        location
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("/login?error="),
         "admin SSO rejected to login: {location:?}"
     );
     assert!(
@@ -365,12 +396,7 @@ async fn callback_resolving_to_admin_is_forbidden() {
 async fn callback_when_disabled_is_not_found() {
     let (router, _state) = build_app(None).await;
 
-    let (status, _l, _c) = get(
-        &router,
-        "/auth/oidc/callback?code=x&state=y",
-        None,
-    )
-    .await;
+    let (status, _l, _c) = get(&router, "/auth/oidc/callback?code=x&state=y", None).await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
 }

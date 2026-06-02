@@ -222,7 +222,9 @@ async fn run_callback(
         .await?;
 
     if !claims.email_verified {
-        return Err(Error::Forbidden("email is not verified by the provider".into()));
+        return Err(Error::Forbidden(
+            "email is not verified by the provider".into(),
+        ));
     }
     if claims.email.is_empty() {
         return Err(Error::Auth("provider returned an empty email".into()));
@@ -366,7 +368,10 @@ mod tests {
 
     #[test]
     fn validated_next_accepts_site_relative_path() {
-        assert_eq!(validated_next(Some("/dashboard")), Some("/dashboard".into()));
+        assert_eq!(
+            validated_next(Some("/dashboard")),
+            Some("/dashboard".into())
+        );
     }
 
     #[test]

@@ -853,8 +853,14 @@ mod tests {
     fn ingest_urls_builds_both_endpoints_and_strips_trailing_slash() {
         let pid = Uuid::nil();
         let (envelope, store) = ingest_urls("https://errors.example.com/", pid);
-        assert_eq!(envelope, format!("https://errors.example.com/api/{pid}/envelope/"));
-        assert_eq!(store, format!("https://errors.example.com/api/{pid}/store/"));
+        assert_eq!(
+            envelope,
+            format!("https://errors.example.com/api/{pid}/envelope/")
+        );
+        assert_eq!(
+            store,
+            format!("https://errors.example.com/api/{pid}/store/")
+        );
     }
 
     #[test]
