@@ -77,7 +77,7 @@ RUN apk add --no-cache ca-certificates wget \
     && mkdir -p /app/data \
     && chown -R 10001:10001 /app/data
 
-COPY --from=backend /build/soika /usr/local/bin/soika
+COPY --from=backend /build/soika /app/soika
 
 # SQLite database lives on a mounted volume (the reference deployment).
 ENV DATABASE_URL="sqlite:///app/data/soika.db?mode=rwc" \
