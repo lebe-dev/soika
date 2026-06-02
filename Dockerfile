@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# soika — multi-stage build (MVP §17).
+# soika — multi-stage build.
 #
 # Stage A  builds the SvelteKit SPA (adapter-static -> web/dist).
 # Stage B  builds the Rust release binary on musl (web/dist embedded via
@@ -48,7 +48,7 @@ COPY --from=frontend /build/web/dist ./web/dist
 RUN cargo build --release --locked \
     && cp target/release/soika /build/soika
 
-# Shrink the binary as far as it will go (MVP §17).
+# Shrink the binary as far as it will go.
 RUN upx -9 --lzma /build/soika
 
 # ---------------------------------------------------------------------------
