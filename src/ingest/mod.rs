@@ -24,7 +24,7 @@ use crate::notify;
 use crate::state::AppState;
 
 pub use envelope::{Envelope, EnvelopeError, EnvelopeItem};
-pub use ratelimit::{Decision, RateLimiter};
+pub use ratelimit::{DEFAULT_LIMIT, DEFAULT_WINDOW, Decision, RateLimiter};
 
 /// `POST /api/{project_id}/envelope/` — Sentry envelope ingestion (§5.1).
 ///
@@ -37,39 +37,12 @@ pub async fn envelope(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // --- Auth: resolve project from the DSN public key (§5.1). ---
-    let Some(dsn_key) = extract_dsn_key(&headers, query.as_deref()) else {
-        return unauthorized("missing sentry key");
-    };
-
-    let project = match state.projects.find_by_dsn(&dsn_key).await {
-        Ok(Some(project)) => project,
-        Ok(None) => return unauthorized("unknown sentry key"),
-        Err(_) => return internal_error(),
-    };
-
-    // The path `{project_id}` is advisory; the DSN is authoritative. If the SDK
-    // sends a numeric/uuid project id that disagrees with the resolved project,
-    // we still accept (Sentry routes purely by key) but note the mismatch.
-    if !project_id.is_empty() && project_id != project.id.to_string() {
-        tracing::debug!(
-            path_project_id = %project_id,
-            resolved_project_id = %project.id,
-            "envelope path project id differs from DSN-resolved project"
-        );
-    }
-
-    // --- Soft per-project rate limit (§5.3). ---
-    let project_key = project.id.to_string();
-    if let Decision::Limited { retry_after_secs } = ratelimit::shared().check(&project_key) {
-        return rate_limited(retry_after_secs);
-    }
-
-    // --- Decode the (possibly compressed) body. ---
-    let decoded = match decode_body(&headers, &body) {
-        Ok(bytes) => bytes,
-        Err(_) => return bad_request("could not decode body"),
-    };
+    // Shared preamble: DSN auth → project resolve → rate-limit → decode (§5.1–5.3).
+    let (project, decoded) =
+        match authorize_and_decode(&state, &project_id, query.as_deref(), &headers, &body).await {
+            Ok(ok) => ok,
+            Err(response) => return response,
+        };
 
     // --- Parse the Sentry envelope (§5.2). ---
     let parsed = match envelope::parse(&decoded) {
@@ -111,6 +84,88 @@ pub async fn envelope(
         .unwrap_or_else(new_event_id);
 
     (StatusCode::OK, Json(json!({ "id": id }))).into_response()
+}
+
+/// `POST /api/{project_id}/store/` — legacy Sentry store endpoint (§5.1).
+///
+/// Unlike [`envelope`], the body is a single JSON event payload (the classic
+/// pre-envelope wire format), optionally gzip/zlib-compressed. Auth,
+/// rate-limiting, decoding, and the grouping pipeline are shared; only the wire
+/// format differs. Returns `{ "id": "<event_id>" }` on accept.
+pub async fn store(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let (project, decoded) =
+        match authorize_and_decode(&state, &project_id, query.as_deref(), &headers, &body).await {
+            Ok(ok) => ok,
+            Err(response) => return response,
+        };
+
+    // Legacy bodies are a bare event object, not a newline-delimited envelope.
+    let payload: Value = match serde_json::from_slice(&decoded) {
+        Ok(value) => value,
+        Err(_) => return bad_request("malformed event payload"),
+    };
+
+    let now = state.clock.now();
+    match process_event(&state, &project, payload, now).await {
+        // `process_event` derives the id from the payload's `event_id` (or
+        // synthesizes one), matching the envelope path's behavior.
+        Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
+        Err(_) => internal_error(),
+    }
+}
+
+/// Shared ingestion preamble for the `envelope` and `store` endpoints (§5.1–5.3):
+/// resolve the project from the DSN public key, apply the soft per-project rate
+/// limit, then decode the (possibly compressed) body.
+///
+/// On success returns the resolved project and the decoded body. On failure
+/// returns the Sentry-compatible early [`Response`] the handler should send.
+async fn authorize_and_decode(
+    state: &AppState,
+    project_id: &str,
+    query: Option<&str>,
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> std::result::Result<(Project, Vec<u8>), Response> {
+    // --- Auth: resolve project from the DSN public key (§5.1). ---
+    let Some(dsn_key) = extract_dsn_key(headers, query) else {
+        return Err(unauthorized("missing sentry key"));
+    };
+
+    let project = match state.projects.find_by_dsn(&dsn_key).await {
+        Ok(Some(project)) => project,
+        Ok(None) => return Err(unauthorized("unknown sentry key")),
+        Err(_) => return Err(internal_error()),
+    };
+
+    // The path `{project_id}` is advisory; the DSN is authoritative. If the SDK
+    // sends a numeric/uuid project id that disagrees with the resolved project,
+    // we still accept (Sentry routes purely by key) but note the mismatch.
+    if !project_id.is_empty() && project_id != project.id.to_string() {
+        tracing::debug!(
+            path_project_id = %project_id,
+            resolved_project_id = %project.id,
+            "ingest path project id differs from DSN-resolved project"
+        );
+    }
+
+    // --- Soft per-project rate limit (§5.3). ---
+    let project_key = project.id.to_string();
+    if let Decision::Limited { retry_after_secs } = state.rate_limiter.check(&project_key) {
+        return Err(rate_limited(retry_after_secs));
+    }
+
+    // --- Decode the (possibly compressed) body. ---
+    match decode_body(headers, body) {
+        Ok(decoded) => Ok((project, decoded)),
+        Err(_) => Err(bad_request("could not decode body")),
+    }
 }
 
 /// Persist a single parsed event through the grouping pipeline (§5.4):

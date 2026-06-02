@@ -61,6 +61,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         SqliteMembershipRepository, SqliteProjectRepository, SqliteSessionRepository,
         SqliteSettingsRepository, SqliteTeamRepository, SqliteUserRepository,
     };
+    use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
     use ports::Mailer;
 
     let mailer: Arc<dyn Mailer> = match config.smtp.clone() {
@@ -81,5 +82,6 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         settings: Arc::new(SqliteSettingsRepository::new(pool)),
         mailer,
         clock: Arc::new(SystemClock),
+        rate_limiter: Arc::new(RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW)),
     }
 }

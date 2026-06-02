@@ -105,6 +105,8 @@ pub fn build(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         // Ingestion (DSN auth, Sentry-compatible — §5.1)
         .route("/api/:project_id/envelope/", post(ingest::envelope))
+        // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
+        .route("/api/:project_id/store/", post(ingest::store))
         // Internal API + auth
         .merge(auth_routes)
         .merge(api_routes)

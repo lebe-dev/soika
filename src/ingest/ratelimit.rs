@@ -5,12 +5,12 @@
 //! `Retry-After` hint so SDKs back off correctly. This is intentionally
 //! minimal — full Sentry rate-limit rules are a roadmap item (MVP §18).
 //!
-//! The limiter is process-global (a `OnceLock`) so it does not require a new
-//! `AppState` field; integrating it into `AppState` would be a cleaner home if
-//! foundation later adds a slot for it.
+//! The limiter lives on [`crate::AppState`] (built in `build_state`) so it is
+//! per-instance rather than process-global — that keeps it configurable in
+//! tests and ready to be driven from config later.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Default number of accepted events per project, per window.
@@ -92,14 +92,6 @@ impl RateLimiter {
     pub fn check(&self, project_key: &str) -> Decision {
         self.check_at(project_key, Instant::now())
     }
-}
-
-/// Process-global limiter used by the ingestion handler.
-static LIMITER: OnceLock<RateLimiter> = OnceLock::new();
-
-/// The shared limiter, lazily initialized with MVP defaults.
-pub fn shared() -> &'static RateLimiter {
-    LIMITER.get_or_init(|| RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW))
 }
 
 #[cfg(test)]

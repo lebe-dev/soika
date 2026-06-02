@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::config::Config;
+use crate::ingest::RateLimiter;
 use crate::ports::{
     Clock, EventRepository, InviteRepository, IssueRepository, Mailer, MembershipRepository,
     ProjectRepository, SessionRepository, SettingsRepository, TeamRepository, UserRepository,
@@ -27,4 +28,7 @@ pub struct AppState {
     pub settings: Arc<dyn SettingsRepository>,
     pub mailer: Arc<dyn Mailer>,
     pub clock: Arc<dyn Clock>,
+    /// Soft per-project ingestion rate limiter (§5.3). Owned by the state so it
+    /// is per-instance (and configurable in tests) rather than process-global.
+    pub rate_limiter: Arc<RateLimiter>,
 }

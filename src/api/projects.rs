@@ -195,6 +195,17 @@ pub fn build_dsn(base_url: &str, public_key: &str, project_id: Id) -> String {
     format!("{scheme}://{public_key}@{host}/{project_id}")
 }
 
+/// Build the two ingestion endpoint URLs for a project: the modern
+/// `/envelope/` and the legacy `/store/` (both under `base_url`). Returned as
+/// `(envelope_url, store_url)` for the raw-HTTP setup snippet.
+fn ingest_urls(base_url: &str, project_id: Id) -> (String, String) {
+    let base = base_url.trim_end_matches('/');
+    (
+        format!("{base}/api/{project_id}/envelope/"),
+        format!("{base}/api/{project_id}/store/"),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Response DTOs
 // ---------------------------------------------------------------------------
@@ -590,12 +601,23 @@ pub async fn sdk_setup(
     };
 
     let dsn = build_dsn(&state.config.base_url, &project.dsn_public_key, project.id);
-    let snippets = sdk_snippets(&dsn);
+    let (envelope_url, store_url) = ingest_urls(&state.config.base_url, project.id);
+    let snippets = sdk_snippets(&dsn, &project.dsn_public_key, &envelope_url, &store_url);
     Json(SdkSetupView { dsn, snippets }).into_response()
 }
 
 /// Build the per-language SDK init snippets for a DSN.
-fn sdk_snippets(dsn: &str) -> Vec<SdkSnippet> {
+///
+/// The language snippets (Go/Rust/JS) embed only the DSN — every modern Sentry
+/// SDK targets the `/envelope/` endpoint automatically. The `generic` snippet
+/// documents the raw HTTP contract for both the modern `/envelope/` and the
+/// legacy `/store/` endpoints, for callers without an SDK.
+fn sdk_snippets(
+    dsn: &str,
+    public_key: &str,
+    envelope_url: &str,
+    store_url: &str,
+) -> Vec<SdkSnippet> {
     vec![
         SdkSnippet {
             language: "go",
@@ -633,8 +655,25 @@ fn sdk_snippets(dsn: &str) -> Vec<SdkSnippet> {
         },
         SdkSnippet {
             language: "generic",
-            label: "Generic (any Sentry SDK)",
-            code: format!("# Point any Sentry-compatible SDK at this DSN:\nSENTRY_DSN={dsn}"),
+            label: "Generic / raw HTTP",
+            code: format!(
+                "# Point any Sentry-compatible SDK at this DSN:\n\
+                 SENTRY_DSN={dsn}\n\n\
+                 # --- Or send events over raw HTTP ---\n\
+                 # Auth via the `X-Sentry-Auth` header (or `?sentry_key=` query).\n\n\
+                 # Modern: newline-delimited envelope (recommended).\n\
+                 printf '{{\"event_id\":\"%s\"}}\\n{{\"type\":\"event\"}}\\n{{\"message\":\"hello\"}}\\n' \\\n  \
+                     \"$(uuidgen | tr -d - | tr 'A-Z' 'a-z')\" \\\n\
+                 | curl -X POST '{envelope_url}' \\\n    \
+                     -H 'X-Sentry-Auth: Sentry sentry_version=7, sentry_key={public_key}' \\\n    \
+                     -H 'Content-Type: application/x-sentry-envelope' \\\n    \
+                     --data-binary @-\n\n\
+                 # Legacy: a single bare JSON event (pre-envelope SDKs).\n\
+                 curl -X POST '{store_url}' \\\n    \
+                     -H 'X-Sentry-Auth: Sentry sentry_version=7, sentry_key={public_key}' \\\n    \
+                     -H 'Content-Type: application/json' \\\n    \
+                     -d '{{\"message\":\"hello\"}}'"
+            ),
         },
     ]
 }
@@ -788,7 +827,9 @@ mod tests {
     #[test]
     fn sdk_snippets_cover_all_languages_and_embed_dsn() {
         let dsn = "http://key@host/1";
-        let snippets = sdk_snippets(dsn);
+        let envelope_url = "http://host/api/1/envelope/";
+        let store_url = "http://host/api/1/store/";
+        let snippets = sdk_snippets(dsn, "key", envelope_url, store_url);
         let langs: Vec<&str> = snippets.iter().map(|s| s.language).collect();
         assert_eq!(langs, vec!["go", "rust", "javascript", "generic"]);
         for snippet in &snippets {
@@ -798,6 +839,22 @@ mod tests {
                 snippet.language
             );
         }
+
+        // The generic snippet documents both ingestion endpoints over raw HTTP.
+        let generic = snippets
+            .iter()
+            .find(|s| s.language == "generic")
+            .expect("generic snippet");
+        assert!(generic.code.contains(envelope_url), "missing envelope url");
+        assert!(generic.code.contains(store_url), "missing store url");
+    }
+
+    #[test]
+    fn ingest_urls_builds_both_endpoints_and_strips_trailing_slash() {
+        let pid = Uuid::nil();
+        let (envelope, store) = ingest_urls("https://errors.example.com/", pid);
+        assert_eq!(envelope, format!("https://errors.example.com/api/{pid}/envelope/"));
+        assert_eq!(store, format!("https://errors.example.com/api/{pid}/store/"));
     }
 
     #[test]
