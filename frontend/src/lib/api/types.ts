@@ -11,6 +11,8 @@ export type Timestamp = string;
 
 export type Role = 'admin' | 'member';
 export type IssueStatus = 'unresolved' | 'resolved' | 'muted';
+/** Account origin (`UserView.auth_provider`); `oidc` accounts have no local password. */
+export type AuthProvider = 'local' | 'oidc';
 
 /** Error body shape returned by every failing endpoint: `{ "error": "..." }`. */
 export interface ApiErrorBody {
@@ -26,6 +28,16 @@ export interface User {
   display_name: string;
   is_admin: boolean;
   notifications_enabled: boolean;
+  /** Account origin; `oidc` users sign in via SSO and have no local password. */
+  auth_provider: AuthProvider;
+}
+
+/** Public auth config (`GET /auth/config`); read before rendering the login page. */
+export interface AuthConfig {
+  oauth_enabled: boolean;
+  oauth_provider_name: string;
+  password_login_enabled: boolean;
+  allow_signup: boolean;
 }
 
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */

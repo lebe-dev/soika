@@ -310,6 +310,7 @@ mod tests {
             password_hash: "hash".to_string(),
             is_admin: false,
             notifications_enabled,
+            auth_provider: crate::domain::AuthProvider::Local,
             created_at: now,
             updated_at: now,
         }
@@ -549,6 +550,7 @@ mod tests {
             // No SMTP: the mailer is disabled, proving the webhook fires
             // independently of SMTP configuration.
             smtp: None,
+            oidc: None,
         }
     }
 

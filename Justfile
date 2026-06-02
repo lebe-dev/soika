@@ -50,7 +50,7 @@ test-backend name="":
 test-frontend name="":
     cd frontend && yarn vitest run {{ if name != "" { name } else { "" } }}
 
-test-all: test-backend && test-frontend
+test: test-backend && test-frontend
 
 # Lint with clippy, denying warnings.
 lint:
@@ -88,7 +88,7 @@ docker-push:
 clean:
     cargo clean
 
-build-image: test-all && lint
+build-image: test && lint
     docker build --progress=plain --platform linux/amd64 -t {{ imageName }}:{{ version }} .
 
 push-image:

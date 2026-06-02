@@ -81,6 +81,8 @@ pub struct UserView {
     pub display_name: String,
     pub is_admin: bool,
     pub notifications_enabled: bool,
+    /// Account origin: `"local"` or `"oidc"` (lets the UI hide "change password").
+    pub auth_provider: crate::domain::AuthProvider,
 }
 
 impl From<User> for UserView {
@@ -91,6 +93,7 @@ impl From<User> for UserView {
             display_name: u.display_name,
             is_admin: u.is_admin,
             notifications_enabled: u.notifications_enabled,
+            auth_provider: u.auth_provider,
         }
     }
 }
@@ -172,10 +175,22 @@ pub async fn login(
 ) -> Result<Response, AuthError> {
     let email = normalize_email(&body.email)?;
 
+    // Coexistence with SSO (PLAN §6.4): when OAuth is enabled, password login is
+    // reserved for the built-in admin (`is_admin`). Everyone else — including any
+    // OIDC-provisioned account whose `password_hash` is the empty sentinel — must
+    // use SSO. We still spend the same hashing effort on the rejected path so the
+    // anti-enumeration timing profile is unchanged.
+    let oauth_enabled = state.oidc.is_some();
+
     // Constant-ish work whether or not the user exists, to avoid user enumeration.
     let user = state.users.find_by_email(&email).await?;
     let ok = match &user {
-        Some(u) => verify_password(&body.password, &u.password_hash)?,
+        Some(u) => {
+            let verified = verify_password(&body.password, &u.password_hash)?;
+            // Under OAuth, non-admin accounts cannot log in with a password even
+            // if their hash matched; reject after spending the verify effort.
+            verified && (!oauth_enabled || u.is_admin)
+        }
         None => {
             // Spend roughly the same effort on a dummy verify to reduce timing signal.
             let _ = verify_password(&body.password, dummy_hash());
@@ -184,6 +199,17 @@ pub async fn login(
     };
 
     if !ok {
+        // Distinguish the "password login disabled" case for a known non-admin
+        // account so the UI can point users at SSO, while keeping unknown emails
+        // and bad passwords on the generic anti-enumeration path.
+        if oauth_enabled
+            && let Some(u) = &user
+            && !u.is_admin
+        {
+            return Err(AuthError(Error::Forbidden(
+                "password login is disabled; use SSO".into(),
+            )));
+        }
         return Err(AuthError(Error::Auth("invalid email or password".into())));
     }
     let user = user.expect("ok implies a user was found");
@@ -216,6 +242,15 @@ pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<Response, AuthError> {
+    // Coexistence with SSO (PLAN §6.4): when OAuth is enabled, self-registration
+    // is disabled regardless of `allow_signup` — new accounts are provisioned via
+    // SSO sign-in. Admin is bootstrapped at startup, not via this endpoint.
+    if state.oidc.is_some() {
+        return Err(AuthError(Error::Forbidden(
+            "self-registration is disabled; use SSO".into(),
+        )));
+    }
+
     let allow_signup = state.settings.get().await?.allow_signup;
     if !allow_signup {
         return Err(AuthError(Error::Forbidden(
@@ -326,6 +361,7 @@ async fn create_user(
         display_name,
         password_hash,
         is_admin: false,
+        auth_provider: crate::domain::AuthProvider::Local,
     };
     state.users.create(new).await
 }
@@ -368,6 +404,17 @@ async fn resolve_or_register_invitee(
             existing
         }
         None => {
+            // Coexistence with SSO (PLAN §6.4): under OAuth we do not mint a
+            // password-backed account from an invite. MVP behaviour: the invitee
+            // must first sign in via SSO (which find-or-creates their account),
+            // then accept the invite while logged in. We surface this as a
+            // Forbidden so the UI can route them to SSO. Chosen for simplicity —
+            // no OIDC-from-invite onboarding in the first pass.
+            if state.oidc.is_some() {
+                return Err(Error::Forbidden(
+                    "sign in with SSO first, then accept this invite".into(),
+                ));
+            }
             // New email → register (invite authorizes regardless of allow_signup, §9).
             let display_name = req.display_name.as_deref().unwrap_or(&email);
             create_user(state, &email, password, display_name).await?

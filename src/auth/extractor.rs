@@ -181,6 +181,7 @@ mod tests {
             password_hash: String::new(),
             is_admin,
             notifications_enabled: true,
+            auth_provider: crate::domain::AuthProvider::Local,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

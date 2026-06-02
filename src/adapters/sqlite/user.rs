@@ -3,7 +3,7 @@
 use super::{
     Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
-use crate::domain::{Id, Timestamp, User};
+use crate::domain::{AuthProvider, Id, Timestamp, User};
 use crate::error::{Error, Result};
 use crate::ports::{NewUser, UserRepository, UserUpdate};
 use async_trait::async_trait;
@@ -29,6 +29,7 @@ struct UserRow {
     password_hash: String,
     is_admin: i64,
     notifications_enabled: i64,
+    auth_provider: String,
     created_at: String,
     updated_at: String,
 }
@@ -42,6 +43,7 @@ impl UserRow {
             password_hash: self.password_hash,
             is_admin: bool_from_db(self.is_admin),
             notifications_enabled: bool_from_db(self.notifications_enabled),
+            auth_provider: AuthProvider::from_db(&self.auth_provider),
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
         })
@@ -49,7 +51,7 @@ impl UserRow {
 }
 
 const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, is_admin, \
-    notifications_enabled, created_at, updated_at FROM users";
+    notifications_enabled, auth_provider, created_at, updated_at FROM users";
 
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
@@ -59,14 +61,15 @@ impl UserRepository for SqliteUserRepository {
 
         sqlx::query(
             "INSERT INTO users (id, email, display_name, password_hash, is_admin, \
-             notifications_enabled, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+             notifications_enabled, auth_provider, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
         )
         .bind(id_to_db(id))
         .bind(&new.email)
         .bind(&new.display_name)
         .bind(&new.password_hash)
         .bind(bool_to_db(new.is_admin))
+        .bind(new.auth_provider.as_str())
         .bind(ts_to_db(now))
         .bind(ts_to_db(now))
         .execute(&self.db)
@@ -80,6 +83,7 @@ impl UserRepository for SqliteUserRepository {
             password_hash: new.password_hash,
             is_admin: new.is_admin,
             notifications_enabled: true,
+            auth_provider: new.auth_provider,
             created_at: now,
             updated_at: now,
         })
@@ -173,6 +177,18 @@ mod tests {
             display_name: "Test User".to_string(),
             password_hash: "$argon2id$v=19$m=4096,t=3,p=1$abc$def".to_string(),
             is_admin: false,
+            auth_provider: AuthProvider::Local,
+        }
+    }
+
+    fn oidc_sample(email: &str) -> NewUser {
+        NewUser {
+            email: email.to_string(),
+            display_name: "OIDC User".to_string(),
+            // OIDC accounts carry an empty-string password sentinel (PLAN §5).
+            password_hash: String::new(),
+            is_admin: false,
+            auth_provider: AuthProvider::Oidc,
         }
     }
 
@@ -184,13 +200,16 @@ mod tests {
         assert_eq!(created.email, "a@example.com");
         assert!(!created.is_admin);
         assert!(created.notifications_enabled);
+        assert_eq!(created.auth_provider, AuthProvider::Local);
 
         let by_id = repo.find_by_id(created.id).await.unwrap().unwrap();
         assert_eq!(by_id.id, created.id);
         assert_eq!(by_id.password_hash, created.password_hash);
+        assert_eq!(by_id.auth_provider, AuthProvider::Local);
 
         let by_email = repo.find_by_email("a@example.com").await.unwrap().unwrap();
         assert_eq!(by_email.id, created.id);
+        assert_eq!(by_email.auth_provider, AuthProvider::Local);
 
         assert!(
             repo.find_by_email("missing@example.com")
@@ -198,6 +217,40 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn create_oidc_user_with_empty_hash_roundtrips() {
+        let repo = SqliteUserRepository::new(test_pool().await);
+        let created = repo.create(oidc_sample("sso@example.com")).await.unwrap();
+
+        assert_eq!(created.auth_provider, AuthProvider::Oidc);
+        assert_eq!(created.password_hash, "");
+
+        let by_id = repo.find_by_id(created.id).await.unwrap().unwrap();
+        assert_eq!(by_id.auth_provider, AuthProvider::Oidc);
+        assert_eq!(by_id.password_hash, "");
+    }
+
+    #[tokio::test]
+    async fn find_by_email_finds_local_and_oidc_users() {
+        let repo = SqliteUserRepository::new(test_pool().await);
+        repo.create(sample("local@example.com")).await.unwrap();
+        repo.create(oidc_sample("oidc@example.com")).await.unwrap();
+
+        let local = repo
+            .find_by_email("local@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(local.auth_provider, AuthProvider::Local);
+
+        let oidc = repo
+            .find_by_email("oidc@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(oidc.auth_provider, AuthProvider::Oidc);
     }
 
     #[tokio::test]

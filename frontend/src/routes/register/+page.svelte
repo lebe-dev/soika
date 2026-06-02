@@ -1,21 +1,39 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { auth, ApiError, errorMessage } from '$lib/api';
+  import { auth, ApiError, errorMessage, type AuthConfig } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
 
-  // Register — only succeeds when the instance has `allow_signup` enabled (§10.1).
-  // There is no public endpoint to read the flag before submitting (GET /settings
-  // is admin-only), so a disabled instance is detected from the 403 the register
-  // endpoint returns; we then switch the page into a persistent disabled state.
+  // Register — only succeeds when the instance has `allow_signup` enabled (§10.1)
+  // and SSO is off. We read `GET /auth/config` up front to disable the form when
+  // signup is closed or OAuth replaces local accounts; a 403 from the register
+  // endpoint is also handled as a fallback.
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
   let submitting = $state(false);
   let signupDisabled = $state(false);
+  let config = $state<AuthConfig | null>(null);
+
+  // `null` config => not loaded yet; keep the form available until we know.
+  const registrationClosed = $derived(
+    signupDisabled || (config !== null && (!config.allow_signup || config.oauth_enabled))
+  );
+
+  $effect(() => {
+    void loadConfig();
+  });
+
+  async function loadConfig() {
+    try {
+      config = await auth.config();
+    } catch {
+      // On failure leave the form available; the register endpoint still gates.
+    }
+  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -39,7 +57,7 @@
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
-    {#if signupDisabled}
+    {#if registrationClosed}
       <Card.Header>
         <Card.Title>Sign-up is disabled</Card.Title>
         <Card.Description>

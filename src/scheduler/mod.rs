@@ -297,6 +297,7 @@ mod tests {
             default_retention_days,
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
+            oidc: None,
         }
     }
 

@@ -13,6 +13,29 @@ pub struct SmtpConfig {
     pub from: Option<String>,
 }
 
+/// Optional OAuth 2.0 / OpenID Connect configuration. When `None`, SSO is
+/// disabled and password login behaves exactly as before (PLAN §3).
+#[derive(Debug, Clone)]
+pub struct OidcConfig {
+    /// Issuer base URL used for OIDC discovery (`OAUTH_ISSUER_URL`), e.g.
+    /// `https://gitlab.com`. Discovery hits `{issuer}/.well-known/openid-configuration`.
+    pub issuer_url: String,
+    /// Client ID registered with the provider (`OAUTH_CLIENT_ID`).
+    pub client_id: String,
+    /// Client secret registered with the provider (`OAUTH_CLIENT_SECRET`).
+    pub client_secret: String,
+    /// Redirect URI; must match the provider config (`OAUTH_REDIRECT_URL`).
+    /// Defaults to `{BASE_URL}/auth/oidc/callback`.
+    pub redirect_url: String,
+    /// Space-separated scopes (`OAUTH_SCOPES`); default `openid email profile`.
+    pub scopes: Vec<String>,
+    /// Human-readable provider name shown on the SSO button (`OAUTH_PROVIDER_NAME`).
+    pub provider_name: String,
+    /// Optional whitelist of allowed email domains for auto-provisioning
+    /// (`OAUTH_ALLOWED_EMAIL_DOMAINS`, comma-separated). Empty = any domain.
+    pub allowed_email_domains: Vec<String>,
+}
+
 /// Fully resolved runtime configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -41,6 +64,8 @@ pub struct Config {
     pub retention_cron: String,
     /// Optional SMTP settings (`SMTP_*`).
     pub smtp: Option<SmtpConfig>,
+    /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
+    pub oidc: Option<OidcConfig>,
 }
 
 impl Config {
@@ -75,6 +100,7 @@ impl Config {
         let retention_cron = env_or("RETENTION_CRON", "0 */15 * * * *");
 
         let smtp = Self::smtp_from_env()?;
+        let oidc = Self::oidc_from_env(&base_url)?;
 
         Ok(Config {
             organization_name,
@@ -89,6 +115,7 @@ impl Config {
             default_retention_days,
             retention_cron,
             smtp,
+            oidc,
         })
     }
 
@@ -109,6 +136,37 @@ impl Config {
             from: env_opt("SMTP_FROM"),
         }))
     }
+
+    /// Build the optional OIDC config; returns `Ok(None)` when `OAUTH_ENABLED`
+    /// is not truthy. When enabled, the issuer URL, client id and client secret
+    /// are required and missing any of them fails fast (PLAN §3).
+    fn oidc_from_env(base_url: &str) -> Result<Option<OidcConfig>> {
+        if !parse_bool(&env_or("OAUTH_ENABLED", "false")) {
+            return Ok(None);
+        }
+
+        let issuer_url = required_env("OAUTH_ISSUER_URL")?;
+        let client_id = required_env("OAUTH_CLIENT_ID")?;
+        let client_secret = required_env("OAUTH_CLIENT_SECRET")?;
+
+        let redirect_url = env_opt("OAUTH_REDIRECT_URL")
+            .unwrap_or_else(|| format!("{}/auth/oidc/callback", base_url.trim_end_matches('/')));
+
+        let scopes = split_list(&env_or("OAUTH_SCOPES", "openid email profile"), ' ');
+        let provider_name = env_or("OAUTH_PROVIDER_NAME", "SSO");
+        let allowed_email_domains =
+            split_list(&env_opt("OAUTH_ALLOWED_EMAIL_DOMAINS").unwrap_or_default(), ',');
+
+        Ok(Some(OidcConfig {
+            issuer_url,
+            client_id,
+            client_secret,
+            redirect_url,
+            scopes,
+            provider_name,
+            allowed_email_domains,
+        }))
+    }
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -127,4 +185,136 @@ fn parse_bool(s: &str) -> bool {
         s.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+/// Read a required (non-empty) env var, failing fast with a validation error.
+fn required_env(key: &str) -> Result<String> {
+    env_opt(key).ok_or_else(|| Error::validation(format!("{key} is required when OAUTH_ENABLED")))
+}
+
+/// Split a delimited list into trimmed, non-empty items.
+fn split_list(s: &str, sep: char) -> Vec<String> {
+    s.split(sep)
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+    use std::sync::Mutex;
+
+    // Tests mutate process-wide env vars, so serialize them.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const OAUTH_KEYS: &[&str] = &[
+        "OAUTH_ENABLED",
+        "OAUTH_ISSUER_URL",
+        "OAUTH_CLIENT_ID",
+        "OAUTH_CLIENT_SECRET",
+        "OAUTH_REDIRECT_URL",
+        "OAUTH_SCOPES",
+        "OAUTH_PROVIDER_NAME",
+        "OAUTH_ALLOWED_EMAIL_DOMAINS",
+    ];
+
+    fn clear_oauth_env() {
+        for k in OAUTH_KEYS {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn oidc_disabled_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "false") };
+
+        let oidc = Config::oidc_from_env("http://localhost:8080").unwrap();
+        assert!(oidc.is_none());
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn oidc_unset_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+
+        let oidc = Config::oidc_from_env("http://localhost:8080").unwrap();
+        assert!(oidc.is_none());
+    }
+
+    #[test]
+    fn oidc_enabled_missing_required_is_validation_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "true") };
+        // Provide issuer + client id but omit the secret.
+        unsafe { std::env::set_var("OAUTH_ISSUER_URL", "https://gitlab.com") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "abc") };
+
+        let err = Config::oidc_from_env("http://localhost:8080").unwrap_err();
+        assert!(matches!(err, Error::Validation(_)), "got {err:?}");
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn oidc_enabled_defaults_redirect_from_base_url() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "1") };
+        unsafe { std::env::set_var("OAUTH_ISSUER_URL", "https://gitlab.com") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "client-id") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_SECRET", "client-secret") };
+
+        let oidc = Config::oidc_from_env("https://errors.example.com")
+            .unwrap()
+            .expect("oidc should be Some when enabled");
+
+        assert_eq!(
+            oidc.redirect_url,
+            "https://errors.example.com/auth/oidc/callback"
+        );
+        // Defaults.
+        assert_eq!(oidc.scopes, vec!["openid", "email", "profile"]);
+        assert_eq!(oidc.provider_name, "SSO");
+        assert!(oidc.allowed_email_domains.is_empty());
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn oidc_enabled_honours_overrides() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "yes") };
+        unsafe { std::env::set_var("OAUTH_ISSUER_URL", "https://gitlab.com") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "client-id") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_SECRET", "client-secret") };
+        unsafe { std::env::set_var("OAUTH_REDIRECT_URL", "https://custom/cb") };
+        unsafe { std::env::set_var("OAUTH_SCOPES", "openid email") };
+        unsafe { std::env::set_var("OAUTH_PROVIDER_NAME", "GitLab") };
+        unsafe {
+            std::env::set_var("OAUTH_ALLOWED_EMAIL_DOMAINS", "example.com, itkey.com ,")
+        };
+
+        let oidc = Config::oidc_from_env("https://base")
+            .unwrap()
+            .expect("oidc should be Some when enabled");
+
+        assert_eq!(oidc.redirect_url, "https://custom/cb");
+        assert_eq!(oidc.scopes, vec!["openid", "email"]);
+        assert_eq!(oidc.provider_name, "GitLab");
+        assert_eq!(
+            oidc.allowed_email_domains,
+            vec!["example.com", "itkey.com"]
+        );
+
+        clear_oauth_env();
+    }
 }

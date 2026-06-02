@@ -75,6 +75,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"
 
+# OIDC: discovery, JWKS-validation of the ID-token, PKCE, nonce. Uses the
+# existing rustls `reqwest` as the async HTTP client (no native-tls/openssl).
+openidconnect = { version = "3", default-features = false, features = ["reqwest"] }
+
 # Misc
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

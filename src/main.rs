@@ -3,6 +3,7 @@
 //! The bin crate uses `anyhow` for error handling.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sqlx::ConnectOptions;
@@ -11,6 +12,7 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
+use soika::auth::{OidcClient, OidcProvider};
 use soika::{Config, MIGRATOR, auth, build_state, scheduler};
 
 #[tokio::main]
@@ -24,7 +26,28 @@ async fn main() -> Result<()> {
         .await
         .context("connecting to database and running migrations")?;
 
-    let state = build_state(pool, config.clone());
+    // When SSO is enabled, run OIDC discovery up front so a misconfigured issuer
+    // fails the boot rather than the first login attempt (fail-fast — PLAN §6.6).
+    let oidc: Option<Arc<dyn OidcProvider>> = match &config.oidc {
+        Some(oidc_config) => {
+            tracing::info!(issuer = %oidc_config.issuer_url, "performing OIDC discovery");
+            // Auto-provisioning trusts the IdP's verified email. With no domain
+            // allow-list a public IdP can mint an account for any of its users.
+            if oidc_config.allowed_email_domains.is_empty() {
+                tracing::warn!(
+                    "OAUTH_ALLOWED_EMAIL_DOMAINS is empty: any verified email from the \
+                     provider may auto-provision an account; set it to restrict sign-ups"
+                );
+            }
+            let client = OidcClient::discover(oidc_config)
+                .await
+                .context("OIDC discovery failed at startup")?;
+            Some(Arc::new(client))
+        }
+        None => None,
+    };
+
+    let state = build_state(pool, config.clone()).with_oidc(oidc);
 
     // Idempotently provision the built-in admin from ADMIN_EMAIL/ADMIN_PASSWORD (§11).
     let bootstrap = auth::bootstrap_admin(&*state.users, &config)

@@ -184,6 +184,7 @@ fn test_config() -> Config {
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
         smtp: None,
+        oidc: None,
     }
 }
 

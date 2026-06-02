@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::auth::OidcProvider;
 use crate::config::Config;
 use crate::ingest::RateLimiter;
 use crate::ports::{
@@ -31,4 +32,16 @@ pub struct AppState {
     /// Soft per-project ingestion rate limiter (§5.3). Owned by the state so it
     /// is per-instance (and configurable in tests) rather than process-global.
     pub rate_limiter: Arc<RateLimiter>,
+    /// OIDC provider, present only when SSO is enabled (PLAN §6.6). Built once at
+    /// startup via discovery (fail-fast); `None` keeps password login unchanged.
+    pub oidc: Option<Arc<dyn OidcProvider>>,
+}
+
+impl AppState {
+    /// Attach an OIDC provider (built at startup via discovery, PLAN §6.6),
+    /// returning the updated state. `None` leaves SSO disabled.
+    pub fn with_oidc(mut self, oidc: Option<Arc<dyn OidcProvider>>) -> Self {
+        self.oidc = oidc;
+        self
+    }
 }

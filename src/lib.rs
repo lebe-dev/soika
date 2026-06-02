@@ -83,5 +83,8 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         mailer,
         clock: Arc::new(SystemClock),
         rate_limiter: Arc::new(RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW)),
+        // The OIDC provider (if any) is wired separately after startup discovery
+        // (fail-fast — PLAN §6.6) via [`AppState::with_oidc`].
+        oidc: None,
     }
 }

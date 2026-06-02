@@ -5,7 +5,7 @@
 //! so restarts are safe and the operator's password is never overwritten here.
 
 use crate::config::Config;
-use crate::domain::User;
+use crate::domain::{AuthProvider, User};
 use crate::error::{Error, Result};
 use crate::ports::{NewUser, UserRepository};
 
@@ -60,6 +60,7 @@ pub async fn bootstrap_admin(
         display_name: "Administrator".to_string(),
         password_hash,
         is_admin: true,
+        auth_provider: AuthProvider::Local,
     };
 
     // Race note: a UNIQUE(email) conflict here means a concurrent bootstrap won;
@@ -99,6 +100,7 @@ mod tests {
             default_retention_days: 0,
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
+            oidc: None,
         }
     }
 
@@ -122,6 +124,7 @@ mod tests {
                 password_hash: new.password_hash,
                 is_admin: new.is_admin,
                 notifications_enabled: true,
+                auth_provider: new.auth_provider,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };

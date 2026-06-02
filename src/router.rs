@@ -95,6 +95,10 @@ pub fn build(state: AppState) -> Router {
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/register", post(auth::register))
+        // OIDC / SSO (PLAN §6.3, §6.6) — browser navigations, not JSON.
+        .route("/auth/oidc/login", get(auth::oidc_login))
+        .route("/auth/oidc/callback", get(auth::oidc_callback))
+        .route("/auth/config", get(auth::auth_config))
         .route(
             "/invite/:token",
             get(auth::get_invite).post(auth::accept_invite),

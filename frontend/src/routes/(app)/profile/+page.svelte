@@ -14,6 +14,9 @@
   // the (app) layout guard requires a session.
   const user = $derived(authStore.user);
 
+  // OIDC accounts have no local password, so the change-password card is hidden.
+  const canChangePassword = $derived(user?.auth_provider !== 'oidc');
+
   // --- Account details (display name) ---
   let displayName = $state(authStore.user?.display_name ?? '');
   let savingProfile = $state(false);
@@ -132,9 +135,7 @@
   <Card.Root>
     <Card.Header>
       <Card.Title>Notifications</Card.Title>
-      <Card.Description>
-        Email notifications for new issues and regressions.
-      </Card.Description>
+      <Card.Description>Email notifications for new issues and regressions.</Card.Description>
     </Card.Header>
     <Card.Content>
       <div class="flex items-center justify-between gap-4">
@@ -172,49 +173,51 @@
   </Card.Root>
 
   <!-- Change password -->
-  <Card.Root>
-    <Card.Header>
-      <Card.Title>Password</Card.Title>
-      <Card.Description>Change the password used to sign in.</Card.Description>
-    </Card.Header>
-    <form onsubmit={changePassword} class="contents">
-      <Card.Content class="space-y-4">
-        <div class="space-y-2">
-          <label for="current-password" class="text-sm font-medium">Current password</label>
-          <Input
-            id="current-password"
-            type="password"
-            autocomplete="current-password"
-            bind:value={currentPassword}
-            required
-          />
-        </div>
-        <div class="space-y-2">
-          <label for="new-password" class="text-sm font-medium">New password</label>
-          <Input
-            id="new-password"
-            type="password"
-            autocomplete="new-password"
-            bind:value={newPassword}
-            required
-          />
-        </div>
-        <div class="space-y-2">
-          <label for="confirm-password" class="text-sm font-medium">Confirm new password</label>
-          <Input
-            id="confirm-password"
-            type="password"
-            autocomplete="new-password"
-            bind:value={confirmPassword}
-            required
-          />
-        </div>
-      </Card.Content>
-      <Card.Footer class="justify-end">
-        <Button type="submit" disabled={changingPassword}>
-          {changingPassword ? 'Changing…' : 'Change password'}
-        </Button>
-      </Card.Footer>
-    </form>
-  </Card.Root>
+  {#if canChangePassword}
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Password</Card.Title>
+        <Card.Description>Change the password used to sign in.</Card.Description>
+      </Card.Header>
+      <form onsubmit={changePassword} class="contents">
+        <Card.Content class="space-y-4">
+          <div class="space-y-2">
+            <label for="current-password" class="text-sm font-medium">Current password</label>
+            <Input
+              id="current-password"
+              type="password"
+              autocomplete="current-password"
+              bind:value={currentPassword}
+              required
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="new-password" class="text-sm font-medium">New password</label>
+            <Input
+              id="new-password"
+              type="password"
+              autocomplete="new-password"
+              bind:value={newPassword}
+              required
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="confirm-password" class="text-sm font-medium">Confirm new password</label>
+            <Input
+              id="confirm-password"
+              type="password"
+              autocomplete="new-password"
+              bind:value={confirmPassword}
+              required
+            />
+          </div>
+        </Card.Content>
+        <Card.Footer class="justify-end">
+          <Button type="submit" disabled={changingPassword}>
+            {changingPassword ? 'Changing…' : 'Change password'}
+          </Button>
+        </Card.Footer>
+      </form>
+    </Card.Root>
+  {/if}
 </div>

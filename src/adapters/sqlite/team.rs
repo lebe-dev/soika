@@ -1,7 +1,7 @@
 //! SQLite [`TeamRepository`] adapter.
 
 use super::{Db, bool_from_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
-use crate::domain::{Id, Team, TeamMember, Timestamp, User};
+use crate::domain::{AuthProvider, Id, Team, TeamMember, Timestamp, User};
 use crate::error::{Error, Result};
 use crate::ports::TeamRepository;
 use async_trait::async_trait;
@@ -46,6 +46,7 @@ struct MemberUserRow {
     password_hash: String,
     is_admin: i64,
     notifications_enabled: i64,
+    auth_provider: String,
     created_at: String,
     updated_at: String,
 }
@@ -59,6 +60,7 @@ impl MemberUserRow {
             password_hash: self.password_hash,
             is_admin: bool_from_db(self.is_admin),
             notifications_enabled: bool_from_db(self.notifications_enabled),
+            auth_provider: AuthProvider::from_db(&self.auth_provider),
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
         })
@@ -177,7 +179,7 @@ impl TeamRepository for SqliteTeamRepository {
     async fn members(&self, team_id: Id) -> Result<Vec<User>> {
         let rows = sqlx::query_as::<_, MemberUserRow>(
             "SELECT u.id, u.email, u.display_name, u.password_hash, u.is_admin, \
-             u.notifications_enabled, u.created_at, u.updated_at \
+             u.notifications_enabled, u.auth_provider, u.created_at, u.updated_at \
              FROM users u JOIN team_members m ON m.user_id = u.id \
              WHERE m.team_id = ? ORDER BY u.display_name",
         )

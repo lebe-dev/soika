@@ -17,12 +17,17 @@ pub mod bootstrap;
 pub mod extractor;
 pub mod handlers;
 pub mod invite_token;
+pub mod oidc;
+pub mod oidc_handlers;
 pub mod password;
 pub mod session;
 pub mod signing;
 
 // --- Router-facing handler surface (referenced by `crate::router`) -----------
 pub use handlers::{accept_invite, get_invite, login, logout, register};
+
+// --- OIDC handler surface (referenced by `crate::router`, PLAN §6.6) ---------
+pub use oidc_handlers::{AuthConfig, auth_config, oidc_callback, oidc_login};
 
 // --- Password helpers (used by handlers, bootstrap, profile updates) ---------
 pub use password::{hash_password, verify_password};
@@ -37,6 +42,13 @@ pub use extractor::{
 pub use session::{
     SESSION_COOKIE, SESSION_TTL_DAYS, build_clearing_cookie, build_session_cookie, cookie_secure,
     end_session, session_id_from_headers, set_cookie_header, start_session,
+};
+
+// --- OIDC surface (PLAN §6.1/§6.2; used by oidc handlers in Story 4) ---------
+pub use oidc::{
+    AuthorizeRequest, OidcClaims, OidcClient, OidcProvider, STATE_COOKIE, StatePayload,
+    build_clearing_state_cookie, build_state_cookie, decode_state_cookie, email_domain_allowed,
+    encode_state_cookie,
 };
 
 // --- Invite surface ----------------------------------------------------------
