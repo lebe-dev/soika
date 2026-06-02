@@ -1,8 +1,8 @@
--- soika initial schema (MVP §4 Data Model)
+-- soika initial schema
 --
 -- Design notes:
---   * SQL is kept ANSI-friendly so a PostgreSQL backend can be added later
---     (MVP §2.2). SQLite-specific bits are isolated and commented.
+--   * SQL is kept ANSI-friendly so a PostgreSQL backend can be added later.
+--     SQLite-specific bits are isolated and commented.
 --   * IDs are stored as TEXT (UUID v4 string form) — portable across SQLite and
 --     Postgres. Timestamps are TEXT in RFC3339/ISO-8601 form (UTC).
 --   * Booleans are stored as INTEGER 0/1 (SQLite has no native BOOL; this is also
@@ -17,8 +17,8 @@ CREATE TABLE users (
     email                  TEXT NOT NULL UNIQUE,
     display_name           TEXT NOT NULL,
     password_hash          TEXT NOT NULL,
-    is_admin               INTEGER NOT NULL DEFAULT 0,   -- instance-wide admin (§11)
-    notifications_enabled  INTEGER NOT NULL DEFAULT 1,   -- profile opt-out (§10.3)
+    is_admin               INTEGER NOT NULL DEFAULT 0,   -- instance-wide admin
+    notifications_enabled  INTEGER NOT NULL DEFAULT 1,   -- profile opt-out
     created_at             TEXT NOT NULL,
     updated_at             TEXT NOT NULL
 );
@@ -26,7 +26,7 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX idx_users_email ON users (email);
 
 -- ---------------------------------------------------------------------------
--- Sessions (server-side, opaque token — §10.1)
+-- Sessions (server-side, opaque token)
 -- ---------------------------------------------------------------------------
 CREATE TABLE sessions (
     id          TEXT PRIMARY KEY,          -- opaque session id (also the cookie value seed)
@@ -40,7 +40,7 @@ CREATE INDEX idx_sessions_user ON sessions (user_id);
 CREATE INDEX idx_sessions_expires ON sessions (expires_at);
 
 -- ---------------------------------------------------------------------------
--- Teams (§4.1)
+-- Teams
 -- ---------------------------------------------------------------------------
 CREATE TABLE teams (
     id          TEXT PRIMARY KEY,
@@ -62,16 +62,16 @@ CREATE TABLE team_members (
 CREATE INDEX idx_team_members_user ON team_members (user_id);
 
 -- ---------------------------------------------------------------------------
--- Projects (§8.2)
+-- Projects
 -- ---------------------------------------------------------------------------
 CREATE TABLE projects (
     id                TEXT PRIMARY KEY,
     team_id           TEXT NOT NULL,
     name              TEXT NOT NULL,
     slug              TEXT NOT NULL UNIQUE,
-    dsn_public_key    TEXT NOT NULL UNIQUE,           -- DSN auth (§5.1)
+    dsn_public_key    TEXT NOT NULL UNIQUE,           -- DSN auth
     retention_events  INTEGER NOT NULL DEFAULT 1000,  -- overrides DEFAULT_EVENTS_RETENTION
-    muted             INTEGER NOT NULL DEFAULT 0,      -- project-level mute (§8.2)
+    muted             INTEGER NOT NULL DEFAULT 0,      -- project-level mute
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE
@@ -81,7 +81,7 @@ CREATE INDEX idx_projects_team ON projects (team_id);
 CREATE UNIQUE INDEX idx_projects_dsn ON projects (dsn_public_key);
 
 -- ---------------------------------------------------------------------------
--- Memberships (User × Project × Role — §10.2)
+-- Memberships (User × Project × Role)
 -- ---------------------------------------------------------------------------
 CREATE TABLE memberships (
     project_id  TEXT NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE memberships (
 CREATE INDEX idx_memberships_user ON memberships (user_id);
 
 -- ---------------------------------------------------------------------------
--- Issues (grouped errors — §7, §8.1)
+-- Issues (grouped errors)
 -- ---------------------------------------------------------------------------
 CREATE TABLE issues (
     id           TEXT PRIMARY KEY,
@@ -114,14 +114,14 @@ CREATE TABLE issues (
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
--- Grouping: one issue per (project, fingerprint) (§7).
+-- Grouping: one issue per (project, fingerprint).
 CREATE UNIQUE INDEX idx_issues_project_fingerprint ON issues (project_id, fingerprint);
 -- Issue list ordering / "most recently seen".
 CREATE INDEX idx_issues_last_seen ON issues (last_seen);
 CREATE INDEX idx_issues_project_status ON issues (project_id, status, last_seen);
 
 -- ---------------------------------------------------------------------------
--- Events (individual occurrences — §5, §13)
+-- Events (individual occurrences)
 -- ---------------------------------------------------------------------------
 CREATE TABLE events (
     id           TEXT PRIMARY KEY,          -- internal id
@@ -134,13 +134,13 @@ CREATE TABLE events (
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
--- Ingestion / retention: events per project ordered by recency (§13 prune).
+-- Ingestion / retention: events per project ordered by recency.
 CREATE INDEX idx_events_project_received ON events (project_id, received_at);
 -- Issue detail: events for an issue, newest first.
 CREATE INDEX idx_events_issue_received ON events (issue_id, received_at);
 
 -- ---------------------------------------------------------------------------
--- Invites (§9)
+-- Invites
 -- ---------------------------------------------------------------------------
 CREATE TABLE invites (
     token       TEXT PRIMARY KEY,           -- signed, opaque token
@@ -159,7 +159,7 @@ CREATE INDEX idx_invites_project ON invites (project_id);
 CREATE INDEX idx_invites_email ON invites (email);
 
 -- ---------------------------------------------------------------------------
--- Service settings (§14) — single-row table, id always = 1
+-- Service settings — single-row table, id always = 1
 -- ---------------------------------------------------------------------------
 CREATE TABLE service_settings (
     id            INTEGER PRIMARY KEY,        -- always 1 (singleton)

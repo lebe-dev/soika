@@ -8,7 +8,7 @@ const config = {
   kit: {
     // The Rust binary embeds the built assets via rust-embed (#[folder = "web/dist"]).
     // adapter-static writes the SPA build (with a fallback document) into ../web/dist
-    // so `cargo build` picks it up. See MVP §2.2.
+    // so `cargo build` picks it up.
     adapter: adapter({
       pages: '../web/dist',
       assets: '../web/dist',

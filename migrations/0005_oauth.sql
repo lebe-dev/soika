@@ -11,7 +11,7 @@
 --
 -- Design notes (mirroring 0001_init.sql):
 --   * NOT NULL with DEFAULT 'local' so existing rows back-fill to local accounts.
---   * SQL kept ANSI-friendly; portable to Postgres (MVP §2.2).
+--   * SQL kept ANSI-friendly; portable to Postgres.
 --
 -- Migrations are append-only and auto-applied at startup and in every test via
 -- crate::MIGRATOR. Do NOT edit existing migrations.

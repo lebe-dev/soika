@@ -6,7 +6,7 @@
 --
 --   * 0 means disabled / no age-based pruning (existing rows backfill to 0).
 --   * SQLite permits ADD COLUMN with a NOT NULL constant DEFAULT; this is
---     ANSI-friendly and portable to Postgres (MVP §2.2).
+--     ANSI-friendly and portable to Postgres.
 --
 -- Migrations are append-only and auto-applied at startup and in every test via
 -- crate::MIGRATOR.

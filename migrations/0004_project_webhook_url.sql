@@ -9,7 +9,7 @@
 --   * No NOT NULL / no DEFAULT so existing rows back-fill to NULL, matching the
 --     `Option<String>` domain field.
 --   * SQL kept ANSI-friendly; SQLite ALTER TABLE adds one column per statement,
---     and this is portable to Postgres (MVP §2.2).
+--     and this is portable to Postgres.
 --
 -- Migrations are append-only and auto-applied at startup and in every test via
 -- crate::MIGRATOR. Do NOT edit existing migrations.

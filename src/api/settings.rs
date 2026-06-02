@@ -22,7 +22,7 @@ pub struct SettingsView {
     /// Organization display name.
     pub org_name: String,
     pub updated_at: Timestamp,
-    /// SMTP configuration, surfaced READ-ONLY (config-only in MVP).
+    /// SMTP configuration, surfaced READ-ONLY.
     pub smtp: SmtpStatus,
 }
 
@@ -106,7 +106,7 @@ pub async fn get(
 
 /// `PATCH /settings` — update `allow_signup` and/or `org_name` (admin).
 ///
-/// SMTP fields are intentionally not writable here (config-only in MVP).
+/// SMTP fields are intentionally not writable here.
 pub async fn update(
     _admin: AdminUser,
     State(state): State<AppState>,
