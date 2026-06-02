@@ -1,4 +1,4 @@
-//! Auth & invite HTTP handlers (MVP §9, §10).
+//! Auth & invite HTTP handlers.
 //!
 //! These are the route bodies referenced by `crate::router`:
 //!   * `POST /auth/login`     — authenticate, start a session, set the cookie.
@@ -6,7 +6,7 @@
 //!   * `POST /auth/register`  — self-registration (only when `allow_signup`).
 //!   * `GET  /invite/{token}` — inspect a pending invite.
 //!   * `POST /invite/{token}` — accept an invite (existing user joins; new email
-//!     registers then joins — §9).
+//!     registers then joins).
 //!
 //! Errors render as `{ "error": "..." }` JSON with the mapped HTTP status.
 
@@ -113,6 +113,15 @@ pub struct RegisterRequest {
     pub display_name: String,
 }
 
+/// `POST /auth/setup` body — first-run provisioning of the built-in admin.
+#[derive(Debug, Deserialize)]
+pub struct SetupRequest {
+    pub email: String,
+    pub password: String,
+    pub display_name: String,
+    pub org_name: String,
+}
+
 /// `GET /invite/{token}` response — what the accept page needs to render.
 #[derive(Debug, Serialize)]
 pub struct InviteView {
@@ -175,7 +184,7 @@ pub async fn login(
 ) -> Result<Response, AuthError> {
     let email = normalize_email(&body.email)?;
 
-    // Coexistence with SSO (PLAN §6.4): when OAuth is enabled, password login is
+    // Coexistence with SSO: when OAuth is enabled, password login is
     // reserved for the built-in admin (`is_admin`). Everyone else — including any
     // OIDC-provisioned account whose `password_hash` is the empty sentinel — must
     // use SSO. We still spend the same hashing effort on the rejected path so the
@@ -222,6 +231,68 @@ pub async fn login(
     Ok((headers, Json(UserView::from(user))).into_response())
 }
 
+/// `POST /auth/setup` — first-run provisioning of the built-in admin.
+///
+/// Replaces the old `ADMIN_EMAIL`/`ADMIN_PASSWORD` env bootstrap: the instance
+/// admin now lives in the database and is created here on first run. Allowed
+/// only while the service is uninitialized (no admin exists); once an admin is
+/// present this returns `409 Conflict` so the route can never be used to mint a
+/// second privileged account. On success it creates the admin, persists the
+/// organization name, starts a session and returns the admin — logging the
+/// operator straight in.
+pub async fn setup(
+    State(state): State<AppState>,
+    Json(body): Json<SetupRequest>,
+) -> Result<Response, AuthError> {
+    // Gate on current state: refuse once any admin exists. This is the same
+    // check the SPA uses via `/auth/config`, re-enforced server-side so the
+    // endpoint is safe even if called directly.
+    if state.users.count_admins().await? > 0 {
+        return Err(AuthError(Error::Conflict(
+            "the service is already initialized".into(),
+        )));
+    }
+
+    let email = normalize_email(&body.email)?;
+    validate_password(&body.password)?;
+    let display_name = validate_display_name(&body.display_name)?;
+    let org_name = body.org_name.trim();
+    if org_name.is_empty() {
+        return Err(AuthError(Error::validation(
+            "organization name must not be empty",
+        )));
+    }
+
+    let password_hash = hash_password(&body.password)?;
+    let new = crate::ports::NewUser {
+        email,
+        display_name,
+        password_hash,
+        is_admin: true,
+        auth_provider: crate::domain::AuthProvider::Local,
+    };
+    // A UNIQUE(email) conflict here means a concurrent setup won the race; map it
+    // to the same "already initialized" outcome rather than a raw error.
+    let user = match state.users.create(new).await {
+        Ok(user) => user,
+        Err(Error::Conflict(_)) => {
+            return Err(AuthError(Error::Conflict(
+                "the service is already initialized".into(),
+            )));
+        }
+        Err(e) => return Err(AuthError(e)),
+    };
+
+    state.settings.set_org_name(org_name.to_string()).await?;
+
+    let (_, cookie) =
+        start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
+
+    let mut headers = HeaderMap::new();
+    set_cookie_header(&mut headers, &cookie)?;
+    Ok((StatusCode::CREATED, headers, Json(UserView::from(user))).into_response())
+}
+
 /// `POST /auth/logout` — destroy the current session and clear the cookie.
 pub async fn logout(
     State(state): State<AppState>,
@@ -236,13 +307,13 @@ pub async fn logout(
 /// `POST /auth/register` — self-registration, only when `allow_signup` is on.
 ///
 /// `allow_signup` is read from the persisted service settings (UI-toggleable,
-/// §14), falling back to the config default. Invite-based registration is a
-/// separate path (`accept_invite`) and is NOT gated by this flag (§9).
+/// ), falling back to the config default. Invite-based registration is a
+/// separate path (`accept_invite`) and is NOT gated by this flag.
 pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<Response, AuthError> {
-    // Coexistence with SSO (PLAN §6.4): when OAuth is enabled, self-registration
+    // Coexistence with SSO: when OAuth is enabled, self-registration
     // is disabled regardless of `allow_signup` — new accounts are provisioned via
     // SSO sign-in. Admin is bootstrapped at startup, not via this endpoint.
     if state.oidc.is_some() {
@@ -289,7 +360,7 @@ pub async fn get_invite(
     }))
 }
 
-/// `POST /invite/{token}` — accept an invite (§9).
+/// `POST /invite/{token}` — accept an invite.
 ///
 /// Three cases:
 ///   1. A logged-in user → joins the project with the invite's role.
@@ -404,7 +475,7 @@ async fn resolve_or_register_invitee(
             existing
         }
         None => {
-            // Coexistence with SSO (PLAN §6.4): under OAuth we do not mint a
+            // Coexistence with SSO: under OAuth we do not mint a
             // password-backed account from an invite. MVP behaviour: the invitee
             // must first sign in via SSO (which find-or-creates their account),
             // then accept the invite while logged in. We surface this as a
@@ -415,7 +486,7 @@ async fn resolve_or_register_invitee(
                     "sign in with SSO first, then accept this invite".into(),
                 ));
             }
-            // New email → register (invite authorizes regardless of allow_signup, §9).
+            // New email → register (invite authorizes regardless of allow_signup).
             let display_name = req.display_name.as_deref().unwrap_or(&email);
             create_user(state, &email, password, display_name).await?
         }

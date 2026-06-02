@@ -1,9 +1,9 @@
-//! Service settings & admin API handlers (MVP §16 / §11 / §14).
+//! Service settings & admin API handlers.
 //!
 //! Instance-wide settings managed by the built-in/instance admin: the
 //! `allow_signup` toggle (persisted to the DB, mirrors `ALLOW_SIGNUP`) and the
 //! organization display name. SMTP is config-only in the MVP and surfaced
-//! READ-ONLY here (§14). All endpoints require an instance admin.
+//! READ-ONLY here. All endpoints require an instance admin.
 
 use axum::Json;
 use axum::extract::State;
@@ -14,7 +14,7 @@ use crate::domain::{Id, ServiceSettings, Timestamp, User};
 use crate::error::Error;
 use crate::state::AppState;
 
-/// Full settings view returned to the admin UI (§14).
+/// Full settings view returned to the admin UI.
 #[derive(Debug, Serialize)]
 pub struct SettingsView {
     /// Public self-registration toggle (persisted; mirrors `ALLOW_SIGNUP`).
@@ -22,7 +22,7 @@ pub struct SettingsView {
     /// Organization display name.
     pub org_name: String,
     pub updated_at: Timestamp,
-    /// SMTP configuration, surfaced READ-ONLY (config-only in MVP, §14).
+    /// SMTP configuration, surfaced READ-ONLY (config-only in MVP).
     pub smtp: SmtpStatus,
 }
 
@@ -30,7 +30,7 @@ pub struct SettingsView {
 #[derive(Debug, Serialize)]
 pub struct SmtpStatus {
     /// Whether SMTP is configured (`SMTP_HOST` set). When false, email features
-    /// degrade to UI-only (MVP §3 / §12).
+    /// degrade to UI-only.
     pub configured: bool,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -44,7 +44,7 @@ pub struct UpdateSettings {
     pub org_name: Option<String>,
 }
 
-/// A client-safe user row for the admin users list (§11).
+/// A client-safe user row for the admin users list.
 #[derive(Debug, Serialize)]
 pub struct AdminUserRow {
     pub id: Id,
@@ -95,7 +95,7 @@ fn to_view(settings: ServiceSettings, state: &AppState) -> SettingsView {
     }
 }
 
-/// `GET /settings` — read instance-wide settings (admin, §14).
+/// `GET /settings` — read instance-wide settings (admin).
 pub async fn get(
     _admin: AdminUser,
     State(state): State<AppState>,
@@ -104,7 +104,7 @@ pub async fn get(
     Ok(Json(to_view(settings, &state)))
 }
 
-/// `PATCH /settings` — update `allow_signup` and/or `org_name` (admin, §14).
+/// `PATCH /settings` — update `allow_signup` and/or `org_name` (admin).
 ///
 /// SMTP fields are intentionally not writable here (config-only in MVP).
 pub async fn update(
@@ -135,7 +135,7 @@ pub async fn update(
     Ok(Json(to_view(settings, &state)))
 }
 
-/// `GET /admin/users` — list all users (instance admin, §11).
+/// `GET /admin/users` — list all users (instance admin).
 pub async fn list_users(
     _admin: AdminUser,
     State(state): State<AppState>,

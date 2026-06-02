@@ -1,4 +1,4 @@
-//! Complete axum router wiring every route (MVP §16) onto stub handlers.
+//! Complete axum router wiring every route onto stub handlers.
 //!
 //! Owned by foundation: feature agents fill in handler BODIES, not this file.
 //! Routes are grouped: ingestion (DSN auth), auth/invite, internal JSON API
@@ -23,7 +23,7 @@ async fn healthz() -> &'static str {
 /// Build the full application router.
 pub fn build(state: AppState) -> Router {
     let api_routes = Router::new()
-        // --- Projects (§16) ---
+        // --- Projects ---
         .route(
             "/projects",
             get(api::projects::list).post(api::projects::create),
@@ -42,19 +42,19 @@ pub fn build(state: AppState) -> Router {
             "/projects/:id/regenerate-dsn",
             post(api::projects::regenerate_dsn),
         )
-        // --- Project members (§16, §10.2) ---
+        // --- Project members ---
         .route("/projects/:id/members", get(api::members::list))
         .route(
             "/projects/:id/members/:user_id",
             delete(api::members::remove),
         )
-        // --- Project invites (§9) ---
+        // --- Project invites ---
         .route(
             "/projects/:id/invites",
             get(api::invites::list).post(api::invites::create),
         )
         .route("/projects/:id/invites/:token", delete(api::invites::revoke))
-        // --- Issues (§8.1) ---
+        // --- Issues ---
         .route("/issues/:id", get(api::issues::get))
         .route("/issues/:id/events", get(api::issues::list_events))
         .route("/issues/:id/resolve", post(api::issues::resolve))
@@ -64,9 +64,9 @@ pub fn build(state: AppState) -> Router {
             "/issues/:id/fingerprint",
             patch(api::issues::update_fingerprint),
         )
-        // --- Events (§6) ---
+        // --- Events ---
         .route("/events/:id", get(api::events::get))
-        // --- Teams (§4.1) ---
+        // --- Teams ---
         .route("/teams", get(api::teams::list).post(api::teams::create))
         .route(
             "/teams/:id",
@@ -79,12 +79,12 @@ pub fn build(state: AppState) -> Router {
             "/teams/:id/members/:user_id",
             delete(api::teams::remove_member),
         )
-        // --- Profile (§10.3) ---
+        // --- Profile ---
         .route(
             "/profile",
             get(api::profile::get).patch(api::profile::update),
         )
-        // --- Service settings & admin (§11, §14) ---
+        // --- Service settings & admin ---
         .route(
             "/settings",
             get(api::settings::get).patch(api::settings::update),
@@ -95,7 +95,9 @@ pub fn build(state: AppState) -> Router {
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/register", post(auth::register))
-        // OIDC / SSO (PLAN §6.3, §6.6) — browser navigations, not JSON.
+        // First-run admin provisioning; rejected once initialized.
+        .route("/auth/setup", post(auth::setup))
+        // OIDC / SSO — browser navigations, not JSON.
         .route("/auth/oidc/login", get(auth::oidc_login))
         .route("/auth/oidc/callback", get(auth::oidc_callback))
         .route("/auth/config", get(auth::auth_config))
@@ -107,14 +109,14 @@ pub fn build(state: AppState) -> Router {
     Router::new()
         // Health
         .route("/healthz", get(healthz))
-        // Ingestion (DSN auth, Sentry-compatible — §5.1)
+        // Ingestion (DSN auth, Sentry-compatible)
         .route("/api/:project_id/envelope/", post(ingest::envelope))
         // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
         .route("/api/:project_id/store/", post(ingest::store))
         // Internal API + auth
         .merge(auth_routes)
         .merge(api_routes)
-        // SPA + embedded static assets (§2.2) — fallback last.
+        // SPA + embedded static assets — fallback last.
         .fallback(web::spa_fallback)
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())

@@ -6,7 +6,7 @@
 //!   * `muted` is INTEGER 0/1.
 //!   * `webhook_url` is TEXT and nullable (NULL = no webhook channel).
 //!
-//! SQL is kept ANSI-friendly so a Postgres backend can drop in later (MVP §2.2);
+//! SQL is kept ANSI-friendly so a Postgres backend can drop in later;
 //! the only SQLite-specific bit is the runtime row decoding of TEXT columns,
 //! which is isolated in [`row_to_project`].
 
@@ -133,7 +133,7 @@ impl ProjectRepository for SqliteProjectRepository {
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Project>> {
-        // Projects the user can see via a project membership (§10.2).
+        // Projects the user can see via a project membership.
         let sql = format!(
             "SELECT {PROJECT_COLS} FROM projects p \
              JOIN memberships m ON m.project_id = p.id \

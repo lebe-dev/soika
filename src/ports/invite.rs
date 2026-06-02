@@ -1,4 +1,4 @@
-//! Invite repository port (MVP §9).
+//! Invite repository port.
 
 use crate::domain::{Id, Invite, Role, Timestamp};
 use crate::error::Result;

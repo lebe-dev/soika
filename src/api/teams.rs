@@ -1,4 +1,4 @@
-//! Team API handlers (MVP §16 Teams, §4.1).
+//! Team API handlers (Teams).
 //!
 //! This module also hosts the shared session-auth extractor ([`AuthUser`],
 //! [`AdminUser`]) and the JSON error wrapper ([`ApiError`]) used by the other
@@ -62,12 +62,12 @@ struct ErrorBody {
 // Auth extractors
 // ---------------------------------------------------------------------------
 
-/// An authenticated user, resolved from the session cookie (MVP §10.1).
+/// An authenticated user, resolved from the session cookie.
 ///
 /// Extraction fails with `401` when no valid, unexpired session is present.
 pub struct AuthUser(pub User);
 
-/// An authenticated **instance admin** (built-in admin, §11). Extraction fails
+/// An authenticated **instance admin** (built-in admin). Extraction fails
 /// with `401` when unauthenticated and `403` when the user is not an admin.
 pub struct AdminUser(pub User);
 
@@ -131,7 +131,7 @@ fn parse_id(raw: &str) -> Result<Id, Error> {
 // DTOs
 // ---------------------------------------------------------------------------
 
-/// A team plus its members and assigned projects (MVP §4.1, §15 Teams).
+/// A team plus its members and assigned projects (Teams).
 #[derive(Debug, Serialize)]
 pub struct TeamView {
     pub id: Id,

@@ -1,4 +1,4 @@
-//! Invite domain type (MVP §9).
+//! Invite domain type.
 
 use super::{Id, Role, Timestamp};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ pub struct Invite {
     pub token: String,
     pub project_id: Id,
     pub role: Role,
-    /// Optional target email (link still works without email — §9).
+    /// Optional target email (link still works without email).
     pub email: Option<String>,
     /// User id of the inviting admin.
     pub created_by: Option<Id>,

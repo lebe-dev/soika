@@ -6,7 +6,7 @@
 //! a known DSN public key, then POSTs raw bodies at the two ingestion wire
 //! formats:
 //!
-//!   * modern  — `POST /api/{id}/envelope/` (newline-delimited envelope, §5.2),
+//!   * modern  — `POST /api/{id}/envelope/` (newline-delimited envelope),
 //!   * legacy  — `POST /api/{id}/store/`   (a single bare JSON event).
 //!
 //! Assertions go through the same repository ports the handlers use, so a test
@@ -178,8 +178,6 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
-        admin_email: None,
-        admin_password: None,
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),

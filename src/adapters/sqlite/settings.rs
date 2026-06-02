@@ -10,7 +10,7 @@ use crate::ports::SettingsRepository;
 use async_trait::async_trait;
 use sqlx::FromRow;
 
-/// The singleton settings row id (MVP §14).
+/// The singleton settings row id.
 const SETTINGS_ID: i64 = 1;
 
 #[derive(Clone)]

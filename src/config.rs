@@ -1,9 +1,9 @@
-//! Application configuration (MVP §3) — loaded from environment variables.
+//! Application configuration — loaded from environment variables.
 
 use crate::error::{Error, Result};
 
 /// Optional SMTP configuration. When `None`, email features degrade gracefully
-/// to UI-only (MVP §3 / §12).
+/// to UI-only.
 #[derive(Debug, Clone)]
 pub struct SmtpConfig {
     pub host: String,
@@ -14,7 +14,7 @@ pub struct SmtpConfig {
 }
 
 /// Optional OAuth 2.0 / OpenID Connect configuration. When `None`, SSO is
-/// disabled and password login behaves exactly as before (PLAN §3).
+/// disabled and password login behaves exactly as before.
 #[derive(Debug, Clone)]
 pub struct OidcConfig {
     /// Issuer base URL used for OIDC discovery (`OAUTH_ISSUER_URL`), e.g.
@@ -51,14 +51,10 @@ pub struct Config {
     pub secret_key: String,
     /// Whether public self-registration is enabled (`ALLOW_SIGNUP`).
     pub allow_signup: bool,
-    /// Built-in admin email (`ADMIN_EMAIL`).
-    pub admin_email: Option<String>,
-    /// Built-in admin initial password (`ADMIN_PASSWORD`).
-    pub admin_password: Option<String>,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
     /// Default age-based retention in days when a project's own value is 0
-    /// (`DEFAULT_RETENTION_DAYS`); 0 disables age-based pruning (Story 7.1).
+    /// (`DEFAULT_RETENTION_DAYS`); 0 disables age-based pruning.
     pub default_retention_days: i64,
     /// Cron schedule for the retention cleanup job (`RETENTION_CRON`).
     pub retention_cron: String,
@@ -69,7 +65,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from environment variables, applying MVP §3 defaults.
+    /// Load configuration from environment variables, applying defaults.
     ///
     /// Returns `Error::Validation` if a required variable (`SECRET_KEY`) is
     /// missing or a typed value fails to parse.
@@ -86,8 +82,6 @@ impl Config {
         }
 
         let allow_signup = parse_bool(&env_or("ALLOW_SIGNUP", "false"));
-        let admin_email = env_opt("ADMIN_EMAIL");
-        let admin_password = env_opt("ADMIN_PASSWORD");
 
         let default_events_retention = env_or("DEFAULT_EVENTS_RETENTION", "1000")
             .parse::<i64>()
@@ -109,8 +103,6 @@ impl Config {
             base_url,
             secret_key,
             allow_signup,
-            admin_email,
-            admin_password,
             default_events_retention,
             default_retention_days,
             retention_cron,
@@ -120,7 +112,7 @@ impl Config {
     }
 
     /// Build the optional SMTP config; returns `Ok(None)` when `SMTP_HOST` is
-    /// unset so email features degrade gracefully (MVP §3).
+    /// unset so email features degrade gracefully.
     fn smtp_from_env() -> Result<Option<SmtpConfig>> {
         let Some(host) = env_opt("SMTP_HOST") else {
             return Ok(None);
@@ -139,7 +131,7 @@ impl Config {
 
     /// Build the optional OIDC config; returns `Ok(None)` when `OAUTH_ENABLED`
     /// is not truthy. When enabled, the issuer URL, client id and client secret
-    /// are required and missing any of them fails fast (PLAN §3).
+    /// are required and missing any of them fails fast.
     fn oidc_from_env(base_url: &str) -> Result<Option<OidcConfig>> {
         if !parse_bool(&env_or("OAUTH_ENABLED", "false")) {
             return Ok(None);

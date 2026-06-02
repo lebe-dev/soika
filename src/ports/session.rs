@@ -1,4 +1,4 @@
-//! Session repository port (MVP §10.1) — server-side sessions.
+//! Session repository port — server-side sessions.
 
 use crate::domain::{Id, Session, Timestamp};
 use crate::error::Result;

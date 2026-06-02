@@ -1,4 +1,4 @@
-// Dashboard loader — project list / overview (MVP §15).
+// Dashboard loader — project list / overview.
 //
 // Loads the projects visible to the current user (GET /projects), then derives
 // a per-project unresolved-issue count by listing each project's unresolved

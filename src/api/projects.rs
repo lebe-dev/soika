@@ -1,6 +1,6 @@
-//! Project API handlers (MVP §16 Projects, §8.2).
+//! Project API handlers (Projects).
 //!
-//! Session-cookie auth (see [`CurrentUser`]); per-project role checks (§10.2).
+//! Session-cookie auth (see [`CurrentUser`]); per-project role checks.
 //! This module also hosts the shared API helpers (`CurrentUser`, JSON error
 //! mapping, role/membership guards) re-used by the sibling API modules
 //! (`issues`, `events`, `members`, `invites`).
@@ -24,7 +24,7 @@ use crate::state::AppState;
 // Shared helpers (auth, error mapping, role guards) — used across the API mods.
 // ---------------------------------------------------------------------------
 
-/// Authenticated user extracted from the session cookie (§10.1).
+/// Authenticated user extracted from the session cookie.
 ///
 /// Resolves the opaque session id by verifying the signed `soika_session` cookie
 /// via [`crate::auth::session_id_from_headers`], looks up the session (expired
@@ -87,7 +87,7 @@ pub fn json_error(status: StatusCode, message: impl Into<String>) -> Response {
         .into_response()
 }
 
-/// Whether `value` is a well-formed http(s) URL (Story 6.2 webhook channel).
+/// Whether `value` is a well-formed http(s) URL (webhook channel).
 ///
 /// The API is the real trust boundary (the browser's `type="url"` hint does not
 /// cover programmatic callers), so a malformed URL is rejected at save time
@@ -100,7 +100,7 @@ fn is_valid_webhook_url(value: &str) -> bool {
     }
 }
 
-/// Map a [`crate::error::Error`] to an HTTP JSON response (§16 error mapping).
+/// Map a [`crate::error::Error`] to an HTTP JSON response (error mapping).
 pub fn error_response(err: Error) -> Response {
     let status = match &err {
         Error::NotFound(_) => StatusCode::NOT_FOUND,
@@ -121,7 +121,7 @@ pub fn parse_id(raw: &str) -> std::result::Result<Id, Response> {
 
 /// Resolve the caller's effective role on a project.
 ///
-/// Instance admins (built-in admin, §11) are treated as project admins. Returns
+/// Instance admins (built-in admin) are treated as project admins. Returns
 /// `None` if the user has no access to the project.
 pub async fn effective_role(
     state: &AppState,
@@ -154,7 +154,7 @@ pub async fn require_member(
     }
 }
 
-/// Require that the caller is an admin of the project (§10.2 admin actions).
+/// Require that the caller is an admin of the project (admin actions).
 pub async fn require_admin(
     state: &AppState,
     user: &User,
@@ -182,7 +182,7 @@ pub async fn load_project(
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "project not found"))
 }
 
-/// Build the full DSN string for a project from its public key (§5.1, §8.2).
+/// Build the full DSN string for a project from its public key.
 ///
 /// Format mirrors Sentry: `{scheme}://{public_key}@{host}[:port]/{project_id}`.
 pub fn build_dsn(base_url: &str, public_key: &str, project_id: Id) -> String {
@@ -220,10 +220,10 @@ pub struct ProjectView {
     pub dsn_public_key: String,
     pub dsn: String,
     pub retention_events: i64,
-    /// Age-based retention in days; 0 disables age-based pruning (Story 7.1).
+    /// Age-based retention in days; 0 disables age-based pruning.
     pub retention_days: i64,
     pub muted: bool,
-    /// Optional per-project webhook URL for notifications (Story 6.2).
+    /// Optional per-project webhook URL for notifications.
     pub webhook_url: Option<String>,
     pub created_at: crate::domain::Timestamp,
     pub updated_at: crate::domain::Timestamp,
@@ -256,7 +256,7 @@ impl ProjectView {
 /// `GET /projects` — list projects visible to the current user.
 ///
 /// Instance admins see all projects; other users see only projects they are a
-/// member of (§10.2).
+/// member of.
 pub async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     let projects = if user.is_admin {
         state.projects.list().await
@@ -287,10 +287,10 @@ pub struct CreateProjectRequest {
     /// Optional retention override; defaults to `DEFAULT_EVENTS_RETENTION`.
     #[serde(default)]
     pub retention_events: Option<i64>,
-    /// Optional age-based retention in days (Story 7.1); 0/omitted disables.
+    /// Optional age-based retention in days; 0/omitted disables.
     #[serde(default)]
     pub retention_days: Option<i64>,
-    /// Optional per-project webhook URL for notifications (Story 6.2).
+    /// Optional per-project webhook URL for notifications.
     #[serde(default)]
     pub webhook_url: Option<String>,
 }
@@ -339,7 +339,7 @@ pub async fn create(
     let retention_days = req.retention_days.filter(|d| *d > 0).unwrap_or(0);
 
     // Normalize + validate the optional webhook URL: a blank/whitespace value is
-    // treated as "unset"; a present value must be a valid http(s) URL (Story 6.2).
+    // treated as "unset"; a present value must be a valid http(s) URL.
     let webhook_url = match req.webhook_url.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(url) if is_valid_webhook_url(url) => Some(url.to_string()),
@@ -402,26 +402,26 @@ pub async fn get(
     }
 }
 
-/// Request body for `PATCH /projects/{id}` (settings, retention, mute — §8.2).
+/// Request body for `PATCH /projects/{id}` (settings, retention, mute).
 #[derive(Debug, Deserialize, Default)]
 pub struct UpdateProjectRequest {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub retention_events: Option<i64>,
-    /// Age-based retention in days (Story 7.1); 0 disables, `None` leaves it.
+    /// Age-based retention in days; 0 disables, `None` leaves it.
     #[serde(default)]
     pub retention_days: Option<i64>,
     #[serde(default)]
     pub muted: Option<bool>,
-    /// Per-project webhook URL (Story 6.2). An absent key leaves it unchanged; a
+    /// Per-project webhook URL. An absent key leaves it unchanged; a
     /// present value sets it, and a present empty/whitespace string clears the
     /// webhook (disables the channel) — see [`update`] for the mapping.
     #[serde(default)]
     pub webhook_url: Option<String>,
 }
 
-/// `PATCH /projects/{id}` — update settings/retention/mute (admin, §8.2).
+/// `PATCH /projects/{id}` — update settings/retention/mute (admin).
 pub async fn update(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -447,7 +447,7 @@ pub async fn update(
     {
         return json_error(StatusCode::BAD_REQUEST, "retention_events must be positive");
     }
-    // Age-based retention: 0 disables, so only negatives are rejected (Story 7.1).
+    // Age-based retention: 0 disables, so only negatives are rejected.
     if let Some(days) = req.retention_days
         && days < 0
     {
@@ -461,7 +461,7 @@ pub async fn update(
     // key (`None`) leaves the webhook unchanged; a trimmed empty string maps to
     // `Some(None)` (clear intent); a present non-empty value must be a valid
     // http(s) URL and maps to `Some(Some(url))`. The adapter's CASE-based update
-    // honours all three: leave / clear-to-NULL / set (Story 6.2).
+    // honours all three: leave / clear-to-NULL / set.
     let webhook_url = match req.webhook_url.as_deref().map(str::trim) {
         None => None,
         Some("") => Some(None),
@@ -525,7 +525,7 @@ pub async fn list_issues(
     crate::api::issues::list_for_project(state, user, id, filter).await
 }
 
-/// DSN payload returned for SDK configuration (§8.2).
+/// DSN payload returned for SDK configuration.
 #[derive(Debug, Serialize)]
 pub struct DsnView {
     pub dsn: String,
@@ -533,7 +533,7 @@ pub struct DsnView {
     pub project_id: Id,
 }
 
-/// `GET /projects/{id}/dsn` — DSN string for SDK configuration (§8.2).
+/// `GET /projects/{id}/dsn` — DSN string for SDK configuration.
 pub async fn dsn(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -570,14 +570,14 @@ pub struct SdkSnippet {
     pub code: String,
 }
 
-/// SDK setup payload: the DSN plus per-language init snippets (§8.2).
+/// SDK setup payload: the DSN plus per-language init snippets.
 #[derive(Debug, Serialize)]
 pub struct SdkSetupView {
     pub dsn: String,
     pub snippets: Vec<SdkSnippet>,
 }
 
-/// `GET /projects/{id}/sdk-setup` — language-aware SDK setup snippets (§8.2).
+/// `GET /projects/{id}/sdk-setup` — language-aware SDK setup snippets.
 ///
 /// Returns the DSN plus minimal init code for Go, Rust, Svelte/JS, and a
 /// generic example.
@@ -678,7 +678,7 @@ fn sdk_snippets(
     ]
 }
 
-/// Request body for `POST /projects/{id}/mute` (§8.2 project-level mute).
+/// Request body for `POST /projects/{id}/mute` (project-level mute).
 #[derive(Debug, Deserialize)]
 pub struct MuteRequest {
     /// Target mute state. When omitted, mute is toggled.
@@ -686,7 +686,7 @@ pub struct MuteRequest {
     pub muted: Option<bool>,
 }
 
-/// `POST /projects/{id}/mute` — toggle project-level mute (admin, §8.2).
+/// `POST /projects/{id}/mute` — toggle project-level mute (admin).
 ///
 /// Project mute suppresses notifications only; ingestion and counting continue.
 pub async fn mute(
@@ -892,7 +892,7 @@ mod tests {
     fn valid_webhook_url_rejects_missing_scheme_and_other_schemes() {
         // No scheme, wrong scheme, and outright garbage are all rejected so the
         // misconfiguration surfaces at save time rather than as a silent
-        // per-event delivery failure (Story 6.2).
+        // per-event delivery failure.
         assert!(!is_valid_webhook_url("hooks.example.com/abc"));
         assert!(!is_valid_webhook_url("ftp://example.com/x"));
         assert!(!is_valid_webhook_url("not a url"));

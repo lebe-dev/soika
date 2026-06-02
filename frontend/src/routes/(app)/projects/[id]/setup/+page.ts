@@ -1,4 +1,4 @@
-// SDK setup loader (MVP §8.2). Fetches the DSN and per-language init snippets
+// SDK setup loader. Fetches the DSN and per-language init snippets
 // (Go, Rust, Svelte/JS, generic) for the project.
 
 import { error } from '@sveltejs/kit';

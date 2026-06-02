@@ -1,4 +1,4 @@
-//! Password hashing & verification (MVP §10.1) — argon2id with a random salt.
+//! Password hashing & verification — argon2id with a random salt.
 //!
 //! Hashes are stored as PHC strings (e.g. `$argon2id$v=19$m=...$salt$hash`),
 //! which embed the algorithm, parameters and salt, so verification is

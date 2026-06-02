@@ -1,6 +1,6 @@
-// Admin area guard + data load: requires the instance admin (§11, §14).
+// Admin area guard + data load: requires the instance admin.
 // Non-admins are redirected to the dashboard. Loads service settings, the
-// instance-wide user list, and a teams overview (MVP §14, §15).
+// instance-wide user list, and a teams overview.
 
 import { api, ApiError } from '$lib/api';
 import { requireAdmin } from '$lib/guards';

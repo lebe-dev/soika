@@ -5,7 +5,7 @@
 //!   * Timestamps TEXT in RFC3339/ISO-8601 (UTC).
 //!   * `status` TEXT (`unresolved` | `resolved` | `muted`).
 //!
-//! Grouping & regression logic (MVP §7, §8.1) lives in
+//! Grouping & regression logic lives in
 //! [`upsert_by_fingerprint`]: one issue per `(project_id, fingerprint)`; a new
 //! event on a `resolved` issue flips it back to `unresolved` (regression).
 //! SQL is ANSI-friendly; the only SQLite-specific bit is TEXT row decoding.
@@ -107,7 +107,7 @@ impl IssueRepository for SqliteIssueRepository {
             let current = row_to_issue(&row)?;
             let is_regression = current.status == IssueStatus::Resolved;
             // A regression flips resolved → unresolved; muted stays muted so it
-            // keeps suppressing notifications (§8.1). last_seen always advances.
+            // keeps suppressing notifications. last_seen always advances.
             let new_status = if is_regression {
                 IssueStatus::Unresolved
             } else {
@@ -137,10 +137,10 @@ impl IssueRepository for SqliteIssueRepository {
             });
         }
 
-        // New fingerprint → brand-new unresolved issue (§7 new-issue notice).
+        // New fingerprint → brand-new unresolved issue (new-issue notice).
         // environment/release are set here on first sight only; the UPDATE branch
         // above intentionally leaves them (and culprit/level) untouched so an
-        // issue keeps the values from when it was first observed (§7).
+        // issue keeps the values from when it was first observed.
         let id = Id::new_v4();
         let insert_sql = format!(
             "INSERT INTO issues \
@@ -206,7 +206,7 @@ impl IssueRepository for SqliteIssueRepository {
 
         // ORDER BY is selected from fixed literals via an exhaustive enum match
         // (never from raw user input), so it stays injection-safe and
-        // ANSI-friendly (Story 5.1).
+        // ANSI-friendly.
         let order_by = match filter.sort {
             IssueSort::LastSeen => "last_seen DESC",
             IssueSort::EventCount => "event_count DESC, last_seen DESC",

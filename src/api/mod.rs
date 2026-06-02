@@ -1,4 +1,4 @@
-//! Internal JSON API consumed by the SvelteKit frontend (MVP §16).
+//! Internal JSON API consumed by the SvelteKit frontend.
 //!
 //! Session-cookie auth. Each submodule owns a slice of the API; handlers return
 //! a `501` stub until feature agents fill in the bodies.

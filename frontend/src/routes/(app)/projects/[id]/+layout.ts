@@ -1,4 +1,4 @@
-// Project area loader (MVP §8, §15). Loads the project once for the whole
+// Project area loader. Loads the project once for the whole
 // project route group (issues list, issue detail, setup, settings) so the
 // header and child pages share it. Membership/access is enforced server-side;
 // a 403/404 surfaces as a SvelteKit error.

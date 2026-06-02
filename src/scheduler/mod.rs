@@ -1,16 +1,16 @@
-//! In-process background scheduler (MVP §13) — retention cleanup.
+//! In-process background scheduler — retention cleanup.
 //!
 //! Runs as a `tokio` task in the same runtime as the HTTP server (no broker,
-//! MVP §2.3). Parses `RETENTION_CRON` (croner) and enforces per-project event
+//! ). Parses `RETENTION_CRON` (croner) and enforces per-project event
 //! retention on schedule. Two complementary policies run per project:
 //!
 //!   * count-based: prune events over each project's `retention_events`
 //!     (default `DEFAULT_EVENTS_RETENTION`);
-//!   * age-based (Story 7.1): prune events older than `retention_days`
+//!   * age-based: prune events older than `retention_days`
 //!     (default `DEFAULT_RETENTION_DAYS`; 0 disables).
 //!
 //! In both cases the issue-level aggregate counters are preserved by the
-//! repository (§13) — only `events` rows are deleted.
+//! repository — only `events` rows are deleted.
 //!
 //! Outbound mail is sent inline from the ingest pipeline via [`crate::notify`];
 //! the scheduler owns only periodic, time-driven work.
@@ -97,13 +97,13 @@ fn sleep_until(target: Timestamp, now: Timestamp) -> Duration {
     remaining.min(MAX_SLEEP)
 }
 
-/// Run a single retention sweep across all projects with events (§13).
+/// Run a single retention sweep across all projects with events.
 ///
 /// For each project, applies two complementary policies, both falling back to
 /// the configured default when the project's own value is non-positive:
 ///
 /// 1. count-based: prune events beyond `retention_events`;
-/// 2. age-based (Story 7.1): when the effective `retention_days` is > 0, delete
+/// 2. age-based: when the effective `retention_days` is > 0, delete
 ///    events older than `now - days`.
 ///
 /// Issue aggregate counters are preserved by the repository
@@ -135,7 +135,7 @@ pub async fn run_retention(state: &AppState) -> Result<()> {
         }
         total_deleted += deleted;
 
-        // 2. Age-based prune (Story 7.1). 0 = disabled.
+        // 2. Age-based prune. 0 = disabled.
         let days = effective_retention_days(project_days, default_days);
         if days > 0 {
             let cutoff = state.clock.now() - chrono::Duration::days(days);
@@ -163,7 +163,7 @@ fn effective_retention(project_retention: i64, default_retention: i64) -> i64 {
 }
 
 /// Resolve the age-based retention window (days) for a project, defaulting when
-/// its own value is unset/non-positive. 0 means disabled (Story 7.1).
+/// its own value is unset/non-positive. 0 means disabled.
 fn effective_retention_days(project_days: i64, default_days: i64) -> i64 {
     if project_days > 0 {
         return project_days;
@@ -291,8 +291,6 @@ mod tests {
             base_url: "http://localhost:8080".into(),
             secret_key: "secret".into(),
             allow_signup: false,
-            admin_email: None,
-            admin_password: None,
             default_events_retention,
             default_retention_days,
             retention_cron: "0 */15 * * * *".into(),
@@ -393,7 +391,7 @@ mod tests {
             "non-positive project retention falls back to the default"
         );
 
-        // Aggregate counters live on the issue and survive event pruning (§13).
+        // Aggregate counters live on the issue and survive event pruning.
         let issue = state.issues.find_by_id(issue_a).await.unwrap().unwrap();
         assert_eq!(
             issue.event_count, 5,
@@ -461,7 +459,7 @@ mod tests {
             "events older than the config default age window are pruned"
         );
 
-        // Aggregate counters live on the issue and survive age-based pruning (§13).
+        // Aggregate counters live on the issue and survive age-based pruning.
         let issue = state.issues.find_by_id(issue_a).await.unwrap().unwrap();
         assert_eq!(
             issue.event_count, 5,

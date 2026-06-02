@@ -1,4 +1,4 @@
-//! Membership repository port (MVP §10.2) — User × Project × Role.
+//! Membership repository port — User × Project × Role.
 
 use crate::domain::{Id, Membership, Role, User};
 use crate::error::Result;
@@ -11,7 +11,7 @@ pub trait MembershipRepository: Send + Sync {
     async fn upsert(&self, project_id: Id, user_id: Id, role: Role) -> Result<Membership>;
     /// The membership of a user in a project, if any.
     async fn find(&self, project_id: Id, user_id: Id) -> Result<Option<Membership>>;
-    /// Remove a member from a project (§8.2 admin).
+    /// Remove a member from a project (admin).
     async fn remove(&self, project_id: Id, user_id: Id) -> Result<()>;
     /// All memberships for a project.
     async fn list_for_project(&self, project_id: Id) -> Result<Vec<Membership>>;

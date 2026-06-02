@@ -1,4 +1,4 @@
-// Project settings loader (MVP §8.2). Loads members and pending invites for
+// Project settings loader. Loads members and pending invites for
 // the project. The project itself comes from the parent layout load. Listing
 // invites requires project admin; non-admin members get an empty invites list
 // (the API returns 403, which we treat as "no invites visible").

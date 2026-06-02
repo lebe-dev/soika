@@ -1,4 +1,4 @@
-// Shared route guards for SvelteKit `load` functions (MVP §10, §15).
+// Shared route guards for SvelteKit `load` functions.
 //
 // SPA mode (ssr=false): these run in the browser. The root layout already
 // loaded the current user; child loads read it from `parent()` and redirect
@@ -16,7 +16,7 @@ export function requireUser(user: User | null | undefined, currentPath: string):
   return user;
 }
 
-/** Require the instance admin (§11); redirect to the dashboard otherwise. */
+/** Require the instance admin; redirect to the dashboard otherwise. */
 export function requireAdmin(user: User | null | undefined, currentPath: string): User {
   const authed = requireUser(user, currentPath);
   if (!authed.is_admin) {

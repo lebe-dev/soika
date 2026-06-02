@@ -1,6 +1,6 @@
-//! Project membership API handlers (MVP §16 / §10.2).
+//! Project membership API handlers.
 //!
-//! Listing requires any project role; removal requires project admin (§8.2).
+//! Listing requires any project role; removal requires project admin.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -55,7 +55,7 @@ pub async fn list(
     }
 }
 
-/// `DELETE /projects/{id}/members/{user_id}` — remove a member (admin, §8.2).
+/// `DELETE /projects/{id}/members/{user_id}` — remove a member (admin).
 ///
 /// Guards against removing the project's last admin so a project cannot be
 /// orphaned without an administrator.

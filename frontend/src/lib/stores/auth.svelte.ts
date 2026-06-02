@@ -16,7 +16,7 @@ class AuthStore {
     return !!this.user;
   }
 
-  /** Whether the current user is the instance-wide built-in admin (§11). */
+  /** Whether the current user is the instance-wide built-in admin. */
   get isAdmin(): boolean {
     return !!this.user?.is_admin;
   }

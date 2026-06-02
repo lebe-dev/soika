@@ -1,4 +1,4 @@
-//! Mailer adapters implementing the [`Mailer`] port (MVP §12).
+//! Mailer adapters implementing the [`Mailer`] port.
 
 use crate::config::SmtpConfig;
 use crate::error::Result;
@@ -38,7 +38,7 @@ impl Mailer for NoopMailer {
     }
 
     async fn send(&self, _email: OutboundEmail) -> Result<()> {
-        // Intentionally a no-op: instances without SMTP still function (§3, §9).
+        // Intentionally a no-op: instances without SMTP still function.
         Ok(())
     }
 }

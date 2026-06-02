@@ -1,4 +1,4 @@
-// Typed, per-resource helpers over the low-level `http` client (MVP §16).
+// Typed, per-resource helpers over the low-level `http` client.
 //
 // Every helper accepts an optional request-scoped `fetch` so it can be called
 // from a SvelteKit `load` (forward the `fetch` SvelteKit provides there).
@@ -26,6 +26,7 @@ import type {
   RegisterRequest,
   SdkSetup,
   ServiceSettings,
+  SetupRequest,
   SoikaEvent,
   Team,
   TeamSummary,
@@ -53,6 +54,9 @@ export const auth = {
   logout: (ctx?: Ctx) => http.post<void>('/auth/logout', { fetch: ctx?.fetch }),
   register: (body: RegisterRequest, ctx?: Ctx) =>
     http.post<User>('/auth/register', { body, fetch: ctx?.fetch }),
+  /** First-run admin provisioning; only succeeds while uninitialized. */
+  setup: (body: SetupRequest, ctx?: Ctx) =>
+    http.post<User>('/auth/setup', { body, fetch: ctx?.fetch }),
   /** Current user, derived from `GET /profile`; `null` when unauthenticated. */
   me: async (ctx?: Ctx): Promise<User | null> => {
     try {

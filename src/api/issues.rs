@@ -1,7 +1,7 @@
-//! Issue API handlers (MVP §16 Issues, §8.1).
+//! Issue API handlers (Issues).
 //!
-//! Session-cookie auth; access scoped to projects the caller can view (§10.2).
-//! Members and admins may both resolve/mute issues (§10.2).
+//! Session-cookie auth; access scoped to projects the caller can view.
+//! Members and admins may both resolve/mute issues.
 
 // Guards return `Result<T, Response>`; axum's `Response` is large — acceptable
 // for these short-circuit helpers.
@@ -20,7 +20,7 @@ use crate::domain::{Event, Id, Issue, IssueStatus};
 use crate::ports::{IssueFilter, IssueSort};
 use crate::state::AppState;
 
-/// Query parameters for the issues list (§8 filter by status).
+/// Query parameters for the issues list (filter by status).
 #[derive(Debug, Deserialize, Default)]
 pub struct IssueListQuery {
     /// Filter by status: `unresolved` | `resolved` | `muted`.
@@ -82,7 +82,7 @@ impl From<Issue> for IssueView {
     }
 }
 
-/// Event as returned to the client (full payload preserved — §6).
+/// Event as returned to the client (full payload preserved).
 #[derive(Debug, Serialize)]
 pub struct EventView {
     pub id: Id,
@@ -162,7 +162,7 @@ fn to_filter(query: IssueListQuery) -> std::result::Result<IssueFilter, Response
     })
 }
 
-/// Shared implementation for `GET /projects/{id}/issues` (§8 issues list).
+/// Shared implementation for `GET /projects/{id}/issues` (issues list).
 ///
 /// Invoked from [`crate::api::projects::list_issues`] so the issue DTO lives
 /// here in one place.
@@ -277,7 +277,7 @@ pub async fn list_events(
     }
 }
 
-/// `POST /issues/{id}/resolve` — mark resolved (§8.1).
+/// `POST /issues/{id}/resolve` — mark resolved.
 pub async fn resolve(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -286,7 +286,7 @@ pub async fn resolve(
     set_status(state, user, id, IssueStatus::Resolved).await
 }
 
-/// `POST /issues/{id}/mute` — mute the issue (§8.1).
+/// `POST /issues/{id}/mute` — mute the issue.
 ///
 /// Mute keeps accepting and counting events; it only suppresses notifications.
 /// It never affects ingestion.
@@ -307,7 +307,7 @@ pub async fn unresolve(
     set_status(state, user, id, IssueStatus::Unresolved).await
 }
 
-/// Request body for `PATCH /issues/{id}/fingerprint` (Story 2.4).
+/// Request body for `PATCH /issues/{id}/fingerprint`.
 #[derive(Debug, Deserialize)]
 pub struct UpdateFingerprintRequest {
     pub fingerprint: String,

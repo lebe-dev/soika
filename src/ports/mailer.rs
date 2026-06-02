@@ -1,4 +1,4 @@
-//! Mailer port (MVP §12) — outbound email behind an abstraction so SMTP can be
+//! Mailer port — outbound email behind an abstraction so SMTP can be
 //! absent (email degrades to UI-only).
 
 use crate::error::Result;

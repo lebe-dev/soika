@@ -1,9 +1,9 @@
-//! Stacktrace domain types and normalization (MVP §6, §7).
+//! Stacktrace domain types and normalization.
 //!
 //! Stacktraces are stored as received and rendered with frame-level detail:
 //! module/function, file, line/column, in-app vs. system frames, and any
 //! source-context lines the SDK included. No demangling / no source-map
-//! resolution (MVP §1.2 Non-Goals) — frames are kept exactly as reported, and
+//! resolution (Non-Goals) — frames are kept exactly as reported, and
 //! normalization affects only the grouping fingerprint, never the stored event.
 
 use serde::{Deserialize, Serialize};

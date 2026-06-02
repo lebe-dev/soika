@@ -1,9 +1,9 @@
-//! Invite API handlers (MVP §16 / §9).
+//! Invite API handlers.
 //!
 //! A project **admin** generates an invite: a high-entropy, server-validated,
 //! expiring token plus a `{BASE_URL}/invite/{token}` link. The link is
 //! returned so it can be **emailed** (when SMTP is configured) AND/OR copied
-//! manually — invites work even on instances without email (§9, §12).
+//! manually — invites work even on instances without email.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -20,13 +20,13 @@ use crate::domain::{Id, Invite, Role};
 use crate::ports::{NewInvite, OutboundEmail};
 use crate::state::AppState;
 
-/// Default invite token lifetime (§9 expiring token).
+/// Default invite token lifetime (expiring token).
 const INVITE_TTL_DAYS: i64 = 7;
 
 /// Number of random bytes backing an invite token (256-bit, unguessable).
 const TOKEN_BYTES: usize = 32;
 
-/// An invite as returned to the client, including the shareable link (§9).
+/// An invite as returned to the client, including the shareable link.
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
@@ -60,7 +60,7 @@ impl InviteView {
     }
 }
 
-/// Build the acceptance link for a token (§9).
+/// Build the acceptance link for a token.
 fn invite_link(base_url: &str, token: &str) -> String {
     format!("{}/invite/{}", base_url.trim_end_matches('/'), token)
 }
@@ -92,22 +92,22 @@ pub async fn list(
     }
 }
 
-/// Request body for creating an invite (§9).
+/// Request body for creating an invite.
 #[derive(Debug, Deserialize)]
 pub struct CreateInviteRequest {
     /// Role to grant on acceptance. Defaults to `member`.
     #[serde(default)]
     pub role: Option<Role>,
-    /// Optional target email (link still works without it — §9).
+    /// Optional target email (link still works without it).
     #[serde(default)]
     pub email: Option<String>,
 }
 
-/// `POST /projects/{id}/invites` — create an invite (admin, §9).
+/// `POST /projects/{id}/invites` — create an invite (admin).
 ///
 /// Returns the invite with its copyable link. If SMTP is configured and a
 /// target email is given, the link is also emailed (best-effort; failure to
-/// send does not fail the request — the link remains usable, §12).
+/// send does not fail the request — the link remains usable).
 pub async fn create(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -157,7 +157,7 @@ pub async fn create(
         Err(err) => return error_response(err),
     };
 
-    // Best-effort email delivery; link is always returned regardless (§9, §12).
+    // Best-effort email delivery; link is always returned regardless.
     let link = invite_link(&state.config.base_url, &invite.token);
     let mut email_sent = false;
     if let Some(addr) = &email

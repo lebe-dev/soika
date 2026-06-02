@@ -1,4 +1,4 @@
-//! User repository port (MVP §10, §11).
+//! User repository port.
 
 use crate::domain::{AuthProvider, Id, User};
 use crate::error::Result;
@@ -12,11 +12,11 @@ pub struct NewUser {
     /// Pre-hashed argon2 PHC string. Empty-string sentinel for OIDC accounts.
     pub password_hash: String,
     pub is_admin: bool,
-    /// Origin of the account: local password or OIDC (PLAN §5).
+    /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
 }
 
-/// Mutable profile fields (MVP §10.3). `None` leaves the field unchanged.
+/// Mutable profile fields. `None` leaves the field unchanged.
 #[derive(Debug, Clone, Default)]
 pub struct UserUpdate {
     pub display_name: Option<String>,
@@ -33,6 +33,9 @@ pub trait UserRepository: Send + Sync {
     async fn update(&self, id: Id, update: UserUpdate) -> Result<User>;
     async fn list(&self) -> Result<Vec<User>>;
     async fn delete(&self, id: Id) -> Result<()>;
-    /// Count of all users (used to gate first-run / bootstrap, §11).
+    /// Count of all users (used to gate first-run / bootstrap).
     async fn count(&self) -> Result<i64>;
+    /// Count of instance admins (`is_admin = true`). Drives first-run detection:
+    /// the service is considered initialized once at least one admin exists.
+    async fn count_admins(&self) -> Result<i64>;
 }

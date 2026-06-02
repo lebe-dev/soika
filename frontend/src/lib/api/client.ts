@@ -1,4 +1,4 @@
-// Low-level fetch client for the soika JSON API (MVP §16).
+// Low-level fetch client for the soika JSON API.
 //
 // Talks to the Rust backend on the SAME ORIGIN as the SPA (the binary serves
 // both), so the opaque, signed session cookie is sent automatically. We still

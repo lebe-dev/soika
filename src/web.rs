@@ -1,6 +1,6 @@
 //! Static asset serving + SPA fallback, and the shared 501 stub helper.
 //!
-//! Frontend assets are embedded into the binary via `rust-embed` (MVP §2.2),
+//! Frontend assets are embedded into the binary via `rust-embed`,
 //! with a SPA fallback to `index.html` for client-side routes.
 
 use axum::body::Body;

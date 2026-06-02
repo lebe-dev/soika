@@ -1,4 +1,4 @@
-// Client-side stacktrace extraction from a raw Sentry event payload (MVP §6).
+// Client-side stacktrace extraction from a raw Sentry event payload.
 //
 // The backend stores and returns each event's payload exactly as the SDK sent
 // it (`SoikaEvent.payload`, typed `unknown`). soika does NO server-side
@@ -208,7 +208,7 @@ export function mostRelevantFrame(st: Stacktrace): Frame | undefined {
 /**
  * Frames ordered for display: crashing (most relevant) frame first, then the
  * rest oldest-last. We reverse the SDK's oldest-first ordering so the viewer
- * leads with the in-app frame the user most likely cares about (§6).
+ * leads with the in-app frame the user most likely cares about.
  */
 export function framesForDisplay(st: Stacktrace): Frame[] {
   return [...st.frames].reverse();

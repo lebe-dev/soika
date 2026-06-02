@@ -1,4 +1,4 @@
-//! Current-user extractor & per-project role gating (MVP §10.2).
+//! Current-user extractor & per-project role gating.
 //!
 //! [`CurrentUser`] is an axum extractor that resolves the authenticated user
 //! from the signed session cookie + the server-side session record. Handlers
@@ -6,7 +6,7 @@
 //! yield `401`.
 //!
 //! Authorization is per project: a user holds a [`Role`] (`admin`/`member`) in
-//! each project they belong to. The built-in instance admin (§11) bypasses
+//! each project they belong to. The built-in instance admin bypasses
 //! per-project checks entirely.
 
 use axum::extract::FromRequestParts;
@@ -33,7 +33,7 @@ impl CurrentUser {
         self.0.id
     }
 
-    /// Whether this user is the instance-wide built-in admin (§11).
+    /// Whether this user is the instance-wide built-in admin.
     pub fn is_instance_admin(&self) -> bool {
         self.0.is_admin
     }
@@ -99,7 +99,7 @@ pub fn role_satisfies(held: Role, required: Role) -> bool {
 
 /// Authorize `user` for `required` role on `project_id`.
 ///
-/// The instance admin (§11) is granted unconditionally. Otherwise the user's
+/// The instance admin is granted unconditionally. Otherwise the user's
 /// membership is loaded and its role checked. Returns the effective role on
 /// success; `Error::Forbidden` / `Error::Auth` otherwise.
 pub async fn authorize_project(
@@ -136,7 +136,7 @@ pub async fn require_project_admin(state: &AppState, user: &User, project_id: Id
     authorize_project(state, user, project_id, Role::Admin).await
 }
 
-/// Require that `user` is the instance-wide built-in admin (§11).
+/// Require that `user` is the instance-wide built-in admin.
 pub fn require_instance_admin(user: &User) -> Result<()> {
     if user.is_admin {
         return Ok(());

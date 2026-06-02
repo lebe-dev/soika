@@ -1,4 +1,4 @@
-//! Authentication, sessions, roles, invites & admin bootstrap (MVP §9–§11).
+//! Authentication, sessions, roles, invites & admin bootstrap.
 //!
 //! Architecture:
 //!   * [`password`] — argon2id hashing/verification.
@@ -8,12 +8,10 @@
 //!     gating ([`require_project_admin`], [`require_project_member`], …).
 //!   * [`invite_token`] — invite token generation, links, and usability checks.
 //!   * [`handlers`] — the `/auth/*` and `/invite/{token}` route bodies.
-//!   * [`bootstrap`] — idempotent built-in admin provisioning at startup (§11).
 //!
 //! Sessions are server-side (no JWT): the cookie carries only an opaque, signed
 //! session id; the authoritative record lives in the DB via `SessionRepository`.
 
-pub mod bootstrap;
 pub mod extractor;
 pub mod handlers;
 pub mod invite_token;
@@ -24,9 +22,9 @@ pub mod session;
 pub mod signing;
 
 // --- Router-facing handler surface (referenced by `crate::router`) -----------
-pub use handlers::{accept_invite, get_invite, login, logout, register};
+pub use handlers::{accept_invite, get_invite, login, logout, register, setup};
 
-// --- OIDC handler surface (referenced by `crate::router`, PLAN §6.6) ---------
+// --- OIDC handler surface (referenced by `crate::router`) ---------
 pub use oidc_handlers::{AuthConfig, auth_config, oidc_callback, oidc_login};
 
 // --- Password helpers (used by handlers, bootstrap, profile updates) ---------
@@ -44,7 +42,7 @@ pub use session::{
     end_session, session_id_from_headers, set_cookie_header, start_session,
 };
 
-// --- OIDC surface (PLAN §6.1/§6.2; used by oidc handlers in Story 4) ---------
+// --- OIDC surface (used by oidc handlers in) ---------
 pub use oidc::{
     AuthorizeRequest, OidcClaims, OidcClient, OidcProvider, STATE_COOKIE, StatePayload,
     build_clearing_state_cookie, build_state_cookie, decode_state_cookie, email_domain_allowed,
@@ -53,6 +51,3 @@ pub use oidc::{
 
 // --- Invite surface ----------------------------------------------------------
 pub use invite_token::{INVITE_TTL_DAYS, check_invite_usable, generate_invite_token, invite_link};
-
-// --- Bootstrap (called from `main.rs` on startup, §11) -----------------------
-pub use bootstrap::{BootstrapOutcome, bootstrap_admin};

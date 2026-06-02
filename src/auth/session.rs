@@ -1,4 +1,4 @@
-//! Server-side session lifecycle & signed session cookie (MVP §10.1).
+//! Server-side session lifecycle & signed session cookie.
 //!
 //! No JWT: the cookie carries only an opaque, signed session id. The session
 //! record (user, expiry) lives in the DB via [`SessionRepository`]. The cookie
@@ -204,8 +204,6 @@ mod tests {
             base_url: "http://localhost:8080".into(),
             secret_key: "secret".into(),
             allow_signup: false,
-            admin_email: None,
-            admin_password: None,
             default_events_retention: 1000,
             default_retention_days: 0,
             retention_cron: "0 */15 * * * *".into(),

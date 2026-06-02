@@ -5,7 +5,7 @@
 //!   * `received_at` TEXT in RFC3339/ISO-8601 (UTC) — string-sortable.
 //!   * `payload` is the full event JSON, stored as TEXT.
 //!
-//! Retention (MVP §13) lives in [`prune_events_over_retention`]: keep at most
+//! Retention lives in [`prune_events_over_retention`]: keep at most
 //! N most-recent events per project, deleting older ones. Aggregate counters on
 //! the issue are preserved (they live in a different table). SQL is
 //! ANSI-friendly; the only SQLite-specific bit is TEXT row decoding.
@@ -123,7 +123,7 @@ impl EventRepository for SqliteEventRepository {
         project_id: Id,
         retention_events: i64,
     ) -> Result<u64> {
-        // Keep the N most-recent events for the project; delete the rest (§13).
+        // Keep the N most-recent events for the project; delete the rest.
         // ANSI-friendly: delete rows not in the "keep" set selected by recency.
         // `received_at DESC, id DESC` matches the read-side ordering so the kept
         // set is exactly what the UI shows. A non-positive retention keeps none.

@@ -1,4 +1,4 @@
-// Issue detail loader (MVP §8, §15). Fetches the issue (with its latest event)
+// Issue detail loader. Fetches the issue (with its latest event)
 // and the recent events list for event navigation in the stacktrace viewer.
 
 import { error } from '@sveltejs/kit';

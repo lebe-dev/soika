@@ -1,5 +1,5 @@
 // Guard for the authenticated app shell: every route under (app) requires a
-// session. Unauthenticated visitors are redirected to /login (MVP §10, §15).
+// session. Unauthenticated visitors are redirected to /login.
 
 import { requireUser } from '$lib/guards';
 import type { LayoutLoad } from './$types';

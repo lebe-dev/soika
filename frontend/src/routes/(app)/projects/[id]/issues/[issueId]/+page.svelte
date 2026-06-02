@@ -62,7 +62,7 @@
     }
   }
 
-  // Merge / edit fingerprint (Story 2.4). Opening seeds the draft from the
+  // Merge / edit fingerprint. Opening seeds the draft from the
   // current fingerprint; saving may MERGE into another issue, in which case the
   // surviving issue's id differs and we navigate to it.
   let editingFp = $state(false);

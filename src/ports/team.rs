@@ -1,4 +1,4 @@
-//! Team repository port (MVP §4.1).
+//! Team repository port.
 
 use crate::domain::{Id, Team, TeamMember, User};
 use crate::error::Result;

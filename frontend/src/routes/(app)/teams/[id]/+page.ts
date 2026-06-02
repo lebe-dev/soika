@@ -1,4 +1,4 @@
-// Team detail (MVP §15 Teams): members and assigned projects. Viewable by any
+// Team detail (Teams): members and assigned projects. Viewable by any
 // authenticated user; rename/delete and member management are instance-admin
 // only (the backend enforces AdminUser on PATCH/DELETE/members routes).
 //

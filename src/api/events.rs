@@ -1,4 +1,4 @@
-//! Event API handlers (MVP §16 / §6 stacktrace viewer).
+//! Event API handlers (stacktrace viewer).
 //!
 //! Session-cookie auth; access scoped to the project the event belongs to.
 
@@ -11,7 +11,7 @@ use crate::api::issues::EventView;
 use crate::api::projects::{CurrentUser, error_response, json_error, parse_id, require_member};
 use crate::state::AppState;
 
-/// `GET /events/{id}` — single event detail (full payload / stacktrace, §6).
+/// `GET /events/{id}` — single event detail (full payload / stacktrace).
 pub async fn get(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,

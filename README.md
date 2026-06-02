@@ -88,7 +88,7 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
   or team membership — access is granted later by an admin via invite/members).
 - Use `OAUTH_ALLOWED_EMAIL_DOMAINS` to restrict which email domains may
   auto-provision, since auto-creation trusts the provider's email claim.
-- **Only the built-in admin** (bootstrapped via `ADMIN_EMAIL`/`ADMIN_PASSWORD`)
+- **Only the built-in admin** (created on first run via the `/setup` page)
   keeps password login, so the instance remains accessible if SSO is
   misconfigured.
 

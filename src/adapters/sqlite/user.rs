@@ -164,6 +164,13 @@ impl UserRepository for SqliteUserRepository {
             .await?;
         Ok(count)
     }
+
+    async fn count_admins(&self) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+            .fetch_one(&self.db)
+            .await?;
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
@@ -185,7 +192,7 @@ mod tests {
         NewUser {
             email: email.to_string(),
             display_name: "OIDC User".to_string(),
-            // OIDC accounts carry an empty-string password sentinel (PLAN §5).
+            // OIDC accounts carry an empty-string password sentinel.
             password_hash: String::new(),
             is_admin: false,
             auth_provider: AuthProvider::Oidc,
@@ -292,6 +299,21 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, Error::NotFound(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn count_admins_counts_only_admins() {
+        let repo = SqliteUserRepository::new(test_pool().await);
+        assert_eq!(repo.count_admins().await.unwrap(), 0);
+
+        // A non-admin account does not count toward initialization.
+        repo.create(sample("member@example.com")).await.unwrap();
+        assert_eq!(repo.count_admins().await.unwrap(), 0);
+
+        let mut admin = sample("admin@example.com");
+        admin.is_admin = true;
+        repo.create(admin).await.unwrap();
+        assert_eq!(repo.count_admins().await.unwrap(), 1);
     }
 
     #[tokio::test]

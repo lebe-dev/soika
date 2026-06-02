@@ -1,4 +1,4 @@
-//! Issue repository port (MVP §7, §8.1).
+//! Issue repository port.
 
 use crate::domain::{Id, Issue, IssueStatus, Timestamp};
 use crate::error::Result;
@@ -30,7 +30,7 @@ pub struct UpsertOutcome {
     pub is_regression: bool,
 }
 
-/// Ordering for the issues list (MVP §8 — Story 5.1 frequency/recency sort).
+/// Ordering for the issues list (frequency/recency sort).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum IssueSort {
     /// Most recently seen first (`last_seen DESC`). The default ordering.
@@ -40,7 +40,7 @@ pub enum IssueSort {
     EventCount,
 }
 
-/// Filter for listing issues (MVP §8 issues list).
+/// Filter for listing issues (issues list).
 ///
 /// `status`, `level`, `environment` and `release` are exact-match equality
 /// filters; `None` matches all (Stories 4.4 / 5.2). `query` is a substring
@@ -69,13 +69,13 @@ pub trait IssueRepository: Send + Sync {
     -> Result<Option<Issue>>;
 
     /// Create-or-update an issue for a fingerprint, applying regression logic
-    /// (resolved → unresolved on a new event). Bumps `last_seen` (§7, §8.1).
+    /// (resolved → unresolved on a new event). Bumps `last_seen`.
     async fn upsert_by_fingerprint(&self, upsert: IssueUpsert) -> Result<UpsertOutcome>;
 
-    /// Set issue status (resolve / mute / unresolve — §8.1).
+    /// Set issue status (resolve / mute / unresolve).
     async fn set_status(&self, issue_id: Id, status: IssueStatus) -> Result<Issue>;
 
-    /// List issues in a project with filtering (§8 issues list).
+    /// List issues in a project with filtering (issues list).
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>>;
 
     /// Override an issue's fingerprint after the fact (operator merge / split).

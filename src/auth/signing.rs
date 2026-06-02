@@ -1,4 +1,4 @@
-//! HMAC-SHA256 signing utilities (MVP §10.1) used for opaque, tamper-evident
+//! HMAC-SHA256 signing utilities used for opaque, tamper-evident
 //! session cookies and invite tokens.
 //!
 //! A signed value has the shape `<payload>.<sig>` where:

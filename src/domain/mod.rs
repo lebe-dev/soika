@@ -1,4 +1,4 @@
-//! Domain entities (MVP §4) — plain Rust types only.
+//! Domain entities — plain Rust types only.
 //!
 //! These types carry **no** persistence concerns (no `sqlx`); adapters map
 //! to/from them. They are the currency of the port traits in [`crate::ports`].

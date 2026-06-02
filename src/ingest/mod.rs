@@ -1,8 +1,8 @@
-//! Sentry-compatible event ingestion (MVP §5).
+//! Sentry-compatible event ingestion.
 //!
 //! Endpoint: `POST /api/{project_id}/envelope/`. Auth via DSN public key, body
 //! may be gzip/zlib-compressed. Pipeline: auth → decode → parse → normalize →
-//! fingerprint → upsert issue → insert event → counters → notify (§5.4).
+//! fingerprint → upsert issue → insert event → counters → notify.
 
 mod envelope;
 mod ratelimit;
@@ -26,10 +26,10 @@ use crate::state::AppState;
 pub use envelope::{Envelope, EnvelopeError, EnvelopeItem};
 pub use ratelimit::{DEFAULT_LIMIT, DEFAULT_WINDOW, Decision, RateLimiter};
 
-/// `POST /api/{project_id}/envelope/` — Sentry envelope ingestion (§5.1).
+/// `POST /api/{project_id}/envelope/` — Sentry envelope ingestion.
 ///
 /// Returns `{ "id": "<event_id>" }` on accept; honors `429` rate-limit
-/// semantics (§5.3).
+/// semantics.
 pub async fn envelope(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
@@ -37,14 +37,14 @@ pub async fn envelope(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // Shared preamble: DSN auth → project resolve → rate-limit → decode (§5.1–5.3).
+    // Shared preamble: DSN auth → project resolve → rate-limit → decode.
     let (project, decoded) =
         match authorize_and_decode(&state, &project_id, query.as_deref(), &headers, &body).await {
             Ok(ok) => ok,
             Err(response) => return response,
         };
 
-    // --- Parse the Sentry envelope (§5.2). ---
+    // --- Parse the Sentry envelope. ---
     let parsed = match envelope::parse(&decoded) {
         Ok(env) => env,
         Err(_) => return bad_request("malformed envelope"),
@@ -53,7 +53,7 @@ pub async fn envelope(
     let header_event_id = parsed.header_event_id();
     let now = state.clock.now();
 
-    // Process every event item; non-event items are acked + discarded (§5.2).
+    // Process every event item; non-event items are acked + discarded.
     let mut accepted_event_id: Option<String> = None;
     for item in &parsed.items {
         if !is_ingestible_event(item) {
@@ -77,7 +77,7 @@ pub async fn envelope(
         }
     }
 
-    // Sentry-style success response: echo an event id (§5.3). Fall back to the
+    // Sentry-style success response: echo an event id. Fall back to the
     // envelope header id, or synthesize one, so SDKs always receive an id.
     let id = accepted_event_id
         .or(header_event_id)
@@ -86,7 +86,7 @@ pub async fn envelope(
     (StatusCode::OK, Json(json!({ "id": id }))).into_response()
 }
 
-/// `POST /api/{project_id}/store/` — legacy Sentry store endpoint (§5.1).
+/// `POST /api/{project_id}/store/` — legacy Sentry store endpoint.
 ///
 /// Unlike [`envelope`], the body is a single JSON event payload (the classic
 /// pre-envelope wire format), optionally gzip/zlib-compressed. Auth,
@@ -120,7 +120,7 @@ pub async fn store(
     }
 }
 
-/// Shared ingestion preamble for the `envelope` and `store` endpoints (§5.1–5.3):
+/// Shared ingestion preamble for the `envelope` and `store` endpoints:
 /// resolve the project from the DSN public key, apply the soft per-project rate
 /// limit, then decode the (possibly compressed) body.
 ///
@@ -133,7 +133,7 @@ async fn authorize_and_decode(
     headers: &HeaderMap,
     body: &Bytes,
 ) -> std::result::Result<(Project, Vec<u8>), Response> {
-    // --- Auth: resolve project from the DSN public key (§5.1). ---
+    // --- Auth: resolve project from the DSN public key. ---
     let Some(dsn_key) = extract_dsn_key(headers, query) else {
         return Err(unauthorized("missing sentry key"));
     };
@@ -155,7 +155,7 @@ async fn authorize_and_decode(
         );
     }
 
-    // --- Soft per-project rate limit (§5.3). ---
+    // --- Soft per-project rate limit. ---
     let project_key = project.id.to_string();
     if let Decision::Limited { retry_after_secs } = state.rate_limiter.check(&project_key) {
         return Err(rate_limited(retry_after_secs));
@@ -168,7 +168,7 @@ async fn authorize_and_decode(
     }
 }
 
-/// Persist a single parsed event through the grouping pipeline (§5.4):
+/// Persist a single parsed event through the grouping pipeline:
 /// fingerprint → upsert issue → insert event → notify. Returns the stored
 /// event id.
 ///
@@ -197,7 +197,7 @@ async fn process_event(
     )
     .await?;
 
-    // Notifications respect project-level mute (§8.2, §12). Issue-level mute and
+    // Notifications respect project-level mute. Issue-level mute and
     // per-user opt-out are enforced inside the notify module.
     if !project.muted {
         notify_outcome(state, project, &outcome.issue, outcome.notify).await;
@@ -226,14 +226,14 @@ async fn notify_outcome(
 }
 
 /// True if an envelope item is an event we ingest: `type=event` whose payload is
-/// an error/exception or message (§5.2). Item-type screening only; payload
+/// an error/exception or message. Item-type screening only; payload
 /// shape is validated when parsed.
 fn is_ingestible_event(item: &EnvelopeItem) -> bool {
     matches!(item.item_type(), Some("event"))
 }
 
 /// Extract the DSN public key from `X-Sentry-Auth` (`sentry_key=…`), the
-/// `?sentry_key=` query parameter, or the `X-Sentry-Key` header (§5.1). The
+/// `?sentry_key=` query parameter, or the `X-Sentry-Key` header. The
 /// header takes precedence, then the query, then the bare key header.
 fn extract_dsn_key(headers: &HeaderMap, query: Option<&str>) -> Option<String> {
     if let Some(value) = headers

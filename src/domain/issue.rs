@@ -1,17 +1,17 @@
-//! Issue domain type and status (MVP §7, §8.1).
+//! Issue domain type and status.
 
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Issue lifecycle state (§8.1).
+/// Issue lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IssueStatus {
     Unresolved,
     Resolved,
-    /// Issue-level mute: events still accepted/counted, no notifications (§8.1).
+    /// Issue-level mute: events still accepted/counted, no notifications.
     Muted,
 }
 
@@ -47,7 +47,7 @@ impl FromStr for IssueStatus {
     }
 }
 
-/// A group of events sharing a fingerprint; carries status & counters (§7).
+/// A group of events sharing a fingerprint; carries status & counters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
     pub id: Id,

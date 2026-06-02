@@ -7,7 +7,7 @@
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
 
-  // Register — only succeeds when the instance has `allow_signup` enabled (§10.1)
+  // Register — only succeeds when the instance has `allow_signup` enabled
   // and SSO is off. We read `GET /auth/config` up front to disable the form when
   // signup is closed or OAuth replaces local accounts; a 403 from the register
   // endpoint is also handled as a fallback.

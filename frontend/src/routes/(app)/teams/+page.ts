@@ -1,4 +1,4 @@
-// Teams list (MVP §15 Teams). Any authenticated user may view the team list;
+// Teams list (Teams). Any authenticated user may view the team list;
 // create/edit/delete are gated to the instance admin in the UI (the backend
 // enforces it as well — POST/PATCH/DELETE /teams require AdminUser).
 

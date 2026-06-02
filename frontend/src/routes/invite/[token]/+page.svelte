@@ -12,7 +12,7 @@
 
   let { data }: { data: PageData } = $props();
 
-  // For a new email the invite itself authorizes registration (§9), so we
+  // For a new email the invite itself authorizes registration, so we
   // collect a password (+ name) when the preview says registration is required.
   // Seed the editable field from the (one-time) loaded preview email.
   let email = $state(untrack(() => data.preview?.email ?? ''));

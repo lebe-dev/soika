@@ -1,4 +1,4 @@
-//! Event repository port (MVP §5, §13).
+//! Event repository port.
 
 use crate::domain::{Event, Id, Timestamp};
 use crate::error::Result;
@@ -30,7 +30,7 @@ pub trait EventRepository: Send + Sync {
     async fn count_for_project(&self, project_id: Id) -> Result<i64>;
 
     /// Retention: keep at most `retention_events` most-recent events for the
-    /// project, deleting older ones. Returns number of rows deleted (§13).
+    /// project, deleting older ones. Returns number of rows deleted.
     async fn prune_events_over_retention(
         &self,
         project_id: Id,

@@ -1,4 +1,4 @@
-//! Error grouping / fingerprinting (MVP §7) and the ingest-pipeline tail (§5.4).
+//! Error grouping / fingerprinting and the ingest-pipeline tail.
 //!
 //! Default fingerprint derives from exception type + a normalized in-app
 //! stacktrace (function/module/path normalized), mirroring Sentry's default
@@ -6,7 +6,7 @@
 //!
 //! The pipeline tail (upsert issue → insert event → counters → notify check)
 //! lives in [`pipeline`] and is written against the repository TRAITS so it can
-//! be unit-tested with fakes (hexagonal architecture, MVP §2.2).
+//! be unit-tested with fakes (hexagonal architecture).
 
 pub mod normalize;
 pub mod pipeline;
@@ -26,7 +26,7 @@ const DEFAULT_PLACEHOLDER_TIGHT: &str = "{{default}}";
 /// Compute the grouping fingerprint for a raw Sentry event payload.
 ///
 /// Honors a custom `fingerprint` field if present, otherwise derives the
-/// default from exception type + normalized in-app stacktrace frames (§7).
+/// default from exception type + normalized in-app stacktrace frames.
 pub fn fingerprint(event: &Value) -> String {
     let normalized = NormalizedEvent::from_value(event);
     fingerprint_normalized(&normalized)
@@ -129,7 +129,7 @@ fn grouping_frame_signatures(stacktrace: &Stacktrace) -> Vec<String> {
         .collect()
 }
 
-/// Derive a human-readable issue title from the event payload (§8 issues list).
+/// Derive a human-readable issue title from the event payload (issues list).
 ///
 /// Exception events → `Type: value`; message events → the message; otherwise a
 /// generic placeholder.
@@ -155,7 +155,7 @@ pub fn title_from_normalized(event: &NormalizedEvent) -> String {
     "Unknown error".to_string()
 }
 
-/// Derive the culprit (the most relevant in-app frame location) (§6, §8).
+/// Derive the culprit (the most relevant in-app frame location).
 pub fn culprit(event: &Value) -> Option<String> {
     let normalized = NormalizedEvent::from_value(event);
     culprit_from_normalized(&normalized)

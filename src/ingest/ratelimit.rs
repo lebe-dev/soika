@@ -1,9 +1,9 @@
-//! Soft per-project in-memory rate limiting (MVP §5.3).
+//! Soft per-project in-memory rate limiting.
 //!
 //! A simple fixed-window counter keyed by project id. When a project exceeds
 //! its per-window budget the ingestion handler responds `429` with a
 //! `Retry-After` hint so SDKs back off correctly. This is intentionally
-//! minimal — full Sentry rate-limit rules are a roadmap item (MVP §18).
+//! minimal — full Sentry rate-limit rules are a roadmap item.
 //!
 //! The limiter lives on [`crate::AppState`] (built in `build_state`) so it is
 //! per-instance rather than process-global — that keeps it configurable in

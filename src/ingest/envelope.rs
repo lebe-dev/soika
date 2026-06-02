@@ -1,4 +1,4 @@
-//! Sentry **envelope** protocol parser (MVP §5.2).
+//! Sentry **envelope** protocol parser.
 //!
 //! An envelope is a newline-delimited stream:
 //!

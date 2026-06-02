@@ -1,4 +1,4 @@
-//! Integration tests for the OIDC / SSO HTTP surface (PLAN §6.3, §6.5, §9).
+//! Integration tests for the OIDC / SSO HTTP surface.
 //!
 //! Like `tests/ingest.rs`, these drive the *real* application router in-process
 //! via [`tower::ServiceExt::oneshot`] against a fresh `:memory:` database. The
@@ -91,8 +91,6 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: SECRET.into(),
         allow_signup: false,
-        admin_email: None,
-        admin_password: None,
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
@@ -208,7 +206,7 @@ async fn login_redirects_to_provider_with_state_cookie() {
         cookies.iter().any(|c| c.starts_with("soika_oidc_state=")),
         "state cookie set: {cookies:?}"
     );
-    // Transient cookie hygiene (PLAN §6.2).
+    // Transient cookie hygiene.
     let state = cookies
         .iter()
         .find(|c| c.starts_with("soika_oidc_state="))
@@ -335,7 +333,7 @@ async fn callback_with_bad_state_redirects_with_error_and_no_session() {
 #[tokio::test]
 async fn callback_resolving_to_admin_is_forbidden() {
     // SSO sign-in that matches the built-in admin's email must be refused: the
-    // admin keeps password login (PLAN §6.4); allowing the public IdP to assume
+    // admin keeps password login; allowing the public IdP to assume
     // it would be an account-takeover vector. No session is issued.
     let email = "admin@example.com";
     let (router, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
@@ -376,7 +374,7 @@ async fn callback_when_disabled_is_not_found() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-// --- Coexistence gating (PLAN §6.4, Story S5) ------------------------------
+// --- Coexistence gating (Story S5) ------------------------------
 
 fn enabled_provider() -> Arc<dyn OidcProvider> {
     Arc::new(FakeProvider::new(verified_claims("u@example.com")))
@@ -461,4 +459,129 @@ async fn login_wrong_password_unauthorized_when_oauth_enabled() {
     .await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// --- /auth/setup (first-run admin provisioning) -----------------------
+
+#[tokio::test]
+async fn auth_config_reports_uninitialized_until_admin_exists() {
+    let (router, state) = build_app(None).await;
+
+    // Fresh instance: no admin yet.
+    let (status, json) = get_json(&router, "/auth/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["initialized"], false);
+
+    // A non-admin account does NOT initialize the instance.
+    seed_user(&state, "member@example.com", "supersecret", false).await;
+    let (_s, json) = get_json(&router, "/auth/config").await;
+    assert_eq!(json["initialized"], false);
+
+    // An admin account flips it to initialized.
+    seed_user(&state, "boss@example.com", "supersecret", true).await;
+    let (_s, json) = get_json(&router, "/auth/config").await;
+    assert_eq!(json["initialized"], true);
+}
+
+#[tokio::test]
+async fn setup_provisions_admin_sets_org_and_logs_in() {
+    let (router, state) = build_app(None).await;
+
+    let (status, json) = post_json(
+        &router,
+        "/auth/setup",
+        serde_json::json!({
+            "email": "Admin@Example.com",
+            "password": "supersecret",
+            "display_name": "The Boss",
+            "org_name": "Acme Inc"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(json["email"], "admin@example.com");
+    assert_eq!(json["is_admin"], true);
+    // Password hash is never echoed to clients.
+    assert!(json.get("password_hash").is_none());
+
+    // Admin persisted as a local account.
+    let user = state
+        .users
+        .find_by_email("admin@example.com")
+        .await
+        .expect("query")
+        .expect("admin created");
+    assert!(user.is_admin);
+    assert_eq!(user.auth_provider, soika::domain::AuthProvider::Local);
+
+    // Organization name persisted to settings.
+    let settings = state.settings.get().await.expect("settings");
+    assert_eq!(settings.org_name, "Acme Inc");
+
+    // Instance now reports initialized.
+    let (_s, cfg) = get_json(&router, "/auth/config").await;
+    assert_eq!(cfg["initialized"], true);
+}
+
+#[tokio::test]
+async fn setup_is_rejected_once_initialized() {
+    let (router, state) = build_app(None).await;
+    seed_user(&state, "existing-admin@example.com", "supersecret", true).await;
+
+    let (status, _json) = post_json(
+        &router,
+        "/auth/setup",
+        serde_json::json!({
+            "email": "second-admin@example.com",
+            "password": "supersecret",
+            "display_name": "Intruder",
+            "org_name": "Acme"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    // No second admin minted.
+    assert!(
+        state
+            .users
+            .find_by_email("second-admin@example.com")
+            .await
+            .expect("query")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn setup_validates_inputs() {
+    let (router, _state) = build_app(None).await;
+
+    // Too-short password.
+    let (status, _json) = post_json(
+        &router,
+        "/auth/setup",
+        serde_json::json!({
+            "email": "admin@example.com",
+            "password": "short",
+            "display_name": "Boss",
+            "org_name": "Acme"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Blank organization name.
+    let (status, _json) = post_json(
+        &router,
+        "/auth/setup",
+        serde_json::json!({
+            "email": "admin@example.com",
+            "password": "supersecret",
+            "display_name": "Boss",
+            "org_name": "   "
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

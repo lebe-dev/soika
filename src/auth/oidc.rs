@@ -1,9 +1,8 @@
-//! OpenID Connect core: the authorization-code + PKCE + nonce flow (PLAN §6.1,
-//! §6.2, §8).
+//! OpenID Connect core: the authorization-code + PKCE + nonce flow.
 //!
 //! This module is HTTP-framework agnostic (no axum here). It exposes:
 //!   * [`OidcProvider`] — a small port trait (`authorize_url` / `exchange_code`)
-//!     so handlers depend on an interface and tests can inject fakes (PLAN §9).
+//!     so handlers depend on an interface and tests can inject fakes.
 //!   * [`OidcClient`] — the production adapter wrapping
 //!     [`openidconnect::core::CoreClient`], built once at startup via OIDC
 //!     discovery (a network call). It uses the existing rustls `reqwest`
@@ -15,7 +14,7 @@
 //!     between `/login` and `/callback` without a server-side store, reusing
 //!     [`crate::auth::signing`].
 //!
-//! Security (PLAN §8): PKCE is always S256, a CSRF `state` is bound to the
+//! Security: PKCE is always S256, a CSRF `state` is bound to the
 //! signed cookie, and the ID-token signature / `aud` / `iss` / `exp` / `nonce`
 //! are validated by the library inside [`OidcClient::exchange_code`].
 
@@ -36,20 +35,20 @@ use crate::error::{Error, Result};
 
 use super::signing;
 
-/// Lifetime of the transient OIDC state cookie (PLAN §6.2): the browser only
+/// Lifetime of the transient OIDC state cookie: the browser only
 /// needs it for the brief redirect round-trip to the provider.
 pub const STATE_COOKIE: &str = "soika_oidc_state";
 
 /// Max age of the state cookie / signed payload, in seconds (10 minutes).
 pub const STATE_TTL_SECS: i64 = 600;
 
-/// Normalized identity claims we extract from a validated ID-token (PLAN §6.1).
+/// Normalized identity claims we extract from a validated ID-token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OidcClaims {
     /// The user's email address (lower-cased, trimmed).
     pub email: String,
     /// Whether the provider asserts the email is verified. We require `true`
-    /// before auto-provisioning (PLAN §8); defaults to `false` if absent.
+    /// before auto-provisioning; defaults to `false` if absent.
     pub email_verified: bool,
     /// A human-friendly display name (`name`, else `preferred_username`, else
     /// the local part of the email). Never empty on success.
@@ -71,7 +70,7 @@ pub struct AuthorizeRequest {
 }
 
 /// Port trait for the OIDC flow so handlers and tests can depend on an
-/// interface rather than the concrete [`OidcClient`] (PLAN §9).
+/// interface rather than the concrete [`OidcClient`].
 #[async_trait]
 pub trait OidcProvider: Send + Sync {
     /// Build a fresh authorization URL with PKCE (S256), CSRF state and nonce.
@@ -87,10 +86,10 @@ pub trait OidcProvider: Send + Sync {
         nonce: Nonce,
     ) -> Result<OidcClaims>;
 
-    /// Human-readable provider name for the SSO button (PLAN §6.5).
+    /// Human-readable provider name for the SSO button.
     fn provider_name(&self) -> &str;
 
-    /// Optional allow-list of email domains for auto-provisioning (PLAN §8).
+    /// Optional allow-list of email domains for auto-provisioning.
     fn allowed_email_domains(&self) -> &[String];
 }
 
@@ -104,7 +103,7 @@ pub struct OidcClient {
 
 impl OidcClient {
     /// Build the client by performing OIDC discovery against the issuer. This is
-    /// an async network call; run it once at startup (fail-fast — PLAN §6.1).
+    /// an async network call; run it once at startup (fail-fast).
     pub async fn discover(config: &OidcConfig) -> Result<Self> {
         let issuer = IssuerUrl::new(config.issuer_url.clone())
             .map_err(|e| Error::validation(format!("invalid OAUTH_ISSUER_URL: {e}")))?;
@@ -189,7 +188,7 @@ impl OidcProvider for OidcClient {
     }
 }
 
-/// Normalize verified ID-token claims into our [`OidcClaims`] (PLAN §6.1).
+/// Normalize verified ID-token claims into our [`OidcClaims`].
 ///
 /// Fails with [`Error::Auth`] when no email is present. The display name falls
 /// back from `name` → `preferred_username` → the email local part.
@@ -231,7 +230,7 @@ fn email_local_part(email: &str) -> String {
         .unwrap_or_else(|| email.to_string())
 }
 
-/// Whether `email`'s domain is permitted by `allowed_domains` (PLAN §8). An
+/// Whether `email`'s domain is permitted by `allowed_domains`. An
 /// empty allow-list permits any domain. Comparison is case-insensitive.
 pub fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
     if allowed_domains.is_empty() {
@@ -249,7 +248,7 @@ pub fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
         .any(|d| d.trim().eq_ignore_ascii_case(&domain))
 }
 
-/// The transient flow state carried in the signed state cookie (PLAN §6.2).
+/// The transient flow state carried in the signed state cookie.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatePayload {
     /// CSRF token; compared against the `state` query parameter on callback.
@@ -302,7 +301,7 @@ pub fn decode_state_cookie(secret_key: &str, signed: &str, now_unix: i64) -> Res
     Ok(payload)
 }
 
-/// Build the `Set-Cookie` value that stores the signed flow state (PLAN §6.2):
+/// Build the `Set-Cookie` value that stores the signed flow state:
 /// `HttpOnly`, `SameSite=Lax`, `Path=/`, short `Max-Age`, `Secure` behind TLS.
 pub fn build_state_cookie(signed_value: &str, secure: bool) -> String {
     let mut cookie = format!(

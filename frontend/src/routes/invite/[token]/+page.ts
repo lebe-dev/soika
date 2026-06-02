@@ -1,5 +1,5 @@
 // Accept-invite page load: fetch the invite preview so the page can render the
-// right flow (join vs. register) — MVP §9. Invalid/expired tokens surface via
+// right flow (join vs. register). Invalid/expired tokens surface via
 // the catch in the component, so we pass the token and let the page fetch.
 
 import { invites, errorMessage, type InvitePreview } from '$lib/api';

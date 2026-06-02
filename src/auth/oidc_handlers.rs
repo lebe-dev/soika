@@ -1,5 +1,5 @@
 //! OIDC HTTP handlers: the browser-facing `/auth/oidc/*` routes plus the public
-//! `/auth/config` endpoint (PLAN §6.3, §6.5).
+//! `/auth/config` endpoint.
 //!
 //! These are deliberately thin: the flow logic and ID-token validation live in
 //! [`crate::auth::oidc`]. Handlers translate between HTTP (cookies, redirects,
@@ -8,7 +8,7 @@
 //! Unlike the JSON auth handlers, the login/callback routes are *browser
 //! navigations*: on success or failure they emit `302` redirects (to the
 //! provider, to `next`/`/`, or to `/login?error=...`) rather than JSON bodies
-//! (PLAN §6.3).
+//!.
 
 use axum::extract::{Query, State};
 use axum::http::header::{LOCATION, SET_COOKIE};
@@ -48,20 +48,23 @@ pub struct CallbackQuery {
     pub state: Option<String>,
 }
 
-/// Public auth configuration consumed by the login/register pages (PLAN §6.5).
+/// Public auth configuration consumed by the login/register/setup pages.
 #[derive(Debug, Serialize)]
 pub struct AuthConfig {
     pub oauth_enabled: bool,
     pub oauth_provider_name: String,
     pub password_login_enabled: bool,
     pub allow_signup: bool,
+    /// Whether the instance admin has been provisioned. When `false` the
+    /// SPA routes the operator to `/setup`; when `true`, `/setup` bounces to login.
+    pub initialized: bool,
 }
 
 // ---------------------------------------------------------------------------
 // /auth/config
 // ---------------------------------------------------------------------------
 
-/// `GET /auth/config` — unauthenticated public config for the SPA (PLAN §6.5).
+/// `GET /auth/config` — unauthenticated public config for the SPA.
 ///
 /// `password_login_enabled = !oauth_enabled`: when SSO is on the password form
 /// is hidden (the built-in admin still reaches it via a direct link).
@@ -80,11 +83,23 @@ pub async fn auth_config(State(state): State<AppState>) -> Json<AuthConfig> {
         .map(|s| s.allow_signup)
         .unwrap_or(state.config.allow_signup);
 
+    // First-run detection: the instance is "initialized" once an admin
+    // exists. On a DB error default to `true` so we never expose `/setup` (and a
+    // fresh admin creation) when the real state is unknown — `/auth/setup` itself
+    // re-checks before creating, so this is purely a UI-routing hint.
+    let initialized = state
+        .users
+        .count_admins()
+        .await
+        .map(|count| count > 0)
+        .unwrap_or(true);
+
     Json(AuthConfig {
         oauth_enabled,
         oauth_provider_name,
         password_login_enabled: !oauth_enabled,
         allow_signup,
+        initialized,
     })
 }
 
@@ -92,7 +107,7 @@ pub async fn auth_config(State(state): State<AppState>) -> Json<AuthConfig> {
 // /auth/oidc/login
 // ---------------------------------------------------------------------------
 
-/// `GET /auth/oidc/login` — start the SSO flow (PLAN §6.3).
+/// `GET /auth/oidc/login` — start the SSO flow.
 ///
 /// Returns `404` when SSO is disabled. Otherwise builds the authorize URL, sets
 /// the signed transient `soika_oidc_state` cookie, and `302`-redirects to the
@@ -145,7 +160,7 @@ fn build_login_redirect(
 // /auth/oidc/callback
 // ---------------------------------------------------------------------------
 
-/// `GET /auth/oidc/callback?code&state` — finish the SSO flow (PLAN §6.3).
+/// `GET /auth/oidc/callback?code&state` — finish the SSO flow.
 ///
 /// Validates the CSRF `state` against the signed cookie, exchanges the code,
 /// requires `email_verified == true` + a non-empty allow-listed email, then
@@ -163,7 +178,7 @@ pub async fn oidc_callback(
     match run_callback(&state, provider.as_ref(), &headers, query).await {
         Ok(response) => response,
         // Flow failures are browser navigations: surface them on the login page
-        // and always clear the transient state cookie (PLAN §6.3).
+        // and always clear the transient state cookie.
         Err(err) => {
             let clearing = build_clearing_state_cookie(cookie_secure(&state.config));
             redirect_to_login(&err, Some(clearing))
@@ -193,7 +208,7 @@ async fn run_callback(
     let now = state.clock.now().timestamp();
     let payload = decode_state_cookie(&state.config.secret_key, &signed, now)?;
 
-    // CSRF: the cookie-bound state must match the query state (PLAN §8).
+    // CSRF: the cookie-bound state must match the query state.
     if payload.state != state_param {
         return Err(Error::Auth("OIDC state mismatch".into()));
     }
@@ -217,8 +232,8 @@ async fn run_callback(
     }
 
     // Find-or-create: an existing local account with the same email can also sign
-    // in via SSO (PLAN §6.3) — except the built-in admin, which keeps password
-    // login (PLAN §6.4). Refusing the admin here closes an account-takeover
+    // in via SSO — except the built-in admin, which keeps password
+    // login. Refusing the admin here closes an account-takeover
     // vector where the public IdP could assume the highest-privilege account by
     // email match.
     let user = match state.users.find_by_email(&claims.email).await? {
@@ -262,7 +277,7 @@ async fn run_callback(
 // ---------------------------------------------------------------------------
 
 /// Validate a `?next` target against open-redirect: keep it only when it is a
-/// site-relative path (starts with `/` but not `//`) (PLAN §8). Backslashes are
+/// site-relative path (starts with `/` but not `//`). Backslashes are
 /// rejected outright — browsers normalize `\` to `/`, so `/\host` would slip
 /// through as a protocol-relative URL.
 fn validated_next(next: Option<&str>) -> Option<String> {

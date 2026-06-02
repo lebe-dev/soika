@@ -1,6 +1,6 @@
 //! soika — lightweight, Sentry-compatible error tracking (library crate).
 //!
-//! Hexagonal architecture (MVP §2.2): domain & service logic depend on the
+//! Hexagonal architecture: domain & service logic depend on the
 //! repository TRAITS in [`ports`]; infrastructure in [`adapters`] implements
 //! them. The lib crate uses `thiserror` (see [`error::Error`]); the bin crate
 //! uses `anyhow`.
@@ -31,7 +31,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
-/// Embedded SQL migrations (MVP §4 schema), run at startup.
+/// Embedded SQL migrations (schema), run at startup.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// Connect to the database and create the pool. The bin crate owns running
@@ -84,7 +84,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         clock: Arc::new(SystemClock),
         rate_limiter: Arc::new(RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW)),
         // The OIDC provider (if any) is wired separately after startup discovery
-        // (fail-fast — PLAN §6.6) via [`AppState::with_oidc`].
+        // (fail-fast) via [`AppState::with_oidc`].
         oidc: None,
     }
 }

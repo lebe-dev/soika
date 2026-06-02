@@ -22,7 +22,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import UserPlus from '@lucide/svelte/icons/user-plus';
 
-  // Project Settings (MVP §8.2): retention, project mute, members list, and
+  // Project Settings: retention, project mute, members list, and
   // invite generation with a copyable link. Admin actions are gated; non-admins
   // see read-only sections (the API also enforces this).
   let { data }: { data: PageData } = $props();
@@ -94,7 +94,7 @@
     }
   }
 
-  // --- Webhook (Story 6.2) -------------------------------------------------
+  // --- Webhook -------------------------------------------------
   let webhookUrl = $state(untrack(() => data.project.webhook_url ?? ''));
   let savingWebhook = $state(false);
   $effect(() => {
@@ -161,7 +161,7 @@
     }
   }
 
-  // Pending = not yet accepted (§9). Accepted invites are kept out of the list.
+  // Pending = not yet accepted. Accepted invites are kept out of the list.
   const pendingInvites = $derived(invites.filter((i) => !i.accepted_at));
 
   // --- Danger zone ---------------------------------------------------------

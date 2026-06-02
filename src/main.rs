@@ -1,4 +1,4 @@
-//! soika binary — wiring, config, axum bootstrap, graceful shutdown (MVP §2.1).
+//! soika binary — wiring, config, axum bootstrap, graceful shutdown.
 //!
 //! The bin crate uses `anyhow` for error handling.
 
@@ -13,7 +13,7 @@ use tokio::signal;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use soika::auth::{OidcClient, OidcProvider};
-use soika::{Config, MIGRATOR, auth, build_state, scheduler};
+use soika::{Config, MIGRATOR, build_state, scheduler};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
         .context("connecting to database and running migrations")?;
 
     // When SSO is enabled, run OIDC discovery up front so a misconfigured issuer
-    // fails the boot rather than the first login attempt (fail-fast — PLAN §6.6).
+    // fails the boot rather than the first login attempt (fail-fast).
     let oidc: Option<Arc<dyn OidcProvider>> = match &config.oidc {
         Some(oidc_config) => {
             tracing::info!(issuer = %oidc_config.issuer_url, "performing OIDC discovery");
@@ -49,11 +49,9 @@ async fn main() -> Result<()> {
 
     let state = build_state(pool, config.clone()).with_oidc(oidc);
 
-    // Idempotently provision the built-in admin from ADMIN_EMAIL/ADMIN_PASSWORD (§11).
-    let bootstrap = auth::bootstrap_admin(&*state.users, &config)
-        .await
-        .context("provisioning built-in admin account")?;
-    tracing::info!(?bootstrap, "built-in admin bootstrap");
+    // The built-in admin is no longer provisioned from env: on first run the
+    // service is uninitialized and the SPA routes the operator to `/setup`,
+    // which creates the instance admin via `POST /auth/setup`.
 
     // Background scheduler (retention cleanup / mail) — same tokio runtime.
     let scheduler_handle = scheduler::spawn(state.clone());

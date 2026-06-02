@@ -1,4 +1,4 @@
-//! Team domain types (MVP §4.1).
+//! Team domain types.
 
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};

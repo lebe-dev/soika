@@ -1,9 +1,9 @@
-//! User and session domain types (MVP §10).
+//! User and session domain types.
 
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 
-/// How an account authenticates (PLAN §5).
+/// How an account authenticates.
 ///
 /// `Local` accounts hold an Argon2 PHC `password_hash`. `Oidc` accounts are
 /// provisioned via OAuth/OIDC and carry an empty-string `password_hash`
@@ -42,17 +42,17 @@ pub struct User {
     /// Argon2 PHC string. Never serialized to clients.
     #[serde(skip_serializing)]
     pub password_hash: String,
-    /// Instance-wide admin (built-in admin, §11).
+    /// Instance-wide admin (built-in admin).
     pub is_admin: bool,
-    /// User-level opt-out from all email notifications (§10.3).
+    /// User-level opt-out from all email notifications.
     pub notifications_enabled: bool,
-    /// Origin of the account: local password or OIDC (PLAN §5).
+    /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
 
-/// A server-side session (opaque, signed cookie — §10.1). No JWT.
+/// A server-side session (opaque, signed cookie). No JWT.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,

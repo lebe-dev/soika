@@ -29,16 +29,16 @@ pub struct AppState {
     pub settings: Arc<dyn SettingsRepository>,
     pub mailer: Arc<dyn Mailer>,
     pub clock: Arc<dyn Clock>,
-    /// Soft per-project ingestion rate limiter (§5.3). Owned by the state so it
+    /// Soft per-project ingestion rate limiter. Owned by the state so it
     /// is per-instance (and configurable in tests) rather than process-global.
     pub rate_limiter: Arc<RateLimiter>,
-    /// OIDC provider, present only when SSO is enabled (PLAN §6.6). Built once at
+    /// OIDC provider, present only when SSO is enabled. Built once at
     /// startup via discovery (fail-fast); `None` keeps password login unchanged.
     pub oidc: Option<Arc<dyn OidcProvider>>,
 }
 
 impl AppState {
-    /// Attach an OIDC provider (built at startup via discovery, PLAN §6.6),
+    /// Attach an OIDC provider (built at startup via discovery),
     /// returning the updated state. `None` leaves SSO disabled.
     pub fn with_oidc(mut self, oidc: Option<Arc<dyn OidcProvider>>) -> Self {
         self.oidc = oidc;

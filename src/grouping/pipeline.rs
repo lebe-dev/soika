@@ -1,4 +1,4 @@
-//! Ingest-pipeline tail (MVP §5.4) — everything after the stacktrace has been
+//! Ingest-pipeline tail — everything after the stacktrace has been
 //! normalized:
 //!
 //! ```text
@@ -21,18 +21,18 @@ use crate::ports::{EventRepository, IssueRepository, IssueUpsert, NewEvent};
 
 use super::{culprit_from_normalized, fingerprint_normalized, title_from_normalized};
 
-/// Which notification (if any) the pipeline determined should be sent (§12).
+/// Which notification (if any) the pipeline determined should be sent.
 ///
 /// Returned to the caller rather than dispatched here so the pipeline stays
 /// free of `AppState` / the notify orchestration and remains unit-testable. The
-/// caller is responsible for applying mute / per-user opt-out rules (§12).
+/// caller is responsible for applying mute / per-user opt-out rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotifyKind {
     /// No notification is warranted (recurring event on a live issue).
     None,
-    /// First time this fingerprint was seen in the project (§12 trigger 1).
+    /// First time this fingerprint was seen in the project (trigger 1).
     NewIssue,
-    /// A `resolved` issue received a new event and was reopened (§12 trigger 2).
+    /// A `resolved` issue received a new event and was reopened (trigger 2).
     Regression,
 }
 
@@ -45,7 +45,7 @@ pub struct IngestInput {
     pub event_id: String,
     /// The normalized view used for grouping/title/culprit.
     pub normalized: NormalizedEvent,
-    /// Full event JSON exactly as received — stored verbatim (§6).
+    /// Full event JSON exactly as received — stored verbatim.
     pub payload: serde_json::Value,
 }
 
@@ -58,11 +58,11 @@ pub struct IngestOutcome {
     pub event: Event,
     /// The fingerprint this event grouped under.
     pub fingerprint: String,
-    /// Which notification check the caller should enqueue (§5.4, §12).
+    /// Which notification check the caller should enqueue.
     pub notify: NotifyKind,
 }
 
-/// Run the pipeline tail for a single normalized event (§5.4).
+/// Run the pipeline tail for a single normalized event.
 ///
 /// Steps: compute fingerprint → upsert issue (applying regression logic) →
 /// insert event → bump counters → decide which notification to enqueue.
@@ -89,8 +89,8 @@ pub async fn ingest_normalized(
     //    source of counter truth: the repository bumps `event_count` (+1) and
     //    advances `last_seen` for both new and existing issues, applies the
     //    regression logic (resolved → unresolved), and reports new-issue /
-    //    regression via the outcome (§7, §8.1). We must NOT bump the counter a
-    //    second time here, or every event would double-count (§7 counters).
+    //    regression via the outcome. We must NOT bump the counter a
+    //    second time here, or every event would double-count (counters).
     let upsert = issues
         .upsert_by_fingerprint(IssueUpsert {
             project_id: input.project_id,
@@ -104,7 +104,7 @@ pub async fn ingest_normalized(
         })
         .await?;
 
-    // 2. Insert the event verbatim (§6).
+    // 2. Insert the event verbatim.
     let event = events
         .insert(NewEvent {
             event_id: input.event_id,
@@ -117,7 +117,7 @@ pub async fn ingest_normalized(
 
     // 3. Decide which notification to enqueue. Regression takes precedence over
     //    new-issue (a brand-new issue cannot also be a regression, but guard
-    //    explicitly). Mute / per-user opt-out are applied by the caller (§12).
+    //    explicitly). Mute / per-user opt-out are applied by the caller.
     let notify = notify_kind(&upsert);
 
     // The upserted issue already reflects the bumped count + advanced last_seen,
@@ -540,7 +540,7 @@ mod tests {
 
     #[tokio::test]
     async fn muted_issue_still_counts_but_is_caller_concern() {
-        // The pipeline counts events regardless of mute (§8.1 — mute never drops
+        // The pipeline counts events regardless of mute (mute never drops
         // ingestion). Mute suppression is applied by the caller, so a recurring
         // event on a muted issue yields NotifyKind::None here anyway.
         let issues = FakeIssues::default();

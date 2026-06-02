@@ -1,4 +1,4 @@
-//! Invite token generation & link building (MVP §9).
+//! Invite token generation & link building.
 //!
 //! An invite token is a high-entropy, URL-safe random string that doubles as
 //! the DB primary key of the [`crate::domain::Invite`] record. Expiry and the

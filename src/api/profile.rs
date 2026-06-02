@@ -1,4 +1,4 @@
-//! Profile API handlers (MVP §16 / §10.3).
+//! Profile API handlers.
 //!
 //! Lets the current user view and edit their profile: display name, password
 //! (verify old → re-hash new), and the user-level `notifications_enabled`

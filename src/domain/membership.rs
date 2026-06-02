@@ -1,11 +1,11 @@
-//! Membership and role domain types (MVP §10.2).
+//! Membership and role domain types.
 
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Per-project role (§10.2). Roles are scoped per project.
+/// Per-project role. Roles are scoped per project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {

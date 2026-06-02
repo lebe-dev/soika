@@ -1,4 +1,4 @@
-//! Email composition and SMTP delivery (MVP §9, §12).
+//! Email composition and SMTP delivery.
 //!
 //! Two responsibilities:
 //!
@@ -11,7 +11,7 @@
 //!    builders and is reusable.
 //!
 //! When SMTP is unset the app degrades gracefully — the no-op mailer simply drops
-//! messages, and invite **links** still work (§3, §9).
+//! messages, and invite **links** still work.
 
 use lettre::message::Mailbox;
 use lettre::message::header::ContentType;
@@ -24,7 +24,7 @@ use crate::domain::Invite;
 use crate::error::{Error, Result};
 use crate::ports::OutboundEmail;
 
-/// Build the invite email for a generated invite link (§9).
+/// Build the invite email for a generated invite link.
 ///
 /// The link is always usable even without SMTP, so the body leads with the
 /// copyable URL.
@@ -48,7 +48,7 @@ pub fn invite_email(config: &Config, to: &str, invite: &Invite) -> OutboundEmail
     }
 }
 
-/// Build the "new issue" notification email (§12 trigger 1).
+/// Build the "new issue" notification email (trigger 1).
 pub fn new_issue_email(config: &Config, to: &str, issue_title: &str) -> OutboundEmail {
     let org = &config.organization_name;
     let subject = format!("[{org}] New issue: {}", truncate_subject(issue_title));
@@ -67,7 +67,7 @@ pub fn new_issue_email(config: &Config, to: &str, issue_title: &str) -> Outbound
     }
 }
 
-/// Build the "regression" notification email (§12 trigger 2).
+/// Build the "regression" notification email (trigger 2).
 pub fn regression_email(config: &Config, to: &str, issue_title: &str) -> OutboundEmail {
     let org = &config.organization_name;
     let subject = format!("[{org}] Regression: {}", truncate_subject(issue_title));
@@ -152,7 +152,7 @@ fn smtp_from_mailbox(smtp: &SmtpConfig) -> Result<Mailbox> {
         .map_err(|e| Error::Mail(format!("invalid SMTP_FROM address {raw:?}: {e}")))
 }
 
-/// Build the public `{BASE_URL}/invite/{token}` link (§9).
+/// Build the public `{BASE_URL}/invite/{token}` link.
 fn invite_link(config: &Config, token: &str) -> String {
     format!("{}/invite/{token}", config.base_url.trim_end_matches('/'))
 }
@@ -184,8 +184,6 @@ mod tests {
             base_url: "https://errors.example.com/".to_string(),
             secret_key: "secret".to_string(),
             allow_signup: false,
-            admin_email: None,
-            admin_password: None,
             default_events_retention: 1000,
             default_retention_days: 0,
             retention_cron: "0 */15 * * * *".to_string(),

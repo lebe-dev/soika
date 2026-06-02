@@ -1,7 +1,7 @@
 //! SQLite adapters implementing every repository port.
 //!
 //! SQL is kept ANSI-friendly so a PostgreSQL backend can be added later
-//! (MVP §2.2). The SQLite-specific representation choices are isolated in the
+//!. The SQLite-specific representation choices are isolated in the
 //! small conversion helpers below:
 //!
 //!   * UUID ids are stored as TEXT (lowercase hyphenated form) — see

@@ -1,4 +1,4 @@
-//! Event domain type (MVP §5) — a single captured occurrence.
+//! Event domain type — a single captured occurrence.
 
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};

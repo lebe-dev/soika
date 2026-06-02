@@ -1,10 +1,10 @@
-//! Normalization helpers for stable grouping (MVP §7).
+//! Normalization helpers for stable grouping.
 //!
 //! These functions strip volatile detail (line/column numbers, query strings,
 //! cache-busting hashes, memory addresses, anonymous-closure suffixes) from
 //! frame components so that semantically identical errors collapse into one
 //! group while genuinely different errors stay distinct. Normalization affects
-//! ONLY the fingerprint — the stored event keeps the raw values (§6).
+//! ONLY the fingerprint — the stored event keeps the raw values.
 
 use crate::domain::stacktrace::Frame;
 

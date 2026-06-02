@@ -1,4 +1,4 @@
-//! Library error type (MVP §2.1 — the lib crate uses `thiserror`).
+//! Library error type (the lib crate uses `thiserror`).
 //!
 //! HTTP mapping lives in `crate::api` / `crate::router`; this enum is the single
 //! domain-level error currency returned by ports and services.
@@ -31,7 +31,7 @@ pub enum Error {
     #[error("conflict: {0}")]
     Conflict(String),
 
-    /// Rate limit exceeded — maps to HTTP 429 (MVP §5.3).
+    /// Rate limit exceeded — maps to HTTP 429.
     #[error("rate limited")]
     RateLimited,
 

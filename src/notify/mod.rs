@@ -1,27 +1,27 @@
-//! Notification orchestration (MVP §12).
+//! Notification orchestration.
 //!
 //! Decides who to notify on new-issue / regression events and dispatches over
 //! two channels under the SAME suppression rules:
 //!
-//! - **email** — one message per opted-in project member (§12);
+//! - **email** — one message per opted-in project member;
 //! - **webhook** ([`Project::webhook_url`]) — a single HTTP POST JSON payload to
 //!   a per-project URL, generalizing the email-only path so channels like
-//!   Telegram can be added later through the same seam (Story 6.2).
+//!   Telegram can be added later through the same seam.
 //!
 //! Both channels respect three independent suppression rules:
 //!
 //! - **project mute** ([`Project::muted`]) — suppresses notifications for the
-//!   whole project (§8.2);
+//!   whole project;
 //! - **issue mute** ([`IssueStatus::Muted`]) — suppresses notifications for the
-//!   single issue, while ingestion/counting continue (§8.1);
+//!   single issue, while ingestion/counting continue;
 //! - **per-user opt-out** ([`User::notifications_enabled`]) — a profile setting
-//!   that excludes a user from all email (§10.3). (Webhook delivery is
+//!   that excludes a user from all email. (Webhook delivery is
 //!   project-scoped and has no per-user opt-out.)
 //!
 //! The suppression decisions are factored into pure helpers ([`is_suppressed`],
 //! [`recipients`]) so they can be unit-tested without I/O, and the webhook wire
 //! shape is built by the pure [`build_webhook_payload`] helper. The async entry
-//! points are invoked from the ingest pipeline (§5.4) and never propagate
+//! points are invoked from the ingest pipeline and never propagate
 //! transient delivery failures back to ingestion — those are logged.
 
 use std::time::Duration;
@@ -33,7 +33,7 @@ use crate::mail;
 use crate::state::AppState;
 
 /// Hard cap on how long a single webhook POST may take, so a hung endpoint
-/// cannot stall the ingest task indefinitely (Story 6.2). Delivery failures are
+/// cannot stall the ingest task indefinitely. Delivery failures are
 /// always swallowed, but a missing timeout would still block ingestion.
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -42,9 +42,9 @@ const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(5);
 pub enum Suppression {
     /// Notifications are not suppressed; deliver.
     None,
-    /// The whole project is muted (§8.2).
+    /// The whole project is muted.
     ProjectMuted,
-    /// The specific issue is muted (§8.1).
+    /// The specific issue is muted.
     IssueMuted,
 }
 
@@ -62,7 +62,7 @@ pub fn is_suppressed(project: &Project, issue: &Issue) -> Suppression {
     Suppression::None
 }
 
-/// Whether a single user should receive notifications (per-user opt-out, §10.3).
+/// Whether a single user should receive notifications (per-user opt-out).
 pub fn user_opted_in(user: &User) -> bool {
     user.notifications_enabled
 }
@@ -82,7 +82,7 @@ pub fn recipients<R>(members: &[(User, R)]) -> Vec<String> {
         .collect()
 }
 
-/// Notify relevant members that a new issue was seen (§12 trigger 1).
+/// Notify relevant members that a new issue was seen (trigger 1).
 pub async fn notify_new_issue(
     state: &AppState,
     project: &Project,
@@ -91,7 +91,7 @@ pub async fn notify_new_issue(
     dispatch(state, project, issue, Trigger::NewIssue).await
 }
 
-/// Notify relevant members that a resolved issue regressed (§12 trigger 2).
+/// Notify relevant members that a resolved issue regressed (trigger 2).
 pub async fn notify_regression(
     state: &AppState,
     project: &Project,
@@ -110,7 +110,7 @@ pub(crate) enum Trigger {
 }
 
 impl Trigger {
-    /// Stable wire string used in the webhook payload (Story 6.2). Distinct from
+    /// Stable wire string used in the webhook payload. Distinct from
     /// the email templates so downstream consumers can branch on it.
     fn as_str(&self) -> &'static str {
         match self {
@@ -121,7 +121,7 @@ impl Trigger {
 }
 
 /// JSON body POSTed to a project's [`Project::webhook_url`] on a new-issue or
-/// regression notification (Story 6.2). The shape is stable wire contract.
+/// regression notification. The shape is stable wire contract.
 #[derive(Debug, Serialize, PartialEq)]
 pub(crate) struct WebhookPayload {
     /// `"new_issue"` or `"regression"` (see [`Trigger::as_str`]).
@@ -170,7 +170,7 @@ async fn dispatch(
 ) -> crate::error::Result<()> {
     // Mute checks first — cheapest, and short-circuit before any I/O. This gates
     // BOTH channels: a project with a webhook_url set but muted is still
-    // suppressed (Story 6.2).
+    // suppressed.
     match is_suppressed(project, issue) {
         Suppression::None => {}
         suppression => {
@@ -184,13 +184,13 @@ async fn dispatch(
         }
     }
 
-    // Webhook channel (Story 6.2): fires independently of SMTP, so deployments
+    // Webhook channel: fires independently of SMTP, so deployments
     // with no mailer configured still get notified. Failures are swallowed.
     if let Some(url) = project.webhook_url.as_deref() {
         send_webhook(state, project, issue, trigger, url).await;
     }
 
-    // If email isn't even configured, skip the member lookup entirely (§3).
+    // If email isn't even configured, skip the member lookup entirely.
     if !state.mailer.is_enabled() {
         tracing::debug!(issue_id = %issue.id, "mailer disabled; skipping email notification");
         return Ok(());
@@ -216,7 +216,7 @@ async fn dispatch(
     Ok(())
 }
 
-/// POST the webhook payload, swallowing every error (Story 6.2).
+/// POST the webhook payload, swallowing every error.
 ///
 /// Build/connect failures and non-2xx responses are logged via `tracing::warn!`
 /// and never propagated — a webhook outage must NOT fail ingestion, mirroring
@@ -396,7 +396,7 @@ mod tests {
         assert!(!user_opted_in(&user("a@example.com", false)));
     }
 
-    // --- Webhook channel (Story 6.2) -----------------------------------------
+    // --- Webhook channel -----------------------------------------
 
     #[test]
     fn build_webhook_payload_sets_all_fields_and_issue_url() {
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn webhook_does_not_bypass_project_mute() {
         // A project with a webhook configured but muted is STILL ProjectMuted —
-        // the suppression gate runs before either channel (Story 6.2).
+        // the suppression gate runs before either channel.
         assert_eq!(
             is_suppressed(&project_with_webhook(true), &issue(IssueStatus::Unresolved)),
             Suppression::ProjectMuted
@@ -479,7 +479,7 @@ mod tests {
         );
     }
 
-    // --- Webhook delivery integration (Story 6.2) -----------------------------
+    // --- Webhook delivery integration -----------------------------
     //
     // These exercise the real `send_webhook` POST and its wiring inside
     // `dispatch` against a tiny local HTTP server (no external mock dependency).
@@ -542,8 +542,6 @@ mod tests {
             base_url,
             secret_key: "secret".into(),
             allow_signup: false,
-            admin_email: None,
-            admin_password: None,
             default_events_retention: 1000,
             default_retention_days: 0,
             retention_cron: "0 */15 * * * *".into(),

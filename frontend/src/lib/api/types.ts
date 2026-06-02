@@ -1,4 +1,4 @@
-// Wire types mirroring the Rust JSON API DTOs (MVP §16).
+// Wire types mirroring the Rust JSON API DTOs.
 //
 // Conventions from the backend:
 //   * `Id`        -> UUID string
@@ -38,6 +38,11 @@ export interface AuthConfig {
   oauth_provider_name: string;
   password_login_enabled: boolean;
   allow_signup: boolean;
+  /**
+   * Whether the instance admin has been provisioned. When `false` the SPA
+   * routes the operator to `/setup`; when `true`, `/setup` bounces to `/login`.
+   */
+  initialized: boolean;
 }
 
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */
@@ -52,6 +57,14 @@ export interface RegisterRequest {
   email: string;
   password: string;
   display_name: string;
+}
+
+/** `POST /auth/setup` body — first-run provisioning of the built-in admin. */
+export interface SetupRequest {
+  email: string;
+  password: string;
+  display_name: string;
+  org_name: string;
 }
 
 export interface UpdateProfileRequest {
@@ -88,10 +101,10 @@ export interface Project {
   dsn_public_key: string;
   dsn: string;
   retention_events: number;
-  /** Age-based retention in days (Story 7.1); 0 disables age-based pruning. */
+  /** Age-based retention in days; 0 disables age-based pruning. */
   retention_days: number;
   muted: boolean;
-  /** Per-project webhook URL for notifications (Story 6.2); null when unset. */
+  /** Per-project webhook URL for notifications; null when unset. */
   webhook_url: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
