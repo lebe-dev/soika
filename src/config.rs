@@ -1,6 +1,43 @@
 //! Application configuration — loaded from environment variables.
 
+use std::time::Duration;
+
 use crate::error::{Error, Result};
+
+/// Brute-force protection for password logins.
+///
+/// Failed credential checks are counted per (client IP, email) key over a
+/// rolling [`window`](Self::window). Once [`max_attempts`](Self::max_attempts)
+/// failures accumulate the key is locked; each successive lockout in a sustained
+/// attack grows exponentially from [`base_lockout`](Self::base_lockout) up to
+/// [`max_lockout`](Self::max_lockout). A successful login clears the key.
+#[derive(Debug, Clone)]
+pub struct LockoutConfig {
+    /// Master switch (`LOGIN_LOCKOUT_ENABLED`). When false the guard is a no-op.
+    pub enabled: bool,
+    /// Failures within `window` that trigger a lockout (`LOGIN_MAX_ATTEMPTS`).
+    pub max_attempts: u32,
+    /// Rolling window over which failures accumulate (`LOGIN_LOCKOUT_WINDOW_SECS`).
+    pub window: Duration,
+    /// First lockout duration; doubles on each repeat (`LOGIN_LOCKOUT_BASE_SECS`).
+    pub base_lockout: Duration,
+    /// Upper bound on the exponential lockout (`LOGIN_LOCKOUT_MAX_SECS`).
+    pub max_lockout: Duration,
+}
+
+impl Default for LockoutConfig {
+    /// Matches the env-var defaults: 5 attempts per 15 min, locking from 1 min
+    /// up to 1 hour.
+    fn default() -> Self {
+        LockoutConfig {
+            enabled: true,
+            max_attempts: 5,
+            window: Duration::from_secs(900),
+            base_lockout: Duration::from_secs(60),
+            max_lockout: Duration::from_secs(3600),
+        }
+    }
+}
 
 /// Optional SMTP configuration. When `None`, email features degrade gracefully
 /// to UI-only.
@@ -62,6 +99,8 @@ pub struct Config {
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
     pub oidc: Option<OidcConfig>,
+    /// Brute-force protection for password logins (`LOGIN_LOCKOUT_*`).
+    pub lockout: LockoutConfig,
 }
 
 impl Config {
@@ -95,6 +134,7 @@ impl Config {
 
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
+        let lockout = Self::lockout_from_env()?;
 
         Ok(Config {
             organization_name,
@@ -108,6 +148,38 @@ impl Config {
             retention_cron,
             smtp,
             oidc,
+            lockout,
+        })
+    }
+
+    /// Build the login brute-force protection config, applying defaults. Enabled
+    /// by default; values are validated so a misconfiguration fails fast at boot
+    /// rather than silently disabling the guard.
+    fn lockout_from_env() -> Result<LockoutConfig> {
+        let enabled = parse_bool(&env_or("LOGIN_LOCKOUT_ENABLED", "true"));
+
+        let max_attempts = env_or("LOGIN_MAX_ATTEMPTS", "5")
+            .parse::<u32>()
+            .map_err(|e| Error::validation(format!("LOGIN_MAX_ATTEMPTS: {e}")))?;
+        if max_attempts == 0 {
+            return Err(Error::validation("LOGIN_MAX_ATTEMPTS must be at least 1"));
+        }
+
+        let window = env_secs("LOGIN_LOCKOUT_WINDOW_SECS", 900)?;
+        let base_lockout = env_secs("LOGIN_LOCKOUT_BASE_SECS", 60)?;
+        let max_lockout = env_secs("LOGIN_LOCKOUT_MAX_SECS", 3600)?;
+        if max_lockout < base_lockout {
+            return Err(Error::validation(
+                "LOGIN_LOCKOUT_MAX_SECS must be >= LOGIN_LOCKOUT_BASE_SECS",
+            ));
+        }
+
+        Ok(LockoutConfig {
+            enabled,
+            max_attempts,
+            window,
+            base_lockout,
+            max_lockout,
         })
     }
 
@@ -170,6 +242,14 @@ fn env_opt(key: &str) -> Option<String> {
         Ok(v) if !v.trim().is_empty() => Some(v),
         _ => None,
     }
+}
+
+/// Read a duration in whole seconds from `key`, falling back to `default_secs`.
+fn env_secs(key: &str, default_secs: u64) -> Result<Duration> {
+    let secs = env_or(key, &default_secs.to_string())
+        .parse::<u64>()
+        .map_err(|e| Error::validation(format!("{key}: {e}")))?;
+    Ok(Duration::from_secs(secs))
 }
 
 fn parse_bool(s: &str) -> bool {

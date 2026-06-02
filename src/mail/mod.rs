@@ -189,6 +189,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".to_string(),
             smtp: None,
             oidc: None,
+            lockout: Default::default(),
         }
     }
 

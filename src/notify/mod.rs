@@ -549,6 +549,7 @@ mod tests {
             // independently of SMTP configuration.
             smtp: None,
             oidc: None,
+            lockout: Default::default(),
         }
     }
 

@@ -10,8 +10,10 @@
 //!
 //! Errors render as `{ "error": "..." }` JSON with the mapped HTTP status.
 
+use std::net::SocketAddr;
+
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,7 @@ use crate::state::AppState;
 
 use super::extractor::CurrentUser;
 use super::invite_token::check_invite_usable;
+use super::lockout::{LockoutDecision, client_ip, lockout_key};
 use super::password::{hash_password, verify_password};
 use super::session::{end_session, set_cookie_header, start_session};
 
@@ -67,6 +70,20 @@ fn status_for(err: &Error) -> StatusCode {
 #[derive(Debug, Serialize)]
 struct ErrorBody {
     error: String,
+}
+
+/// `429 Too Many Requests` with a `Retry-After` hint, returned when the
+/// brute-force guard has locked the (IP, email) key. Built directly rather than
+/// via [`AuthError`] so the `Retry-After` header is included.
+fn locked_response(retry_after_secs: u64) -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        [("retry-after", retry_after_secs.to_string())],
+        Json(ErrorBody {
+            error: "too many failed attempts; try again later".to_string(),
+        }),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -178,11 +195,24 @@ fn validate_display_name(name: &str) -> Result<String, Error> {
 // ---------------------------------------------------------------------------
 
 /// `POST /auth/login` — verify credentials, create a session, set the cookie.
+///
+/// Brute-force protected: failures are counted per (client IP, email) and the
+/// key is temporarily locked once they cross the configured threshold (see
+/// [`super::lockout`]). The lock is checked *before* the argon2 verify so a
+/// locked key can't be used to burn CPU.
 pub async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
+    connect: Option<ConnectInfo<SocketAddr>>,
     Json(body): Json<LoginRequest>,
 ) -> Result<Response, AuthError> {
     let email = normalize_email(&body.email)?;
+
+    let ip = client_ip(&headers, connect.map(|c| c.0));
+    let key = lockout_key(&ip, &email);
+    if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
+        return Ok(locked_response(retry_after_secs));
+    }
 
     // Coexistence with SSO: when OAuth is enabled, password login is
     // reserved for the built-in admin (`is_admin`). Everyone else — including any
@@ -210,7 +240,9 @@ pub async fn login(
     if !ok {
         // Distinguish the "password login disabled" case for a known non-admin
         // account so the UI can point users at SSO, while keeping unknown emails
-        // and bad passwords on the generic anti-enumeration path.
+        // and bad passwords on the generic anti-enumeration path. This branch is
+        // deterministic (independent of the password) so it does not count toward
+        // the brute-force budget.
         if oauth_enabled
             && let Some(u) = &user
             && !u.is_admin
@@ -219,16 +251,21 @@ pub async fn login(
                 "password login is disabled; use SSO".into(),
             )));
         }
+        // A genuine credential failure (bad password or unknown email): count it.
+        state.login_guard.record_failure(&key);
         return Err(AuthError(Error::Auth("invalid email or password".into())));
     }
     let user = user.expect("ok implies a user was found");
 
+    // Successful login clears any accrued failures / lockout for this key.
+    state.login_guard.record_success(&key);
+
     let (_, cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
 
-    let mut headers = HeaderMap::new();
-    set_cookie_header(&mut headers, &cookie)?;
-    Ok((headers, Json(UserView::from(user))).into_response())
+    let mut out = HeaderMap::new();
+    set_cookie_header(&mut out, &cookie)?;
+    Ok((out, Json(UserView::from(user))).into_response())
 }
 
 /// `POST /auth/setup` — first-run provisioning of the built-in admin.
@@ -366,10 +403,16 @@ pub async fn get_invite(
 ///   1. A logged-in user → joins the project with the invite's role.
 ///   2. An existing account (by email + password) → authenticates, then joins.
 ///   3. A new email → registers (independent of `allow_signup`), then joins.
+///
+/// The anonymous branch verifies a password (case 2), so it is brute-force
+/// protected the same way as `login`. A logged-in acceptance (case 1) verifies
+/// no credentials and is not gated.
 pub async fn accept_invite(
     State(state): State<AppState>,
     current: Option<CurrentUser>,
     Path(token): Path<String>,
+    headers: HeaderMap,
+    connect: Option<ConnectInfo<SocketAddr>>,
     body: Option<Json<AcceptInviteRequest>>,
 ) -> Result<Response, AuthError> {
     let invite = load_usable_invite(&state, &token).await?;
@@ -379,8 +422,34 @@ pub async fn accept_invite(
     let (user, set_cookie): (User, Option<String>) = if let Some(CurrentUser(u)) = current {
         (u, None)
     } else {
-        let (u, cookie) = resolve_or_register_invitee(&state, &invite, &req).await?;
-        (u, Some(cookie))
+        // Key the guard on the candidate email (request, else invite target) so
+        // a password-guessing loop against an existing account is throttled.
+        let candidate_email = req
+            .email
+            .as_deref()
+            .or(invite.email.as_deref())
+            .unwrap_or("unknown")
+            .trim()
+            .to_ascii_lowercase();
+        let ip = client_ip(&headers, connect.map(|c| c.0));
+        let key = lockout_key(&ip, &candidate_email);
+        if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
+            return Ok(locked_response(retry_after_secs));
+        }
+
+        match resolve_or_register_invitee(&state, &invite, &req).await {
+            Ok((u, cookie)) => {
+                state.login_guard.record_success(&key);
+                (u, Some(cookie))
+            }
+            // Only a credential failure feeds the brute-force budget; validation
+            // / forbidden errors are deterministic and pass straight through.
+            Err(e @ Error::Auth(_)) => {
+                state.login_guard.record_failure(&key);
+                return Err(AuthError(e));
+            }
+            Err(e) => return Err(AuthError(e)),
+        }
     };
 
     // Join the project with the invited role (idempotent upsert).
@@ -476,7 +545,7 @@ async fn resolve_or_register_invitee(
         }
         None => {
             // Coexistence with SSO: under OAuth we do not mint a
-            // password-backed account from an invite. MVP behaviour: the invitee
+            // password-backed account from an invite. Behaviour: the invitee
             // must first sign in via SSO (which find-or-creates their account),
             // then accept the invite while logged in. We surface this as a
             // Forbidden so the UI can route them to SSO. Chosen for simplicity —

@@ -15,6 +15,7 @@
 pub mod extractor;
 pub mod handlers;
 pub mod invite_token;
+pub mod lockout;
 pub mod oidc;
 pub mod oidc_handlers;
 pub mod password;
@@ -51,3 +52,6 @@ pub use oidc::{
 
 // --- Invite surface ----------------------------------------------------------
 pub use invite_token::{INVITE_TTL_DAYS, check_invite_usable, generate_invite_token, invite_link};
+
+// --- Brute-force protection (used by handlers; wired into AppState) -----------
+pub use lockout::{LockoutDecision, LoginGuard, client_ip, lockout_key};

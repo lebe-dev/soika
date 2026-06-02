@@ -63,10 +63,16 @@ async fn main() -> Result<()> {
         .with_context(|| format!("binding to {}", config.bind_addr))?;
     tracing::info!("listening on {}", config.bind_addr);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("serving HTTP")?;
+    // `into_make_service_with_connect_info` exposes the TCP peer address to
+    // handlers via `ConnectInfo<SocketAddr>`, used as the brute-force fallback
+    // key when no `X-Forwarded-For` / `X-Real-IP` proxy header is present.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("serving HTTP")?;
 
     scheduler_handle.abort();
     tracing::info!("shutdown complete");

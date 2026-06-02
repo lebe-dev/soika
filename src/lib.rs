@@ -61,6 +61,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         SqliteMembershipRepository, SqliteProjectRepository, SqliteSessionRepository,
         SqliteSettingsRepository, SqliteTeamRepository, SqliteUserRepository,
     };
+    use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
     use ports::Mailer;
 
@@ -68,6 +69,8 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         Some(smtp) => Arc::new(SmtpMailer::new(smtp)),
         None => Arc::new(NoopMailer),
     };
+
+    let login_guard = Arc::new(LoginGuard::new(config.lockout.clone()));
 
     AppState {
         config: Arc::new(config),
@@ -83,6 +86,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         mailer,
         clock: Arc::new(SystemClock),
         rate_limiter: Arc::new(RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW)),
+        login_guard,
         // The OIDC provider (if any) is wired separately after startup discovery
         // (fail-fast) via [`AppState::with_oidc`].
         oidc: None,

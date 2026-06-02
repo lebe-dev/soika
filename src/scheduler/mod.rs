@@ -74,7 +74,7 @@ async fn run_loop(state: &AppState) -> Result<()> {
 
 /// Parse a cron expression, accepting both 5-field and 6-field (seconds) forms.
 ///
-/// The MVP default `0 */15 * * * *` is a 6-field pattern; `with_seconds_optional`
+/// Default `0 */15 * * * *` is a 6-field pattern; `with_seconds_optional`
 /// lets operators also supply a standard 5-field crontab line.
 pub fn parse_cron(expr: &str) -> Result<Cron> {
     Cron::new(expr)
@@ -296,6 +296,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
             oidc: None,
+            lockout: Default::default(),
         }
     }
 
