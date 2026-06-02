@@ -95,3 +95,10 @@ push-image:
     docker push {{ imageName }}:{{ version }}
 
 release: build-image && push-image
+
+ssh:
+    ssh kaiman
+
+# --- Deploy ---
+deploy:
+    ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
