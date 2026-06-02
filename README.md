@@ -94,4 +94,4 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
 
 ## License
 
-MIT
+[MIT](LICENSE.md)
