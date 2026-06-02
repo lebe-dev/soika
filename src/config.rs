@@ -111,7 +111,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let organization_name = env_or("ORGANIZATION_NAME", "soika");
         let database_url = env_or("DATABASE_URL", "sqlite://soika.db");
-        let bind_addr = env_or("BIND_ADDR", "0.0.0.0:8080");
+        let bind_addr = env_or("BIND_ADDR", "127.0.0.1:8080");
         let base_url = env_or("BASE_URL", "http://localhost:8080");
 
         let secret_key =
@@ -218,8 +218,10 @@ impl Config {
 
         let scopes = split_list(&env_or("OAUTH_SCOPES", "openid email profile"), ' ');
         let provider_name = env_or("OAUTH_PROVIDER_NAME", "SSO");
-        let allowed_email_domains =
-            split_list(&env_opt("OAUTH_ALLOWED_EMAIL_DOMAINS").unwrap_or_default(), ',');
+        let allowed_email_domains = split_list(
+            &env_opt("OAUTH_ALLOWED_EMAIL_DOMAINS").unwrap_or_default(),
+            ',',
+        );
 
         Ok(Some(OidcConfig {
             issuer_url,
@@ -371,9 +373,7 @@ mod tests {
         unsafe { std::env::set_var("OAUTH_REDIRECT_URL", "https://custom/cb") };
         unsafe { std::env::set_var("OAUTH_SCOPES", "openid email") };
         unsafe { std::env::set_var("OAUTH_PROVIDER_NAME", "GitLab") };
-        unsafe {
-            std::env::set_var("OAUTH_ALLOWED_EMAIL_DOMAINS", "example.com, itkey.com ,")
-        };
+        unsafe { std::env::set_var("OAUTH_ALLOWED_EMAIL_DOMAINS", "example.com, itkey.com ,") };
 
         let oidc = Config::oidc_from_env("https://base")
             .unwrap()
@@ -382,10 +382,7 @@ mod tests {
         assert_eq!(oidc.redirect_url, "https://custom/cb");
         assert_eq!(oidc.scopes, vec!["openid", "email"]);
         assert_eq!(oidc.provider_name, "GitLab");
-        assert_eq!(
-            oidc.allowed_email_domains,
-            vec!["example.com", "itkey.com"]
-        );
+        assert_eq!(oidc.allowed_email_domains, vec!["example.com", "itkey.com"]);
 
         clear_oauth_env();
     }

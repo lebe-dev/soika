@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { version } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
   import { api, errorMessage, type UpdateSettingsRequest } from '$lib/api';
   import { formatDate } from '$lib/format';
@@ -161,6 +162,19 @@
               and invite delivery. Invite links remain copyable without it.
             </p>
           {/if}
+        </Card.Content>
+      </Card.Root>
+
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>About</Card.Title>
+          <Card.Description>Build information for this instance.</Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+            <dt class="text-muted-foreground">Version</dt>
+            <dd class="font-mono">soika v{version}</dd>
+          </dl>
         </Card.Content>
       </Card.Root>
 

@@ -19,9 +19,21 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile
 
+COPY frontend/ ./
+
+# Cargo.toml is the single source of truth for the app version. Mirror it into
+# package.json before building so the version baked into the SPA (read from
+# package.json by svelte.config.js, exposed via $app/environment) matches the
+# binary. Must run after `COPY frontend/` or the source package.json overwrites it.
+COPY Cargo.toml /build/Cargo.toml
+RUN set -e; \
+    VERSION="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' /build/Cargo.toml | head -1)"; \
+    [ -n "$VERSION" ] || { echo "version not found in Cargo.toml" >&2; exit 1; }; \
+    sed -i "s/\"version\": *\"[^\"]*\"/\"version\": \"$VERSION\"/" package.json; \
+    echo "package.json version -> $VERSION"
+
 # Build the SPA. adapter-static writes to ../web/dist (see svelte.config.js),
 # so the output lands at /build/web/dist for the Rust stage to embed.
-COPY frontend/ ./
 RUN yarn build
 
 # ---------------------------------------------------------------------------
@@ -56,26 +68,29 @@ RUN upx -9 --lzma /build/soika
 # ---------------------------------------------------------------------------
 FROM alpine:3.23 AS runtime
 
+WORKDIR /app
+
 # wget (busybox) backs the HEALTHCHECK; ca-certificates for outbound SMTP TLS.
 RUN apk add --no-cache ca-certificates wget \
     && addgroup -g 10001 -S soika \
-    && adduser -u 10001 -S -G soika -h /data soika \
-    && mkdir -p /data \
-    && chown -R 10001:10001 /data
+    && adduser -u 10001 -S -G soika -h /app soika \
+    && mkdir -p /app/data \
+    && chown -R 10001:10001 /app/data
 
 COPY --from=backend /build/soika /usr/local/bin/soika
 
 # SQLite database lives on a mounted volume (the reference deployment).
-ENV DATABASE_URL="sqlite:///data/soika.db?mode=rwc" \
+ENV DATABASE_URL="sqlite:///app/data/soika.db?mode=rwc" \
     BIND_ADDR="0.0.0.0:8080"
-VOLUME ["/data"]
+
+VOLUME ["/app/data"]
 
 USER 10001:10001
-WORKDIR /data
+
 EXPOSE 8080
 
 # Liveness probe — the binary serves GET /healthz (src/router.rs).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --quiet --spider --tries=1 http://127.0.0.1:8080/healthz || exit 1
 
-ENTRYPOINT ["/usr/local/bin/soika"]
+ENTRYPOINT ["/app/soika"]
