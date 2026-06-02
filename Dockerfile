@@ -12,7 +12,7 @@
 # ---------------------------------------------------------------------------
 # Stage A — frontend (SvelteKit + Tailwind + shadcn-svelte, yarn)
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /build/frontend
 
 # Install deps first for layer caching (only re-runs when manifests change).
