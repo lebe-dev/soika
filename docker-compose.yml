@@ -1,0 +1,18 @@
+services:
+  soika:
+    container_name: soika
+    image: tinyops/soika:0.1.0
+    restart: always
+    environment:
+      BIND_ADDR: "0.0.0.0:8080"
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          # Required only for aragon hashing
+          memory: 128M
