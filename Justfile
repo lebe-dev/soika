@@ -18,6 +18,14 @@ TAG := env_var_or_default("TAG", "latest")
 default:
     @just --list
 
+# Format the code.
+fmt:
+    cargo fmt --all
+
+# Check formatting without writing changes.
+fmt-check:
+    cargo fmt --all -- --check
+
 # Build the workspace (debug). Run `just dist` first for fresh embedded assets.
 build:
     cargo build
@@ -39,6 +47,15 @@ lint-frontend:
 # Build the embedded frontend assets (alias used by `release`).
 dist: frontend-build
 
+# --- Dependencies ---
+bump-backend-deps:
+    cargo update
+
+bump-frontend-deps:
+    cd frontend && yarn upgrade
+
+bump-deps: bump-backend-deps && bump-frontend-deps
+
 # Run the server (loads .env if present).
 run:
     cargo run
@@ -53,16 +70,8 @@ test-frontend name="":
 test: test-backend && test-frontend
 
 # Lint with clippy, denying warnings.
-lint:
+lint: fmt
     cargo clippy --all-targets --all-features -- -D warnings
-
-# Format the code.
-fmt:
-    cargo fmt --all
-
-# Check formatting without writing changes.
-fmt-check:
-    cargo fmt --all -- --check
 
 # Type-check without producing artifacts.
 check:
