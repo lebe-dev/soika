@@ -48,6 +48,10 @@ pub struct SmtpConfig {
     pub username: Option<String>,
     pub password: Option<String>,
     pub from: Option<String>,
+    /// Whether to encrypt the connection (`SMTP_TLS`, default `true`). When
+    /// `false` the transport connects in plaintext with no TLS/STARTTLS — only
+    /// for local relays such as mailcrab/MailHog that have no TLS support.
+    pub tls: bool,
 }
 
 /// Optional Sentry telemetry configuration. When `None`, error reporting is
@@ -228,6 +232,7 @@ impl Config {
             username: env_opt("SMTP_USERNAME"),
             password: env_opt("SMTP_PASSWORD"),
             from: env_opt("SMTP_FROM"),
+            tls: parse_bool(&env_or("SMTP_TLS", "true")),
         }))
     }
 
@@ -444,6 +449,58 @@ mod tests {
         assert_eq!(sentry.environment.as_deref(), Some("staging"));
 
         clear_sentry_env();
+    }
+
+    const SMTP_KEYS: &[&str] = &[
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_FROM",
+        "SMTP_TLS",
+    ];
+
+    fn clear_smtp_env() {
+        for k in SMTP_KEYS {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn smtp_unset_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_smtp_env();
+
+        assert!(Config::smtp_from_env().unwrap().is_none());
+    }
+
+    #[test]
+    fn smtp_tls_defaults_to_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_smtp_env();
+        unsafe { std::env::set_var("SMTP_HOST", "smtp.example.com") };
+
+        let smtp = Config::smtp_from_env()
+            .unwrap()
+            .expect("smtp should be Some when host set");
+        assert!(smtp.tls);
+
+        clear_smtp_env();
+    }
+
+    #[test]
+    fn smtp_tls_can_be_disabled() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_smtp_env();
+        unsafe { std::env::set_var("SMTP_HOST", "localhost") };
+        unsafe { std::env::set_var("SMTP_TLS", "false") };
+
+        let smtp = Config::smtp_from_env()
+            .unwrap()
+            .expect("smtp should be Some when host set");
+        assert!(!smtp.tls);
+
+        clear_smtp_env();
     }
 
     #[test]

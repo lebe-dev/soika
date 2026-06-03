@@ -15,8 +15,8 @@
 
 use lettre::message::Mailbox;
 use lettre::message::header::ContentType;
-use lettre::transport::smtp::AsyncSmtpTransport;
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::{AsyncSmtpTransport, AsyncSmtpTransportBuilder};
 use lettre::{AsyncTransport, Message, Tokio1Executor};
 
 use crate::config::{Config, SmtpConfig};
@@ -140,10 +140,18 @@ const SUBMISSIONS_PORT: u16 = 465;
 
 /// Build the async SMTP transport from config.
 ///
-/// Selects implicit TLS on port 465 (`relay`) and STARTTLS on every other port
-/// (`starttls_relay`, the common case for the default port 587). Credentials are
-/// attached only when both username and password are present.
+/// When `tls` is disabled the transport connects in plaintext via
+/// `builder_dangerous` (no TLS, no STARTTLS) — for local relays such as
+/// mailcrab/MailHog. Otherwise it selects implicit TLS on port 465 (`relay`) and
+/// STARTTLS on every other port (`starttls_relay`, the common case for the
+/// default port 587). Credentials are attached only when both username and
+/// password are present.
 fn build_transport(smtp: &SmtpConfig) -> Result<AsyncSmtpTransport<Tokio1Executor>> {
+    if !smtp.tls {
+        let builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp.host);
+        return Ok(with_credentials(builder.port(smtp.port), smtp).build());
+    }
+
     let builder = if smtp.port == SUBMISSIONS_PORT {
         AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.host)
     } else {
@@ -151,13 +159,19 @@ fn build_transport(smtp: &SmtpConfig) -> Result<AsyncSmtpTransport<Tokio1Executo
     }
     .map_err(|e| Error::Mail(format!("configuring SMTP relay {:?}: {e}", smtp.host)))?;
 
-    let mut builder = builder.port(smtp.port);
+    Ok(with_credentials(builder.port(smtp.port), smtp).build())
+}
 
-    if let (Some(username), Some(password)) = (smtp.username.as_ref(), smtp.password.as_ref()) {
-        builder = builder.credentials(Credentials::new(username.clone(), password.clone()));
-    }
-
-    Ok(builder.build())
+/// Attach SMTP credentials to the builder when both username and password are
+/// present; otherwise leave it unauthenticated.
+fn with_credentials(
+    builder: AsyncSmtpTransportBuilder,
+    smtp: &SmtpConfig,
+) -> AsyncSmtpTransportBuilder {
+    let (Some(username), Some(password)) = (smtp.username.as_ref(), smtp.password.as_ref()) else {
+        return builder;
+    };
+    builder.credentials(Credentials::new(username.clone(), password.clone()))
 }
 
 /// Resolve the From mailbox, defaulting to `soika@<smtp-host>` when `SMTP_FROM`
@@ -287,6 +301,7 @@ mod tests {
             username: None,
             password: None,
             from: None,
+            tls: true,
         };
         let mbox = smtp_from_mailbox(&smtp).expect("default from parses");
         assert_eq!(mbox.email.to_string(), "soika@mail.example.com");
@@ -300,9 +315,38 @@ mod tests {
             username: None,
             password: None,
             from: Some("Alerts <alerts@example.com>".to_string()),
+            tls: true,
         };
         let mbox = smtp_from_mailbox(&smtp).expect("configured from parses");
         assert_eq!(mbox.email.to_string(), "alerts@example.com");
+    }
+
+    #[test]
+    fn build_transport_plaintext_when_tls_disabled() {
+        // mailcrab/MailHog: plaintext relay, no TLS. Must build without error
+        // even though no TLS feature is negotiated.
+        let smtp = SmtpConfig {
+            host: "localhost".to_string(),
+            port: 1025,
+            username: None,
+            password: None,
+            from: None,
+            tls: false,
+        };
+        assert!(build_transport(&smtp).is_ok());
+    }
+
+    #[test]
+    fn build_transport_tls_relay_builds() {
+        let smtp = SmtpConfig {
+            host: "smtp.example.com".to_string(),
+            port: 587,
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            from: None,
+            tls: true,
+        };
+        assert!(build_transport(&smtp).is_ok());
     }
 
     #[test]
@@ -313,6 +357,7 @@ mod tests {
             username: None,
             password: None,
             from: Some("not an email".to_string()),
+            tls: true,
         };
         assert!(matches!(smtp_from_mailbox(&smtp), Err(Error::Mail(_))));
     }
