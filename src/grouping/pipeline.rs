@@ -265,6 +265,24 @@ mod tests {
             Ok(self.rows.lock().unwrap().clone())
         }
 
+        async fn unresolved_counts(
+            &self,
+            project_ids: &[Id],
+        ) -> Result<std::collections::HashMap<Id, i64>> {
+            let rows = self.rows.lock().unwrap();
+            let mut counts = std::collections::HashMap::new();
+            for id in project_ids {
+                let count = rows
+                    .iter()
+                    .filter(|i| i.project_id == *id && i.status == IssueStatus::Unresolved)
+                    .count() as i64;
+                if count > 0 {
+                    counts.insert(*id, count);
+                }
+            }
+            Ok(counts)
+        }
+
         async fn override_fingerprint(
             &self,
             issue_id: Id,

@@ -73,6 +73,14 @@ pub struct AuthConfig {
     /// Frontend telemetry (Sentry DSN). Only populated for an authenticated
     /// session, so the DSN never appears on an anonymous response.
     pub telemetry: Option<ClientConfigView>,
+    /// Dashboard bootstrap: the signed-in user's projects, each with its
+    /// unresolved-issue count. `null` for an anonymous caller (mirrors
+    /// `user`/`telemetry`). Lets the dashboard render from this single request
+    /// instead of fanning out to `/projects` plus one `/issues` call per project.
+    pub projects: Option<Vec<crate::api::projects::ProjectOverviewView>>,
+    /// Dashboard bootstrap: team summaries (for the create-project picker).
+    /// `null` for an anonymous caller.
+    pub teams: Option<Vec<crate::api::teams::TeamSummary>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +128,18 @@ pub async fn auth_config(
     let telemetry = current_user
         .as_ref()
         .map(|_| ClientConfigView::from_state(&state));
+
+    // Dashboard slice, also session-gated. On a DB error we degrade to `null`
+    // (an empty dashboard) rather than failing the whole bootstrap — consistent
+    // with the resilient defaults above (`initialized`, `allow_signup`).
+    let (projects, teams) = match current_user.as_ref() {
+        Some(user) => (
+            crate::api::projects::overviews(&state, user).await.ok(),
+            crate::api::teams::summaries(&state).await.ok(),
+        ),
+        None => (None, None),
+    };
+
     let user = current_user.map(ProfileView::from);
 
     Json(AuthConfig {
@@ -130,6 +150,8 @@ pub async fn auth_config(
         initialized,
         user,
         telemetry,
+        projects,
+        teams,
     })
 }
 

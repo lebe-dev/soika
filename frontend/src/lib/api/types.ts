@@ -54,6 +54,20 @@ export interface AuthConfig {
   user: User | null;
   /** Frontend telemetry; only present for an authenticated session. */
   telemetry: ClientConfig | null;
+  /**
+   * Dashboard bootstrap: the signed-in user's projects, each with its
+   * unresolved-issue count. `null` when unauthenticated. Lets the dashboard
+   * render from this single request instead of fetching `/projects` plus one
+   * `/issues` call per project.
+   */
+  projects: ProjectOverview[] | null;
+  /** Dashboard bootstrap: team summaries (create-project picker); `null` when unauthenticated. */
+  teams: TeamSummary[] | null;
+}
+
+/** A project plus its unresolved-issue count (the `/auth/config` dashboard slice). */
+export interface ProjectOverview extends Project {
+  unresolved_count: number;
 }
 
 /**

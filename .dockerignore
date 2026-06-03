@@ -31,3 +31,5 @@
 *.swp
 Dockerfile
 .dockerignore
+
+/data

@@ -339,6 +339,9 @@ async fn auth_config_anonymous_omits_session_slice() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["user"], Value::Null);
     assert_eq!(json["telemetry"], Value::Null);
+    // The dashboard slice is session-gated too: null for an anonymous caller.
+    assert_eq!(json["projects"], Value::Null);
+    assert_eq!(json["teams"], Value::Null);
 }
 
 #[tokio::test]
@@ -357,6 +360,10 @@ async fn auth_config_embeds_user_and_telemetry_for_session() {
     // Telemetry is present once authenticated; `release` is always set even when
     // Sentry is disabled (no DSN configured in the test).
     assert!(json["telemetry"]["release"].is_string());
+    // The dashboard slice is embedded too (empty arrays for a fresh user with no
+    // projects/teams) so the dashboard renders from this single request.
+    assert!(json["projects"].is_array());
+    assert!(json["teams"].is_array());
 }
 
 // --- /auth/oidc/callback ---------------------------------------------------

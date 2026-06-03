@@ -16,6 +16,7 @@ use crate::error::{Error, Result};
 use crate::ports::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
 use async_trait::async_trait;
 use sqlx::Row;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 #[derive(Clone)]
@@ -242,6 +243,35 @@ impl IssueRepository for SqliteIssueRepository {
             .fetch_all(&self.db)
             .await?;
         rows.iter().map(row_to_issue).collect()
+    }
+
+    async fn unresolved_counts(&self, project_ids: &[Id]) -> Result<HashMap<Id, i64>> {
+        if project_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        // Bind every id as a parameter (the count is bounded by the caller's
+        // project list, never user-supplied text) so the IN-list stays
+        // injection-safe. Projects with zero unresolved issues drop out of the
+        // GROUP BY and are simply absent from the returned map.
+        let placeholders = vec!["?"; project_ids.len()].join(",");
+        let sql = format!(
+            "SELECT project_id, COUNT(*) AS cnt FROM issues \
+             WHERE status = 'unresolved' AND project_id IN ({placeholders}) \
+             GROUP BY project_id"
+        );
+        let mut query = sqlx::query(&sql);
+        for id in project_ids {
+            query = query.bind(id.to_string());
+        }
+        let rows = query.fetch_all(&self.db).await?;
+
+        let mut counts = HashMap::with_capacity(rows.len());
+        for row in &rows {
+            let project_id = parse_id(row.try_get::<String, _>("project_id")?)?;
+            counts.insert(project_id, row.try_get::<i64, _>("cnt")?);
+        }
+        Ok(counts)
     }
 
     async fn override_fingerprint(&self, issue_id: Id, new_fingerprint: String) -> Result<Issue> {
@@ -533,6 +563,41 @@ mod tests {
 
         let all = repo.list(project_id, IssueFilter::default()).await.unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn unresolved_counts_groups_by_project_and_skips_resolved() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        // Two unresolved + one resolved → the resolved one must not be counted.
+        repo.upsert_by_fingerprint(upsert(project_id, "fpa", chrono::Utc::now()))
+            .await
+            .unwrap();
+        repo.upsert_by_fingerprint(upsert(project_id, "fpb", chrono::Utc::now()))
+            .await
+            .unwrap();
+        let resolved = repo
+            .upsert_by_fingerprint(upsert(project_id, "fpc", chrono::Utc::now()))
+            .await
+            .unwrap();
+        repo.set_status(resolved.issue.id, IssueStatus::Resolved)
+            .await
+            .unwrap();
+
+        // A project with no unresolved issues is absent from the map (callers
+        // read a missing key as 0).
+        let empty_project = Id::new_v4();
+        let counts = repo
+            .unresolved_counts(&[project_id, empty_project])
+            .await
+            .unwrap();
+        assert_eq!(counts.get(&project_id).copied(), Some(2));
+        assert_eq!(counts.get(&empty_project), None);
+
+        // Empty input short-circuits to an empty map.
+        assert!(repo.unresolved_counts(&[]).await.unwrap().is_empty());
     }
 
     #[tokio::test]

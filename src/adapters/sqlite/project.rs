@@ -133,14 +133,16 @@ impl ProjectRepository for SqliteProjectRepository {
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Project>> {
-        // Projects the user can see via a project membership.
-        let sql = format!(
-            "SELECT {PROJECT_COLS} FROM projects p \
+        // Projects the user can see via a project membership. Select `p.*`
+        // rather than the bare `PROJECT_COLS` list: `memberships` also has
+        // `created_at`/`updated_at`, so an unqualified projection over the join
+        // is ambiguous. `row_to_project` reads columns by name, so `p.*` (the
+        // project columns, unqualified in the result set) maps cleanly.
+        let sql = "SELECT p.* FROM projects p \
              JOIN memberships m ON m.project_id = p.id \
              WHERE m.user_id = ? \
-             ORDER BY p.name"
-        );
-        let rows = sqlx::query(&sql)
+             ORDER BY p.name";
+        let rows = sqlx::query(sql)
             .bind(user_id.to_string())
             .fetch_all(&self.db)
             .await?;
@@ -279,6 +281,52 @@ mod tests {
         let found = repo.find_by_dsn("dsn-key-alpha").await.unwrap().unwrap();
         assert_eq!(found.id, created.id);
         assert!(repo.find_by_dsn("nope").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn list_for_user_returns_member_projects() {
+        // Regression: `memberships` also has a `created_at`, so projecting the
+        // bare column list over the join was ambiguous and errored for every
+        // non-admin caller. The join must qualify its projection.
+        let pool = pool().await;
+        let team_id = seed_team(&pool).await;
+        let repo = SqliteProjectRepository::new(pool.clone());
+
+        let project = repo
+            .create(new_project(team_id, "alpha", "dsn-alpha"))
+            .await
+            .unwrap();
+
+        let user_id = Id::new_v4();
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO users (id, email, display_name, password_hash, created_at, updated_at) \
+             VALUES (?, 'm@example.com', 'Member', 'x', ?, ?)",
+        )
+        .bind(user_id.to_string())
+        .bind(&now)
+        .bind(&now)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO memberships (project_id, user_id, role, created_at) \
+             VALUES (?, ?, 'member', ?)",
+        )
+        .bind(project.id.to_string())
+        .bind(user_id.to_string())
+        .bind(&now)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mine = repo.list_for_user(user_id).await.unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].id, project.id);
+
+        // A user with no memberships sees nothing.
+        let stranger = repo.list_for_user(Id::new_v4()).await.unwrap();
+        assert!(stranger.is_empty());
     }
 
     #[tokio::test]

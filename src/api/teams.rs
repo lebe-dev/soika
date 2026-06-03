@@ -254,11 +254,10 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// `GET /teams` — list teams (any authenticated user). Returns summaries.
-pub async fn list(
-    _user: AuthUser,
-    State(state): State<AppState>,
-) -> Result<Json<Vec<TeamSummary>>, ApiError> {
+/// Team summaries (id, name, member/project counts) for every team.
+///
+/// Shared by `GET /teams` and the `/auth/config` dashboard bootstrap.
+pub async fn summaries(state: &AppState) -> Result<Vec<TeamSummary>, ApiError> {
     let teams = state.teams.list().await?;
     let mut out = Vec::with_capacity(teams.len());
     for team in teams {
@@ -271,7 +270,15 @@ pub async fn list(
             project_count: projects.len(),
         });
     }
-    Ok(Json(out))
+    Ok(out)
+}
+
+/// `GET /teams` — list teams (any authenticated user). Returns summaries.
+pub async fn list(
+    _user: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<TeamSummary>>, ApiError> {
+    Ok(Json(summaries(&state).await?))
 }
 
 /// `POST /teams` — create a team (instance admin).

@@ -182,9 +182,7 @@
               </div>
             </Card.Header>
             <Card.Content>
-              {#if unresolvedCount === null}
-                <p class="text-muted-foreground text-sm">Issue count unavailable</p>
-              {:else if unresolvedCount === 0}
+              {#if unresolvedCount === 0}
                 <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
                   <CircleCheck class="size-4 text-emerald-500" />
                   No unresolved issues

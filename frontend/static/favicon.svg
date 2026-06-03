@@ -1,4 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#0f172a" />
-  <text x="16" y="22" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700" fill="#f8fafc" text-anchor="middle">s</text>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="soika favicon">
+  <rect width="512" height="512" rx="112" fill="#1E85E5"/>
+  <g fill="#FFFFFF">
+    <!-- head + spiky crest + cheek + throat (side view) -->
+    <path d="M150 372
+             C140 300 150 232 170 202
+             L180 186
+             L150 92
+             L208 158
+             L198 74
+             L252 150
+             L264 70
+             L302 150
+             L316 86
+             L342 166
+             L358 128
+             C376 152 380 214 374 258
+             C368 300 348 338 318 362
+             C296 402 290 440 288 470
+             L150 470
+             Z"/>
+    <!-- solid beak -->
+    <path d="M364 234 L452 286 L450 308 L366 320 C360 300 358 268 364 234 Z"/>
+  </g>
+  <!-- malar (mustache) patch -->
+  <path d="M366 296 C356 326 332 350 308 356 C322 326 332 304 348 294 Z" fill="#1E85E5"/>
+  <!-- eye -->
+  <circle cx="300" cy="244" r="22" fill="#1E85E5"/>
+  <circle cx="308" cy="236" r="6" fill="#FFFFFF"/>
 </svg>

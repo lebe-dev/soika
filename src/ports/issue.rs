@@ -3,6 +3,7 @@
 use crate::domain::{Id, Issue, IssueStatus, Timestamp};
 use crate::error::Result;
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 /// Fields used to create-or-update an issue by fingerprint during ingestion.
 #[derive(Debug, Clone)]
@@ -77,6 +78,14 @@ pub trait IssueRepository: Send + Sync {
 
     /// List issues in a project with filtering (issues list).
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>>;
+
+    /// Count unresolved issues per project in a single query.
+    ///
+    /// Returns a map keyed by project id; projects with no unresolved issues
+    /// are omitted (callers treat a missing key as `0`). Lets the dashboard
+    /// bootstrap fetch every project's open-issue count at once instead of an
+    /// N+1 of [`list`](Self::list) calls.
+    async fn unresolved_counts(&self, project_ids: &[Id]) -> Result<HashMap<Id, i64>>;
 
     /// Override an issue's fingerprint after the fact (operator merge / split).
     ///

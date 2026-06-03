@@ -262,6 +262,49 @@ pub struct ProjectDetailView {
     pub issues: Vec<crate::api::issues::IssueView>,
 }
 
+/// A project plus its unresolved-issue count, for the dashboard bootstrap.
+///
+/// `project` is flattened so the JSON shape is a superset of [`ProjectView`]
+/// with one extra `unresolved_count` field.
+#[derive(Debug, Serialize)]
+pub struct ProjectOverviewView {
+    #[serde(flatten)]
+    pub project: ProjectView,
+    pub unresolved_count: i64,
+}
+
+/// Projects visible to `user`, each with its unresolved-issue count.
+///
+/// Mirrors [`list`]'s visibility rule (admins see all projects; others only
+/// their memberships), then fetches every project's open-issue count in a
+/// single batched query. Used by the `/auth/config` bootstrap so the dashboard
+/// renders from one request instead of fanning out to `/projects`, `/teams`
+/// and one `/issues` call per project.
+pub async fn overviews(
+    state: &AppState,
+    user: &User,
+) -> crate::error::Result<Vec<ProjectOverviewView>> {
+    let projects = if user.is_admin {
+        state.projects.list().await?
+    } else {
+        state.projects.list_for_user(user.id).await?
+    };
+
+    let ids: Vec<Id> = projects.iter().map(|p| p.id).collect();
+    let counts = state.issues.unresolved_counts(&ids).await?;
+
+    Ok(projects
+        .into_iter()
+        .map(|project| {
+            let unresolved_count = counts.get(&project.id).copied().unwrap_or(0);
+            ProjectOverviewView {
+                project: ProjectView::from_project(project, &state.config.base_url),
+                unresolved_count,
+            }
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
