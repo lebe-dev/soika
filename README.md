@@ -92,6 +92,32 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
   keeps password login, so the instance remains accessible if SSO is
   misconfigured.
 
+## Error reporting (Sentry)
+
+soika can report **its own** backend and frontend errors to a Sentry (or
+Sentry-compatible) instance — useful for dogfooding and operating soika itself.
+It is **disabled by default** and enabled by setting a single DSN shared by both
+halves:
+
+```sh
+SENTRY_DSN=https://<key>@sentry.example.com/<project>
+SENTRY_ENVIRONMENT=production   # optional environment tag
+```
+
+- **Backend:** the SDK is initialized at startup and captures panics plus
+  `tracing` error events. Transport uses rustls (the `ring` provider, like the
+  rest of the stack), so no OpenSSL is pulled into the musl build.
+- **Frontend:** the DSN is served **only** from the session-authenticated
+  `GET /api/client-config` endpoint, and the browser SDK initializes **after
+  sign-in**. This keeps the DSN off every unauthenticated route — the tradeoff
+  is that errors on the login/setup pages (before authentication) are not
+  captured.
+- **Errors only:** performance tracing is disabled on both halves.
+
+> Note: the release build uses `panic = "abort"`, so panic events are captured
+> on a best-effort basis and may not flush before the process exits;
+> `tracing::error!` events are reported reliably.
+
 ## License
 
 [MIT](LICENSE.md)

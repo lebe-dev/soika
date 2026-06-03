@@ -108,6 +108,9 @@ pub fn build(state: AppState) -> Router {
             "/profile",
             get(api::profile::get).patch(api::profile::update),
         )
+        // --- Client telemetry config (frontend Sentry DSN) ---
+        // Session-authenticated so the DSN never appears on a public route.
+        .route("/client-config", get(api::client_config::get))
         // --- Invites (preview/accept). The browser-facing accept *page* is the
         // SPA route `/invite/{token}`; this is the JSON API it calls. ---
         .route(

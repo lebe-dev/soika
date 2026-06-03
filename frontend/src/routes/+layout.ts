@@ -9,7 +9,7 @@
 // bounces back to the login form.
 
 import { redirect } from '@sveltejs/kit';
-import { auth, type AuthConfig, type User } from '$lib/api';
+import { auth, clientConfig, type AuthConfig, type ClientConfig, type User } from '$lib/api';
 import type { LayoutLoad } from './$types';
 
 export const ssr = false;
@@ -18,12 +18,18 @@ export const prerender = false;
 export const load: LayoutLoad = async ({ fetch, url }) => {
   let user: User | null = null;
   let config: AuthConfig | null = null;
+  let telemetry: ClientConfig | null = null;
 
   // Fetch both up front; tolerate failures so a backend hiccup doesn't trap the
   // user. Redirects are decided AFTER this block — `redirect()` throws, and we
   // must not swallow it inside the catch.
   try {
     [user, config] = await Promise.all([auth.me({ fetch }), auth.config({ fetch })]);
+    // Telemetry config is session-authenticated; only fetch it once we know the
+    // user is signed in. Tolerate failures — Sentry init is best-effort.
+    if (user) {
+      telemetry = await clientConfig.get({ fetch }).catch(() => null);
+    }
   } catch {
     // Network/server error: treat as unauthenticated with unknown config; route
     // guards handle auth redirects and we skip first-run routing below.
@@ -41,5 +47,5 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
     }
   }
 
-  return { user, config };
+  return { user, config, telemetry };
 };

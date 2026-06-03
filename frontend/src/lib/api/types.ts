@@ -45,6 +45,18 @@ export interface AuthConfig {
   initialized: boolean;
 }
 
+/**
+ * Client telemetry config (`GET /api/client-config`). Session-authenticated:
+ * the Sentry DSN is only served to a logged-in user, so the SPA initializes
+ * error reporting after sign-in. Sentry fields are `null` when disabled.
+ */
+export interface ClientConfig {
+  sentry_dsn: string | null;
+  sentry_environment: string | null;
+  /** Release identifier, matching the backend (`soika@<version>`). */
+  release: string;
+}
+
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */
 export type Profile = User;
 

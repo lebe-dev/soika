@@ -50,6 +50,21 @@ pub struct SmtpConfig {
     pub from: Option<String>,
 }
 
+/// Optional Sentry telemetry configuration. When `None`, error reporting is
+/// disabled and the SDK is never initialized (backend) nor exposed to the SPA
+/// (frontend). A single DSN is shared by backend and frontend; the frontend DSN
+/// is served only from the authenticated `/api/client-config` endpoint so it
+/// never appears on an unauthenticated route.
+#[derive(Debug, Clone)]
+pub struct SentryConfig {
+    /// Sentry DSN both halves report to (`SENTRY_DSN`). Setting this enables
+    /// error reporting.
+    pub dsn: String,
+    /// Optional environment tag attached to events (`SENTRY_ENVIRONMENT`), e.g.
+    /// `production` / `staging`. `None` leaves it unset (Sentry's default).
+    pub environment: Option<String>,
+}
+
 /// Optional OAuth 2.0 / OpenID Connect configuration. When `None`, SSO is
 /// disabled and password login behaves exactly as before.
 #[derive(Debug, Clone)]
@@ -99,6 +114,8 @@ pub struct Config {
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
     pub oidc: Option<OidcConfig>,
+    /// Optional Sentry telemetry settings (`SENTRY_*`); `None` when disabled.
+    pub sentry: Option<SentryConfig>,
     /// Brute-force protection for password logins (`LOGIN_LOCKOUT_*`).
     pub lockout: LockoutConfig,
 }
@@ -134,6 +151,7 @@ impl Config {
 
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
+        let sentry = Self::sentry_from_env();
         let lockout = Self::lockout_from_env()?;
 
         Ok(Config {
@@ -148,7 +166,19 @@ impl Config {
             retention_cron,
             smtp,
             oidc,
+            sentry,
             lockout,
+        })
+    }
+
+    /// Build the optional Sentry config; returns `None` when `SENTRY_DSN` is
+    /// unset or empty so error reporting degrades gracefully to off. The
+    /// environment tag is optional.
+    fn sentry_from_env() -> Option<SentryConfig> {
+        let dsn = env_opt("SENTRY_DSN")?;
+        Some(SentryConfig {
+            dsn,
+            environment: env_opt("SENTRY_ENVIRONMENT"),
         })
     }
 
@@ -360,6 +390,60 @@ mod tests {
         assert!(oidc.allowed_email_domains.is_empty());
 
         clear_oauth_env();
+    }
+
+    const SENTRY_KEYS: &[&str] = &["SENTRY_DSN", "SENTRY_ENVIRONMENT"];
+
+    fn clear_sentry_env() {
+        for k in SENTRY_KEYS {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn sentry_unset_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_sentry_env();
+
+        assert!(Config::sentry_from_env().is_none());
+    }
+
+    #[test]
+    fn sentry_blank_dsn_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_sentry_env();
+        // `env_opt` treats whitespace-only values as unset.
+        unsafe { std::env::set_var("SENTRY_DSN", "   ") };
+
+        assert!(Config::sentry_from_env().is_none());
+
+        clear_sentry_env();
+    }
+
+    #[test]
+    fn sentry_dsn_only_defaults_environment_to_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_sentry_env();
+        unsafe { std::env::set_var("SENTRY_DSN", "https://pub@example.com/42") };
+
+        let sentry = Config::sentry_from_env().expect("sentry should be Some when DSN set");
+        assert_eq!(sentry.dsn, "https://pub@example.com/42");
+        assert!(sentry.environment.is_none());
+
+        clear_sentry_env();
+    }
+
+    #[test]
+    fn sentry_honours_environment() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_sentry_env();
+        unsafe { std::env::set_var("SENTRY_DSN", "https://pub@example.com/42") };
+        unsafe { std::env::set_var("SENTRY_ENVIRONMENT", "staging") };
+
+        let sentry = Config::sentry_from_env().expect("sentry should be Some when DSN set");
+        assert_eq!(sentry.environment.as_deref(), Some("staging"));
+
+        clear_sentry_env();
     }
 
     #[test]

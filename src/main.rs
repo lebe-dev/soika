@@ -13,13 +13,23 @@ use tokio::signal;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use soika::auth::{OidcClient, OidcProvider};
+use soika::config::SentryConfig;
 use soika::{Config, MIGRATOR, build_state, scheduler};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load config before anything else: Sentry (and the tracing layer that feeds
+    // it) must be initialized from it, and a bad config should fail fast.
+    let config = Config::from_env().context("loading configuration from environment")?;
+
+    // Initialize Sentry first so the panic hook and the tracing integration are
+    // armed before we emit any logs. The guard must live for the whole program;
+    // dropping it flushes and disables the client. `None` (no SENTRY_DSN) leaves
+    // the tracing layer a no-op.
+    let _sentry_guard = init_sentry(config.sentry.as_ref());
+
     init_tracing();
 
-    let config = Config::from_env().context("loading configuration from environment")?;
     tracing::info!(org = %config.organization_name, bind = %config.bind_addr, "starting soika");
 
     let pool = connect_and_migrate(&config.database_url)
@@ -80,13 +90,39 @@ async fn main() -> Result<()> {
 }
 
 /// Initialize tracing with an env-filter (`RUST_LOG`), defaulting to `info`.
+///
+/// The Sentry layer is always attached: when Sentry is disabled (no
+/// `SENTRY_DSN`) the current hub has no client and the layer is a no-op. With it
+/// enabled, `error!` events become Sentry events and lower levels become
+/// breadcrumbs.
 fn init_tracing() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,soika=debug"));
     tracing_subscriber::registry()
         .with(filter)
         .with(tracing_subscriber::fmt::layer())
+        .with(sentry::integrations::tracing::layer())
         .init();
+}
+
+/// Initialize the Sentry client when `SENTRY_DSN` is configured, returning the
+/// guard that must be kept alive for the program's lifetime (dropping it flushes
+/// pending events and disables the client). Returns `None` when Sentry is off.
+///
+/// Note: the release build uses `panic = "abort"`, so a panic event is captured
+/// by the hook on a best-effort basis but may not flush before the process
+/// aborts; `tracing::error!` events are reported reliably.
+fn init_sentry(cfg: Option<&SentryConfig>) -> Option<sentry::ClientInitGuard> {
+    let cfg = cfg?;
+    let options = sentry::ClientOptions {
+        release: sentry::release_name!(),
+        environment: cfg.environment.clone().map(Into::into),
+        // Attach a stack trace to error events that carry no exception of their
+        // own (e.g. plain `tracing::error!` messages).
+        attach_stacktrace: true,
+        ..Default::default()
+    };
+    Some(sentry::init((cfg.dsn.clone(), options)))
 }
 
 /// Connect to SQLite (creating the file if missing), then run migrations.

@@ -71,6 +71,21 @@ reqwest = { version = "0.12", default-features = false, features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Sentry error reporting (optional at runtime; enabled when SENTRY_DSN is set).
+# The `ureq` transport with `rustls` keeps us on the `ring` provider used by the
+# rest of the stack (the `reqwest` transport would pull a second TLS stack via
+# aws-lc-rs, breaking the musl/Alpine release build). The `tracing` integration
+# turns `error!` events into Sentry events; `panic` captures panics.
+sentry = { version = "0.48", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "debug-images",
+    "panic",
+    "ureq",
+    "rustls",
+    "tracing",
+] }
+
 # Embedded frontend assets
 rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"

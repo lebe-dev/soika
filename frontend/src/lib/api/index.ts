@@ -9,6 +9,7 @@ import type {
   AddTeamMemberRequest,
   AdminUser,
   AuthConfig,
+  ClientConfig,
   CreateInviteRequest,
   CreateProjectRequest,
   CreateTeamRequest,
@@ -75,6 +76,11 @@ export const invites = {
     http.get<InvitePreview>(`/invite/${encodeURIComponent(token)}`, { fetch: ctx?.fetch }),
   accept: (token: string, body: AcceptInviteRequest, ctx?: Ctx) =>
     http.post<User>(`/invite/${encodeURIComponent(token)}`, { body, fetch: ctx?.fetch })
+};
+
+export const clientConfig = {
+  /** Frontend telemetry config (Sentry DSN); session-authenticated. */
+  get: (ctx?: Ctx) => http.get<ClientConfig>('/client-config', { fetch: ctx?.fetch })
 };
 
 export const profile = {
