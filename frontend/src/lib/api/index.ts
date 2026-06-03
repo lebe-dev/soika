@@ -30,6 +30,8 @@ import type {
   SoikaEvent,
   Team,
   TeamSummary,
+  TestEmailRequest,
+  TestEmailResult,
   UpdateProfileRequest,
   UpdateProjectRequest,
   UpdateSettingsRequest,
@@ -146,7 +148,10 @@ export const teams = {
 export const settings = {
   get: (ctx?: Ctx) => http.get<ServiceSettings>('/settings', { fetch: ctx?.fetch }),
   update: (body: UpdateSettingsRequest, ctx?: Ctx) =>
-    http.patch<ServiceSettings>('/settings', { body, fetch: ctx?.fetch })
+    http.patch<ServiceSettings>('/settings', { body, fetch: ctx?.fetch }),
+  /** Send a test email to verify SMTP. Omit `to` to send to the current admin. */
+  testEmail: (body: TestEmailRequest = {}, ctx?: Ctx) =>
+    http.post<TestEmailResult>('/settings/test-email', { body, fetch: ctx?.fetch })
 };
 
 export const admin = {

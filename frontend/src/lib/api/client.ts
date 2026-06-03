@@ -62,7 +62,20 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+/**
+ * Map a logical API path to its served URL. The backend mounts the whole JSON
+ * API under `/api/*` so the root path namespace stays free for SPA client
+ * routes (a direct hit on `/teams/{id}` must serve the app shell, not JSON).
+ * Auth endpoints (`/auth/*`) are the exception — they live at the root, where
+ * no SPA page collides and the OIDC redirect URL is externally registered.
+ */
+function withBase(path: string): string {
+  if (path.startsWith('/auth/')) return path;
+  return `/api${path}`;
+}
+
 function buildUrl(path: string, query?: RequestOptions['query']): string {
+  path = withBase(path);
   if (!query) return path;
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {

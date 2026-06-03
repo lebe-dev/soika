@@ -8,6 +8,7 @@
   import { toast } from '$lib/components/ui/sonner';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import StacktraceViewer from '$lib/components/stacktrace-viewer.svelte';
+  import EventContext from '$lib/components/event-context.svelte';
   import { parseEvent } from '$lib/stacktrace';
   import { formatCount, formatDateTime, formatRelative } from '$lib/format';
   import type { PageData } from './$types';
@@ -284,6 +285,9 @@
         </Card.Content>
       </Card.Root>
     {/if}
+
+    <!-- Event context: browser/OS/IP, user, tags, request, contexts -->
+    <EventContext payload={currentEvent.payload} />
 
     <!-- Stacktrace viewer -->
     {#if parsed?.stacktrace}

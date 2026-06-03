@@ -281,6 +281,16 @@ export interface UpdateSettingsRequest {
   org_name?: string;
 }
 
+/** `POST /settings/test-email` body. Omit `to` to send to the current admin. */
+export interface TestEmailRequest {
+  to?: string;
+}
+
+/** `POST /settings/test-email` response: the address the test was sent to. */
+export interface TestEmailResult {
+  sent_to: string;
+}
+
 export interface AdminUser {
   id: Id;
   email: string;
