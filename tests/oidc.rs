@@ -196,6 +196,58 @@ async fn get_json(router: &axum::Router, uri: &str) -> (StatusCode, Value) {
     (status, json)
 }
 
+/// GET a JSON endpoint carrying a `Cookie` header (authenticated request).
+async fn get_json_with_cookie(
+    router: &axum::Router,
+    uri: &str,
+    cookie: &str,
+) -> (StatusCode, Value) {
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
+    let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, json)
+}
+
+/// Log in via `POST /auth/login` and return the `soika_session` cookie as a
+/// `Cookie` request header for follow-up authenticated calls.
+async fn login_session_cookie(router: &axum::Router, email: &str, password: &str) -> String {
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "email": email, "password": password }).to_string(),
+        ))
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
+    assert_eq!(response.status(), StatusCode::OK, "login should succeed");
+    let raw = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|c| c.starts_with("soika_session="))
+        .expect("session cookie set on login");
+    raw.split(';').next().expect("cookie key=value").to_string()
+}
+
 /// Extract the `soika_oidc_state` cookie value from a Set-Cookie list and
 /// reformat it as a `Cookie` request header.
 fn state_cookie_header(set_cookies: &[String]) -> String {
@@ -274,6 +326,37 @@ async fn auth_config_reflects_disabled_mode() {
     assert_eq!(json["oauth_provider_name"], "");
     assert_eq!(json["password_login_enabled"], true);
     assert_eq!(json["allow_signup"], false);
+}
+
+#[tokio::test]
+async fn auth_config_anonymous_omits_session_slice() {
+    let (router, _state) = build_app(None).await;
+
+    let (status, json) = get_json(&router, "/auth/config").await;
+
+    // No session: the session slice is explicitly null and, crucially, the
+    // Sentry DSN never appears on the anonymous response.
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["user"], Value::Null);
+    assert_eq!(json["telemetry"], Value::Null);
+}
+
+#[tokio::test]
+async fn auth_config_embeds_user_and_telemetry_for_session() {
+    let (router, state) = build_app(None).await;
+    seed_user(&state, "boot@example.com", "supersecret", false).await;
+    let cookie = login_session_cookie(&router, "boot@example.com", "supersecret").await;
+
+    let (status, json) = get_json_with_cookie(&router, "/auth/config", &cookie).await;
+
+    // The bootstrap folds the profile and telemetry into one response so the SPA
+    // layout no longer needs separate /profile and /client-config calls.
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["user"]["email"], "boot@example.com");
+    assert_eq!(json["user"]["is_admin"], false);
+    // Telemetry is present once authenticated; `release` is always set even when
+    // Sentry is disabled (no DSN configured in the test).
+    assert!(json["telemetry"]["release"].is_string());
 }
 
 // --- /auth/oidc/callback ---------------------------------------------------

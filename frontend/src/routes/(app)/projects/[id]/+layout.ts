@@ -9,8 +9,10 @@ import type { LayoutLoad } from './$types';
 
 export const load: LayoutLoad = async ({ params, fetch }) => {
   try {
+    // Project detail embeds the default (unresolved) issue list, so the issues
+    // page can render its initial view without a separate request.
     const project = await projects.get(params.id, { fetch });
-    return { project };
+    return { project, issues: project.issues };
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.isNotFound) error(404, 'Project not found');

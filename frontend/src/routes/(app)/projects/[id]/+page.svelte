@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { projects, errorMessage, type Issue, type IssueStatus } from '$lib/api';
+  import { projects, errorMessage, type Id, type Issue, type IssueStatus } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import { cn } from '$lib/utils';
@@ -58,6 +58,12 @@
   let loading = $state(true);
   let loadError = $state<string | null>(null);
 
+  // The project layout seeds the default (unresolved / last_seen) issue list, so
+  // the first render of that default view reuses it instead of re-fetching.
+  // Tracked per project id (plain, non-reactive) so navigating to another
+  // project consumes its seed once, and any filter change still fetches fresh.
+  let consumedSeedFor: Id | null = null;
+
   // Re-fetch whenever the project, status filter, sort, or field filters change.
   $effect(() => {
     const status = urlStatus;
@@ -66,6 +72,23 @@
     const environment = urlEnvironment.trim();
     const release = urlRelease.trim();
     const id = projectId;
+
+    // Default view (matches what the layout seeded): reuse the seed once per
+    // project rather than issuing a duplicate request on initial render.
+    const isDefaultView =
+      status === 'unresolved' &&
+      sort === 'last_seen' &&
+      level === 'all' &&
+      environment === '' &&
+      release === '';
+    if (isDefaultView && consumedSeedFor !== id) {
+      consumedSeedFor = id;
+      issues = data.issues;
+      loading = false;
+      loadError = null;
+      return;
+    }
+
     loading = true;
     loadError = null;
     // Omit defaults/empties so URLs/requests stay clean (all status, last_seen

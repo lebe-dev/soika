@@ -96,12 +96,25 @@ async fn main() -> Result<()> {
 /// enabled, `error!` events become Sentry events and lower levels become
 /// breadcrumbs.
 fn init_tracing() {
+    use sentry::integrations::tracing::{EventFilter, default_event_filter};
+
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,soika=debug"));
+    let sentry_layer = sentry::integrations::tracing::layer().event_filter(|md| {
+        // `tower-http`'s TraceLayer logs a generic `ERROR "response failed"` for
+        // every 5xx. That carries no route or cause, so promoting it to its own
+        // Sentry issue just collapses all server faults into one useless group.
+        // We log the real cause ourselves in `ApiError::into_response`, so keep
+        // the middleware line as a breadcrumb (context) rather than an event.
+        if md.target().starts_with("tower_http::trace") {
+            return EventFilter::Breadcrumb;
+        }
+        default_event_filter(md)
+    });
     tracing_subscriber::registry()
         .with(filter)
         .with(tracing_subscriber::fmt::layer())
-        .with(sentry::integrations::tracing::layer())
+        .with(sentry_layer)
         .init();
 }
 
@@ -117,9 +130,12 @@ fn init_sentry(cfg: Option<&SentryConfig>) -> Option<sentry::ClientInitGuard> {
     let options = sentry::ClientOptions {
         release: sentry::release_name!(),
         environment: cfg.environment.clone().map(Into::into),
-        // Attach a stack trace to error events that carry no exception of their
-        // own (e.g. plain `tracing::error!` messages).
-        attach_stacktrace: true,
+        // Don't attach a thread stack trace to message events: in the stripped
+        // release binary it symbolicates to a wall of `<unknown>` frames, and
+        // even with symbols it would be the async/tower poll stack, not where
+        // the error originated. The logged message + request context carry the
+        // diagnostically useful information instead.
+        attach_stacktrace: false,
         ..Default::default()
     };
     Some(sentry::init((cfg.dsn.clone(), options)))

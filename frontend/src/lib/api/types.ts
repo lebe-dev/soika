@@ -32,7 +32,14 @@ export interface User {
   auth_provider: AuthProvider;
 }
 
-/** Public auth config (`GET /auth/config`); read before rendering the login page. */
+/**
+ * Bootstrap config (`GET /auth/config`), fetched once per page load.
+ *
+ * The first block is public (read before rendering the login page). `user` and
+ * `telemetry` are the session slice: populated for a signed-in caller, `null`
+ * for an anonymous one — so the layout can boot the whole app from one request
+ * instead of also hitting `/profile` and `/client-config`.
+ */
 export interface AuthConfig {
   oauth_enabled: boolean;
   oauth_provider_name: string;
@@ -43,6 +50,10 @@ export interface AuthConfig {
    * routes the operator to `/setup`; when `true`, `/setup` bounces to `/login`.
    */
   initialized: boolean;
+  /** Current user when the session is valid; `null` when unauthenticated. */
+  user: User | null;
+  /** Frontend telemetry; only present for an authenticated session. */
+  telemetry: ClientConfig | null;
 }
 
 /**
@@ -120,6 +131,15 @@ export interface Project {
   webhook_url: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
+}
+
+/**
+ * Project detail (`GET /projects/{id}`): the project plus its default
+ * (unresolved) issue list, embedded so the project page renders its initial
+ * view without a follow-up `/projects/{id}/issues` request.
+ */
+export interface ProjectDetail extends Project {
+  issues: Issue[];
 }
 
 export interface CreateProjectRequest {

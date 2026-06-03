@@ -46,6 +46,13 @@ impl IntoResponse for ApiError {
             Error::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
+        // 5xx faults carry their cause only in the response body, which never
+        // reaches the operator. Log it so the real reason (e.g. the SMTP error
+        // behind a failed test-email) surfaces in tracing and Sentry instead of
+        // tower-http's contentless "response failed".
+        if status.is_server_error() {
+            tracing::error!(error = %self.0, "request failed");
+        }
         let body = Json(ErrorBody {
             error: self.0.to_string(),
         });
@@ -97,6 +104,26 @@ impl FromRequestParts<AppState> for AdminUser {
             return Err(ApiError(Error::Forbidden("admin access required".into())));
         }
         Ok(AdminUser(user))
+    }
+}
+
+/// An optionally-authenticated user: `Some` when a valid session is present,
+/// `None` otherwise. Extraction never fails, so handlers that serve both
+/// signed-in and anonymous callers (e.g. the bootstrap `/auth/config`) can
+/// branch on the session instead of being gated behind a `401`.
+pub struct OptionalAuthUser(pub Option<User>);
+
+#[async_trait]
+impl FromRequestParts<AppState> for OptionalAuthUser {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        // Any failure (no cookie, expired session, transient DB error) collapses
+        // to "anonymous" — this is a UI hint, not an authorization boundary.
+        Ok(OptionalAuthUser(authenticate(parts, state).await.ok()))
     }
 }
 
@@ -371,5 +398,41 @@ mod tests {
             let resp = ApiError(err).into_response();
             assert_eq!(resp.status(), expected);
         }
+    }
+
+    /// A `tracing` layer that records the level of every event it sees, so the
+    /// test can assert which `into_response` calls emit an `ERROR`.
+    #[derive(Clone, Default)]
+    struct LevelCapture(std::sync::Arc<std::sync::Mutex<Vec<tracing::Level>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LevelCapture {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            self.0.lock().unwrap().push(*event.metadata().level());
+        }
+    }
+
+    #[test]
+    fn server_errors_log_but_client_errors_do_not() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let capture = LevelCapture::default();
+        let subscriber = tracing_subscriber::registry().with(capture.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            // 4xx: surfaced to the caller, not an operator-facing fault — no log.
+            let _ = ApiError(Error::validation("bad input")).into_response();
+            // 5xx: the cause lives only in the body, so it must be logged.
+            let _ = ApiError(Error::internal("boom")).into_response();
+        });
+
+        let levels = capture.0.lock().unwrap();
+        assert_eq!(
+            *levels,
+            vec![tracing::Level::ERROR],
+            "exactly the 5xx should emit one ERROR event"
+        );
     }
 }

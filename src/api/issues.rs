@@ -195,6 +195,25 @@ pub async fn list_for_project(
     }
 }
 
+/// Build the default issue list for a project — unresolved issues, most-recent
+/// first — matching the project page's initial (unfiltered) view.
+///
+/// Used by [`crate::api::projects::get`] to seed the project detail response so
+/// the page renders its default issue list without a follow-up request. The
+/// caller is responsible for access checks (the project detail handler already
+/// runs `require_member`).
+pub async fn default_project_issues(
+    state: &AppState,
+    project_id: Id,
+) -> Result<Vec<IssueView>, crate::error::Error> {
+    let filter = IssueFilter {
+        status: Some(IssueStatus::Unresolved),
+        ..IssueFilter::default()
+    };
+    let issues = state.issues.list(project_id, filter).await?;
+    Ok(issues.into_iter().map(IssueView::from).collect())
+}
+
 /// Load an issue and verify the caller may view its project; returns the issue.
 async fn authorize_issue(
     state: &AppState,

@@ -52,11 +52,6 @@ pub struct UpdateProfile {
 /// Minimum acceptable length for a new password.
 const MIN_PASSWORD_LEN: usize = 8;
 
-/// `GET /profile` — current user's profile.
-pub async fn get(AuthUser(user): AuthUser) -> Json<ProfileView> {
-    Json(ProfileView::from(user))
-}
-
 /// `PATCH /profile` — update display name, notifications toggle, and/or password.
 pub async fn update(
     AuthUser(user): AuthUser,

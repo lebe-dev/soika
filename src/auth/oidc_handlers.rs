@@ -17,6 +17,9 @@ use axum::response::{IntoResponse, Json, Response};
 use openidconnect::{Nonce, PkceCodeVerifier};
 use serde::{Deserialize, Serialize};
 
+use crate::api::client_config::ClientConfigView;
+use crate::api::profile::ProfileView;
+use crate::api::teams::OptionalAuthUser;
 use crate::domain::AuthProvider;
 use crate::error::Error;
 use crate::ports::NewUser;
@@ -48,7 +51,14 @@ pub struct CallbackQuery {
     pub state: Option<String>,
 }
 
-/// Public auth configuration consumed by the login/register/setup pages.
+/// Bootstrap configuration for the SPA, served on every page load.
+///
+/// The first block (`oauth_*`, `allow_signup`, `initialized`) is the public
+/// config consumed by the login/register/setup pages. The trailing `user` /
+/// `telemetry` are the *session* slice: present for a signed-in caller, `null`
+/// for an anonymous one. Folding them in here lets the layout boot the whole
+/// app from a single request instead of fanning out to `/profile` and
+/// `/client-config` as well.
 #[derive(Debug, Serialize)]
 pub struct AuthConfig {
     pub oauth_enabled: bool,
@@ -58,17 +68,29 @@ pub struct AuthConfig {
     /// Whether the instance admin has been provisioned. When `false` the
     /// SPA routes the operator to `/setup`; when `true`, `/setup` bounces to login.
     pub initialized: bool,
+    /// Current user when the request carries a valid session; `null` otherwise.
+    pub user: Option<ProfileView>,
+    /// Frontend telemetry (Sentry DSN). Only populated for an authenticated
+    /// session, so the DSN never appears on an anonymous response.
+    pub telemetry: Option<ClientConfigView>,
 }
 
 // ---------------------------------------------------------------------------
 // /auth/config
 // ---------------------------------------------------------------------------
 
-/// `GET /auth/config` — unauthenticated public config for the SPA.
+/// `GET /auth/config` — bootstrap config for the SPA (public + session slice).
 ///
 /// `password_login_enabled = !oauth_enabled`: when SSO is on the password form
 /// is hidden (the built-in admin still reaches it via a direct link).
-pub async fn auth_config(State(state): State<AppState>) -> Json<AuthConfig> {
+///
+/// Optionally authenticated ([`OptionalAuthUser`]): an anonymous caller still
+/// gets the public config (with `user`/`telemetry` `null`), while a signed-in
+/// caller additionally receives their profile and telemetry config.
+pub async fn auth_config(
+    State(state): State<AppState>,
+    OptionalAuthUser(current_user): OptionalAuthUser,
+) -> Json<AuthConfig> {
     let oauth_enabled = state.oidc.is_some();
     let oauth_provider_name = state
         .oidc
@@ -94,12 +116,20 @@ pub async fn auth_config(State(state): State<AppState>) -> Json<AuthConfig> {
         .map(|count| count > 0)
         .unwrap_or(true);
 
+    // Telemetry is gated on the session so the DSN stays off anonymous responses.
+    let telemetry = current_user
+        .as_ref()
+        .map(|_| ClientConfigView::from_state(&state));
+    let user = current_user.map(ProfileView::from);
+
     Json(AuthConfig {
         oauth_enabled,
         oauth_provider_name,
         password_login_enabled: !oauth_enabled,
         allow_signup,
         initialized,
+        user,
+        telemetry,
     })
 }
 

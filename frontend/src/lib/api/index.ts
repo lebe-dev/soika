@@ -9,7 +9,6 @@ import type {
   AddTeamMemberRequest,
   AdminUser,
   AuthConfig,
-  ClientConfig,
   CreateInviteRequest,
   CreateProjectRequest,
   CreateTeamRequest,
@@ -23,6 +22,7 @@ import type {
   LoginRequest,
   Profile,
   Project,
+  ProjectDetail,
   ProjectMember,
   RegisterRequest,
   SdkSetup,
@@ -59,16 +59,7 @@ export const auth = {
     http.post<User>('/auth/register', { body, fetch: ctx?.fetch }),
   /** First-run admin provisioning; only succeeds while uninitialized. */
   setup: (body: SetupRequest, ctx?: Ctx) =>
-    http.post<User>('/auth/setup', { body, fetch: ctx?.fetch }),
-  /** Current user, derived from `GET /profile`; `null` when unauthenticated. */
-  me: async (ctx?: Ctx): Promise<User | null> => {
-    try {
-      return await http.get<Profile>('/profile', { fetch: ctx?.fetch });
-    } catch (err) {
-      if (err instanceof ApiError && err.isUnauthorized) return null;
-      throw err;
-    }
-  }
+    http.post<User>('/auth/setup', { body, fetch: ctx?.fetch })
 };
 
 export const invites = {
@@ -78,13 +69,7 @@ export const invites = {
     http.post<User>(`/invite/${encodeURIComponent(token)}`, { body, fetch: ctx?.fetch })
 };
 
-export const clientConfig = {
-  /** Frontend telemetry config (Sentry DSN); session-authenticated. */
-  get: (ctx?: Ctx) => http.get<ClientConfig>('/client-config', { fetch: ctx?.fetch })
-};
-
 export const profile = {
-  get: (ctx?: Ctx) => http.get<Profile>('/profile', { fetch: ctx?.fetch }),
   update: (body: UpdateProfileRequest, ctx?: Ctx) =>
     http.patch<Profile>('/profile', { body, fetch: ctx?.fetch })
 };
@@ -93,7 +78,8 @@ export const projects = {
   list: (ctx?: Ctx) => http.get<Project[]>('/projects', { fetch: ctx?.fetch }),
   create: (body: CreateProjectRequest, ctx?: Ctx) =>
     http.post<Project>('/projects', { body, fetch: ctx?.fetch }),
-  get: (id: Id, ctx?: Ctx) => http.get<Project>(`/projects/${id}`, { fetch: ctx?.fetch }),
+  /** Project detail with its default (unresolved) issue list embedded. */
+  get: (id: Id, ctx?: Ctx) => http.get<ProjectDetail>(`/projects/${id}`, { fetch: ctx?.fetch }),
   update: (id: Id, body: UpdateProjectRequest, ctx?: Ctx) =>
     http.patch<Project>(`/projects/${id}`, { body, fetch: ctx?.fetch }),
   remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/projects/${id}`, { fetch: ctx?.fetch }),

@@ -104,13 +104,9 @@ pub fn build(state: AppState) -> Router {
             delete(api::teams::remove_member),
         )
         // --- Profile ---
-        .route(
-            "/profile",
-            get(api::profile::get).patch(api::profile::update),
-        )
-        // --- Client telemetry config (frontend Sentry DSN) ---
-        // Session-authenticated so the DSN never appears on a public route.
-        .route("/client-config", get(api::client_config::get))
+        // Read goes through the bootstrap `/auth/config` (which embeds the
+        // current user); only the update verb lives here.
+        .route("/profile", patch(api::profile::update))
         // --- Invites (preview/accept). The browser-facing accept *page* is the
         // SPA route `/invite/{token}`; this is the JSON API it calls. ---
         .route(

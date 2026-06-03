@@ -249,6 +249,19 @@ impl ProjectView {
     }
 }
 
+/// Project detail returned by `GET /projects/{id}`: the project plus its
+/// default (unresolved) issue list, so the project page boots without a
+/// follow-up `/projects/{id}/issues` request for the initial view.
+///
+/// `project` is flattened so the JSON shape stays a superset of [`ProjectView`]
+/// (the list/create/update responses) with one extra `issues` field.
+#[derive(Debug, Serialize)]
+pub struct ProjectDetailView {
+    #[serde(flatten)]
+    pub project: ProjectView,
+    pub issues: Vec<crate::api::issues::IssueView>,
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -378,7 +391,8 @@ pub async fn create(
     }
 }
 
-/// `GET /projects/{id}` — project detail.
+/// `GET /projects/{id}` — project detail, with the default (unresolved) issue
+/// list embedded so the page's initial view needs no follow-up request.
 pub async fn get(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -393,13 +407,21 @@ pub async fn get(
         return resp;
     }
 
-    match load_project(&state, project_id).await {
-        Ok(project) => {
-            let view = ProjectView::from_project(project, &state.config.base_url);
-            Json(view).into_response()
-        }
-        Err(resp) => resp,
-    }
+    let project = match load_project(&state, project_id).await {
+        Ok(project) => project,
+        Err(resp) => return resp,
+    };
+
+    let issues = match crate::api::issues::default_project_issues(&state, project_id).await {
+        Ok(issues) => issues,
+        Err(err) => return error_response(err),
+    };
+
+    let view = ProjectDetailView {
+        project: ProjectView::from_project(project, &state.config.base_url),
+        issues,
+    };
+    Json(view).into_response()
 }
 
 /// Request body for `PATCH /projects/{id}` (settings, retention, mute).
@@ -789,6 +811,39 @@ fn slugify(input: &str) -> String {
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn project_detail_view_flattens_project_alongside_issues() {
+        // The frontend `ProjectDetail` type expects the project fields at the top
+        // level (flattened) plus a sibling `issues` array — assert that contract.
+        let now = chrono::Utc::now();
+        let project = ProjectView {
+            id: Uuid::nil(),
+            team_id: Uuid::nil(),
+            name: "n".into(),
+            slug: "n".into(),
+            dsn_public_key: "key".into(),
+            dsn: "http://key@host/0".into(),
+            retention_events: 1,
+            retention_days: 0,
+            muted: false,
+            webhook_url: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let view = ProjectDetailView {
+            project,
+            issues: vec![],
+        };
+
+        let json = serde_json::to_value(&view).expect("serialize");
+        assert!(json.get("id").is_some(), "flattened project id present");
+        assert!(json.get("dsn").is_some(), "flattened project dsn present");
+        assert!(
+            json.get("issues").is_some_and(|v| v.is_array()),
+            "issues array present at top level"
+        );
+    }
 
     #[test]
     fn build_dsn_injects_public_key_and_strips_trailing_slash() {
