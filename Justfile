@@ -108,6 +108,10 @@ release: build-image && push-image
 ssh:
     ssh kaiman
 
+# Forward MailCrab web UI (port 1080) from kaiman to localhost:1080.
+mailcrab:
+    ssh -N -L 1080:localhost:1080 kaiman
+
 # --- Deploy ---
 deploy:
     ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
