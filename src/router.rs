@@ -8,8 +8,10 @@
 //! app shell, not raw JSON.
 
 use axum::Router;
+use axum::http::Method;
 use axum::routing::{delete, get, patch, post};
 use tower_http::compression::CompressionLayer;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::api;
@@ -25,14 +27,26 @@ async fn healthz() -> &'static str {
 
 /// Build the full application router.
 pub fn build(state: AppState) -> Router {
-    let api_routes = Router::new()
-        // --- Ingestion (DSN auth, Sentry-compatible) ---
-        // Kept inside the `/api` namespace so the public ingest URLs stay
-        // `/api/{project_id}/envelope/` (and the legacy `/store/`) exactly as
-        // SDKs expect, while the rest of the JSON API lives under `/api/*` too.
+    // --- Ingestion (DSN auth, Sentry-compatible) ---
+    // Kept inside the `/api` namespace so the public ingest URLs stay
+    // `/api/{project_id}/envelope/` (and the legacy `/store/`) exactly as SDKs
+    // expect. Browser SDKs post cross-origin, so these routes carry a permissive
+    // CORS layer (any origin, POST + preflight OPTIONS) — auth is by DSN public
+    // key, not origin, so `*` is safe. The layer is scoped to ingest only: the
+    // cookie-authenticated JSON API is same-origin and must NOT use `Allow-Origin: *`
+    // (incompatible with credentials). CorsLayer answers preflight itself.
+    let ingest_cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::POST, Method::OPTIONS])
+        .allow_headers(Any);
+    let ingest_routes = Router::new()
         .route("/:project_id/envelope/", post(ingest::envelope))
         // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
         .route("/:project_id/store/", post(ingest::store))
+        .layer(ingest_cors);
+
+    let api_routes = Router::new()
+        .merge(ingest_routes)
         // --- Projects ---
         .route(
             "/projects",

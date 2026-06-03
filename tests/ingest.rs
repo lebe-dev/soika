@@ -23,7 +23,7 @@ use axum::http::{Request, StatusCode};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Value, json};
-use soika::domain::Project;
+use soika::domain::{Issue, IssueStatus, Project};
 use soika::ingest::RateLimiter;
 use soika::ports::{IssueFilter, NewProject};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
@@ -170,13 +170,7 @@ impl TestApp {
 
     /// The stored payload of the latest event on the project's (single) issue.
     async fn latest_event_payload(&self) -> Value {
-        let issues = self
-            .state
-            .issues
-            .list(self.project.id, IssueFilter::default())
-            .await
-            .expect("list issues");
-        let issue = issues.first().expect("an issue exists");
+        let issue = self.only_issue().await;
         self.state
             .events
             .latest_for_issue(issue.id)
@@ -184,6 +178,48 @@ impl TestApp {
             .expect("latest event")
             .expect("an event exists")
             .payload
+    }
+
+    /// The project's single persisted issue (panics if there isn't exactly one).
+    async fn only_issue(&self) -> Issue {
+        let mut issues = self
+            .state
+            .issues
+            .list(self.project.id, IssueFilter::default())
+            .await
+            .expect("list issues");
+        assert_eq!(issues.len(), 1, "expected exactly one issue");
+        issues.pop().expect("an issue exists")
+    }
+
+    /// Send a request with an explicit method, returning the status and the
+    /// `access-control-allow-origin` response header (used by the CORS tests).
+    async fn send_method(
+        &self,
+        method: &str,
+        uri: &str,
+        headers: &[(&str, &str)],
+        body: Vec<u8>,
+    ) -> (StatusCode, Option<String>) {
+        let mut builder = Request::builder().method(method).uri(uri);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder.body(Body::from(body)).expect("build request");
+
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("router response");
+        let status = response.status();
+        let allow_origin = response
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        (status, allow_origin)
     }
 }
 
@@ -440,6 +476,147 @@ async fn envelope_and_store_group_into_the_same_issue() {
     // Two events, one shared issue — proves modern and legacy share grouping.
     assert_eq!(app.event_count().await, 2);
     assert_eq!(app.issue_count().await, 1);
+}
+
+// --- CORS (browser SDKs post cross-origin) ---------------------------------
+
+#[tokio::test]
+async fn envelope_post_includes_cors_allow_origin() {
+    // Browser SDKs read the ingest response cross-origin; without an
+    // `Access-Control-Allow-Origin` header the browser blocks it (the bug that
+    // made events appear not to arrive). Auth is by DSN, so `*` is expected.
+    let app = TestApp::spawn().await;
+    let event_id = "a1a1a1a1a1a141a1a1a1a1a1a1a1a1a1";
+    let body = envelope_body(event_id, &sample_event(event_id));
+
+    let (status, allow_origin) = app
+        .send_method(
+            "POST",
+            &app.envelope_uri(),
+            &[
+                ("x-sentry-auth", &sentry_auth(DSN_KEY)),
+                ("origin", "http://localhost:3000"),
+            ],
+            body,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(allow_origin.as_deref(), Some("*"));
+    assert_eq!(app.event_count().await, 1);
+}
+
+#[tokio::test]
+async fn ingest_preflight_options_is_allowed() {
+    // The SDK's preflight OPTIONS carries no DSN; CorsLayer must answer it with
+    // `Access-Control-Allow-Origin` before any handler/auth runs.
+    let app = TestApp::spawn().await;
+
+    let (status, allow_origin) = app
+        .send_method(
+            "OPTIONS",
+            &app.envelope_uri(),
+            &[
+                ("origin", "http://localhost:3000"),
+                ("access-control-request-method", "POST"),
+                (
+                    "access-control-request-headers",
+                    "x-sentry-auth,content-type",
+                ),
+            ],
+            Vec::new(),
+        )
+        .await;
+
+    assert!(
+        status.is_success(),
+        "preflight should succeed, got {status}"
+    );
+    assert_eq!(allow_origin.as_deref(), Some("*"));
+    // A preflight is not an event.
+    assert_eq!(app.event_count().await, 0);
+}
+
+// --- Status transitions on re-ingest ---------------------------------------
+
+#[tokio::test]
+async fn resolved_issue_regresses_to_unresolved_on_new_event() {
+    // A resolved issue that sees a new matching event must reopen (regression),
+    // not stay resolved — and the counter keeps advancing.
+    let app = TestApp::spawn().await;
+    let auth = sentry_auth(DSN_KEY);
+
+    let (s1, _) = app
+        .post(
+            &app.store_uri(),
+            &[("x-sentry-auth", &auth)],
+            serde_json::to_vec(&sample_event("e1e1e1e1e1e141e1e1e1e1e1e1e1e1e1")).unwrap(),
+        )
+        .await;
+    assert_eq!(s1, StatusCode::OK);
+
+    let issue = app.only_issue().await;
+    app.state
+        .issues
+        .set_status(issue.id, IssueStatus::Resolved)
+        .await
+        .expect("resolve issue");
+
+    // Same fingerprint (only the event_id differs) → groups into the same issue.
+    let (s2, _) = app
+        .post(
+            &app.store_uri(),
+            &[("x-sentry-auth", &auth)],
+            serde_json::to_vec(&sample_event("e2e2e2e2e2e242e2e2e2e2e2e2e2e2e2")).unwrap(),
+        )
+        .await;
+    assert_eq!(s2, StatusCode::OK);
+
+    assert_eq!(app.issue_count().await, 1);
+    let regressed = app.only_issue().await;
+    assert_eq!(regressed.id, issue.id);
+    assert_eq!(regressed.status, IssueStatus::Unresolved);
+    assert_eq!(regressed.event_count, 2);
+}
+
+#[tokio::test]
+async fn muted_issue_keeps_accumulating_events() {
+    // Muting suppresses notifications but never drops events: a muted issue must
+    // keep counting and stay muted (the behaviour behind the "muted doesn't
+    // accumulate" report — which was really CORS, not ingest).
+    let app = TestApp::spawn().await;
+    let auth = sentry_auth(DSN_KEY);
+
+    let (s1, _) = app
+        .post(
+            &app.store_uri(),
+            &[("x-sentry-auth", &auth)],
+            serde_json::to_vec(&sample_event("11221122112241122112211221122112")).unwrap(),
+        )
+        .await;
+    assert_eq!(s1, StatusCode::OK);
+
+    let issue = app.only_issue().await;
+    app.state
+        .issues
+        .set_status(issue.id, IssueStatus::Muted)
+        .await
+        .expect("mute issue");
+
+    let (s2, _) = app
+        .post(
+            &app.store_uri(),
+            &[("x-sentry-auth", &auth)],
+            serde_json::to_vec(&sample_event("33443344334443344334433443344334")).unwrap(),
+        )
+        .await;
+    assert_eq!(s2, StatusCode::OK);
+
+    assert_eq!(app.issue_count().await, 1);
+    let muted = app.only_issue().await;
+    assert_eq!(muted.id, issue.id);
+    assert_eq!(muted.status, IssueStatus::Muted);
+    assert_eq!(muted.event_count, 2);
 }
 
 // --- Rate limiting ---------------------------------------------------------

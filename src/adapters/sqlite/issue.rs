@@ -495,6 +495,10 @@ mod tests {
             .unwrap();
         assert!(!again.is_regression);
         assert_eq!(again.issue.status, IssueStatus::Muted);
+        assert_eq!(
+            again.issue.event_count, 2,
+            "muted issue keeps counting events"
+        );
     }
 
     #[tokio::test]

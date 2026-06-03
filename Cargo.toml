@@ -23,7 +23,7 @@ path = "src/main.rs"
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["compression-full", "fs", "trace"] }
+tower-http = { version = "0.6", features = ["compression-full", "cors", "fs", "trace"] }
 
 # Persistence (SQLite for MVP, ANSI-friendly so Postgres can be added later)
 sqlx = { version = "0.8", default-features = false, features = [
