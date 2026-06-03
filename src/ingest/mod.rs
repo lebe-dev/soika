@@ -4,14 +4,16 @@
 //! may be gzip/zlib-compressed. Pipeline: auth → decode → parse → normalize →
 //! fingerprint → upsert issue → insert event → counters → notify.
 
+mod enrich;
 mod envelope;
 mod ratelimit;
 
 use std::io::Read;
+use std::net::SocketAddr;
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{ConnectInfo, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
@@ -23,6 +25,7 @@ use crate::grouping::{self, IngestInput, NotifyKind};
 use crate::notify;
 use crate::state::AppState;
 
+pub use enrich::{RequestMeta, enrich};
 pub use envelope::{Envelope, EnvelopeError, EnvelopeItem};
 pub use ratelimit::{DEFAULT_LIMIT, DEFAULT_WINDOW, Decision, RateLimiter};
 
@@ -34,6 +37,7 @@ pub async fn envelope(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     RawQuery(query): RawQuery,
+    connect: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -50,6 +54,8 @@ pub async fn envelope(
         Err(_) => return bad_request("malformed envelope"),
     };
 
+    // Request-derived enrichment (client IP, browser/OS) applied to every event.
+    let meta = RequestMeta::from_request(&headers, connect.map(|c| c.0));
     let header_event_id = parsed.header_event_id();
     let now = state.clock.now();
 
@@ -67,7 +73,7 @@ pub async fn envelope(
             Err(_) => continue,
         };
 
-        match process_event(&state, &project, payload, now).await {
+        match process_event(&state, &project, payload, &meta, now).await {
             Ok(event_id) => {
                 if accepted_event_id.is_none() {
                     accepted_event_id = Some(event_id);
@@ -96,6 +102,7 @@ pub async fn store(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     RawQuery(query): RawQuery,
+    connect: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -111,8 +118,9 @@ pub async fn store(
         Err(_) => return bad_request("malformed event payload"),
     };
 
+    let meta = RequestMeta::from_request(&headers, connect.map(|c| c.0));
     let now = state.clock.now();
-    match process_event(&state, &project, payload, now).await {
+    match process_event(&state, &project, payload, &meta, now).await {
         // `process_event` derives the id from the payload's `event_id` (or
         // synthesizes one), matching the envelope path's behavior.
         Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
@@ -178,9 +186,14 @@ async fn authorize_and_decode(
 async fn process_event(
     state: &AppState,
     project: &Project,
-    payload: Value,
+    mut payload: Value,
+    meta: &RequestMeta,
     now: Timestamp,
 ) -> crate::error::Result<String> {
+    // Fill request-derived context (client IP, browser/OS) the SDK can't send,
+    // before the payload is normalized for grouping and persisted.
+    enrich(&mut payload, meta);
+
     let event_id = event_id_from_payload(&payload).unwrap_or_else(new_event_id);
     let normalized = NormalizedEvent::from_value(&payload);
 

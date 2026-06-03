@@ -167,6 +167,24 @@ impl TestApp {
             .expect("list issues")
             .len()
     }
+
+    /// The stored payload of the latest event on the project's (single) issue.
+    async fn latest_event_payload(&self) -> Value {
+        let issues = self
+            .state
+            .issues
+            .list(self.project.id, IssueFilter::default())
+            .await
+            .expect("list issues");
+        let issue = issues.first().expect("an issue exists");
+        self.state
+            .events
+            .latest_for_issue(issue.id)
+            .await
+            .expect("latest event")
+            .expect("an event exists")
+            .payload
+    }
 }
 
 /// A minimal config: in-memory db, no SMTP (NoopMailer), signup disabled.
@@ -344,6 +362,51 @@ async fn store_malformed_json_is_bad_request() {
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(app.event_count().await, 0);
+}
+
+// --- Server-side enrichment ------------------------------------------------
+
+#[tokio::test]
+async fn ingest_enriches_event_with_client_ip_and_browser() {
+    let app = TestApp::spawn().await;
+    let event_id = "9999999999994999999999999999999a";
+    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+        (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+    let (status, _) = app
+        .post(
+            &app.store_uri(),
+            &[
+                ("x-sentry-auth", &sentry_auth(DSN_KEY)),
+                ("x-forwarded-for", "203.0.113.7, 70.41.3.18"),
+                ("user-agent", ua),
+                ("referer", "https://app.example.com/dashboard"),
+            ],
+            serde_json::to_vec(&sample_event(event_id)).unwrap(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let payload = app.latest_event_payload().await;
+    // Client IP from the first X-Forwarded-For hop, derived server-side.
+    assert_eq!(payload["user"]["ip_address"], json!("203.0.113.7"));
+    assert_eq!(
+        payload["request"]["env"]["REMOTE_ADDR"],
+        json!("203.0.113.7")
+    );
+    // Browser / OS parsed from the User-Agent the SDK never sends parsed.
+    assert_eq!(payload["contexts"]["browser"]["name"], json!("Chrome"));
+    assert_eq!(payload["contexts"]["os"]["name"], json!("Windows"));
+    // Reporting page URL captured from the Referer header.
+    assert_eq!(
+        payload["request"]["url"],
+        json!("https://app.example.com/dashboard")
+    );
+    // Original event data is left intact.
+    assert_eq!(
+        payload["exception"]["values"][0]["type"],
+        json!("ValueError")
+    );
 }
 
 // --- Parity between the two wire formats -----------------------------------

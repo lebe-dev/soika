@@ -135,6 +135,46 @@ pub async fn update(
     Ok(Json(to_view(settings, &state)))
 }
 
+/// `POST /settings/test-email` body. An absent/empty `to` defaults to the
+/// requesting admin's own address.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestEmail {
+    pub to: Option<String>,
+}
+
+/// Result of a successful test-email send: the address it was delivered to.
+#[derive(Debug, Serialize)]
+pub struct TestEmailResult {
+    pub sent_to: String,
+}
+
+/// `POST /settings/test-email` — send a test message to verify SMTP (admin).
+///
+/// Returns `400` when SMTP is unconfigured (nothing to test) and surfaces any
+/// SMTP/transport failure as a `500` carrying the underlying error, so the admin
+/// can diagnose host/credential/From problems directly from the UI.
+pub async fn test_email(
+    AdminUser(admin): AdminUser,
+    State(state): State<AppState>,
+    Json(body): Json<TestEmail>,
+) -> Result<Json<TestEmailResult>, ApiError> {
+    if !state.mailer.is_enabled() {
+        return Err(ApiError(Error::validation(
+            "SMTP is not configured; set SMTP_HOST and related variables to enable email",
+        )));
+    }
+
+    let to = match body.to.as_deref().map(str::trim) {
+        Some(t) if !t.is_empty() => t.to_string(),
+        Some(_) => return Err(ApiError(Error::validation("recipient must not be empty"))),
+        None => admin.email.clone(),
+    };
+
+    let email = crate::mail::test_email(&state.config, &to);
+    state.mailer.send(email).await?;
+    Ok(Json(TestEmailResult { sent_to: to }))
+}
+
 /// `GET /admin/users` — list all users (instance admin).
 pub async fn list_users(
     _admin: AdminUser,

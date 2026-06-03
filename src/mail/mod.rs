@@ -87,6 +87,25 @@ pub fn regression_email(config: &Config, to: &str, issue_title: &str) -> Outboun
     }
 }
 
+/// Build the "test email" used by the admin UI to verify SMTP delivery.
+///
+/// Self-contained and link-free: receiving it is the only signal needed to
+/// confirm the SMTP relay, credentials, and From address all work.
+pub fn test_email(config: &Config, to: &str) -> OutboundEmail {
+    let org = &config.organization_name;
+    let subject = format!("[{org}] Test email");
+    let body = format!(
+        "This is a test email from {org}.\n\n\
+         If you can read this, SMTP delivery is configured correctly.\n\n\
+         — {org}",
+    );
+    OutboundEmail {
+        to: to.to_string(),
+        subject,
+        body,
+    }
+}
+
 /// Deliver an [`OutboundEmail`] over SMTP using `lettre`.
 ///
 /// The SMTP [`Mailer`](crate::ports::Mailer) adapter delegates here. Returns
@@ -246,6 +265,17 @@ mod tests {
         assert!(!out.contains('\n'));
         assert!(out.chars().count() <= 121); // 120 + ellipsis
         assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn test_email_is_self_contained_and_org_branded() {
+        let email = test_email(&test_config(), "admin@example.com");
+        assert_eq!(email.to, "admin@example.com");
+        assert!(email.subject.contains("Acme"));
+        assert!(email.subject.contains("Test email"));
+        assert!(email.body.contains("Acme"));
+        // No link to render — it only proves delivery works.
+        assert!(!email.body.contains("http"));
     }
 
     #[test]

@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="soika logo">
+  <rect width="512" height="512" rx="112" fill="#1E85E5"/>
+  <g fill="#FFFFFF">
+    <!-- head + spiky crest + cheek + throat -->
+    <path d="M150 372
+             C140 300 150 232 170 202
+             L180 186
+             L150 92
+             L208 158
+             L198 74
+             L252 150
+             L264 70
+             L302 150
+             L316 86
+             L342 166
+             L358 128
+             C376 152 380 214 374 258
+             C368 300 348 338 318 362
+             C296 402 290 440 288 470
+             L150 470
+             Z"/>
+    <!-- solid beak gripping the acorn -->
+    <path d="M364 234 L444 288 L442 306 L366 320 C360 300 358 268 364 234 Z"/>
+    <!-- acorn gripped at the tip -->
+    <g transform="rotate(12 480 300)">
+      <path d="M452 268
+               C472 262 500 270 506 296
+               C510 318 496 338 474 340
+               C454 342 442 326 442 304
+               C442 286 444 270 452 268 Z"/>
+    </g>
+  </g>
+  <!-- mouth seam -->
+  <path d="M390 274 L440 297" stroke="#1E85E5" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- acorn cap seam -->
+  <path d="M464 264 C454 286 454 314 462 338" stroke="#1E85E5" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- malar (mustache) patch -->
+  <path d="M366 296 C356 326 332 350 308 356 C322 326 332 304 348 294 Z" fill="#1E85E5"/>
+  <!-- eye -->
+  <circle cx="300" cy="244" r="22" fill="#1E85E5"/>
+  <circle cx="308" cy="236" r="6" fill="#FFFFFF"/>
+</svg>

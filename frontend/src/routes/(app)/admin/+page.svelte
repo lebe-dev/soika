@@ -31,6 +31,24 @@
 
   const smtp = $derived(data.settings.smtp);
 
+  // Test-email state: an optional recipient (blank → the current admin) and an
+  // in-flight flag so the button can show progress and avoid double-sends.
+  let testRecipient = $state('');
+  let sendingTest = $state(false);
+
+  async function sendTestEmail() {
+    sendingTest = true;
+    try {
+      const to = testRecipient.trim();
+      const result = await api.settings.testEmail(to ? { to } : {});
+      toast.success(`Test email sent to ${result.sent_to}`);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to send test email'));
+    } finally {
+      sendingTest = false;
+    }
+  }
+
   // Dirty only when an editable field differs from the persisted value.
   const dirty = $derived(
     orgName.trim() !== data.settings.org_name || allowSignup !== data.settings.allow_signup
@@ -156,6 +174,25 @@
               <dt class="text-muted-foreground">From</dt>
               <dd class="font-mono">{smtp.from ?? '—'}</dd>
             </dl>
+            <div class="space-y-2 border-t pt-3">
+              <p class="text-sm font-medium">Send a test email</p>
+              <p class="text-muted-foreground text-sm">
+                Verify delivery end-to-end. Leave the field blank to send to your own address.
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <Input
+                  type="email"
+                  placeholder="recipient@example.com (optional)"
+                  bind:value={testRecipient}
+                  class="max-w-xs"
+                  disabled={sendingTest}
+                />
+                <Button variant="outline" size="sm" onclick={sendTestEmail} disabled={sendingTest}>
+                  <Mail class="size-4" />
+                  {sendingTest ? 'Sending…' : 'Send test email'}
+                </Button>
+              </div>
+            </div>
           {:else}
             <p class="text-muted-foreground text-sm">
               Set <code class="font-mono">SMTP_HOST</code> and related variables to enable email notifications

@@ -1,8 +1,11 @@
 //! Complete axum router wiring every route onto stub handlers.
 //!
 //! Owned by foundation: feature agents fill in handler BODIES, not this file.
-//! Routes are grouped: ingestion (DSN auth), auth/invite, internal JSON API
-//! (session-cookie auth), health, and the SPA fallback.
+//! Routes are grouped: auth (root), the JSON API under `/api/*` (Sentry-compatible
+//! ingestion with DSN auth + the session-cookie internal API, including invites),
+//! health, and the SPA fallback. The `/api` prefix keeps the root path namespace
+//! free for SPA client routes so a direct hit on e.g. `/teams/{id}` serves the
+//! app shell, not raw JSON.
 
 use axum::Router;
 use axum::routing::{delete, get, patch, post};
@@ -23,6 +26,13 @@ async fn healthz() -> &'static str {
 /// Build the full application router.
 pub fn build(state: AppState) -> Router {
     let api_routes = Router::new()
+        // --- Ingestion (DSN auth, Sentry-compatible) ---
+        // Kept inside the `/api` namespace so the public ingest URLs stay
+        // `/api/{project_id}/envelope/` (and the legacy `/store/`) exactly as
+        // SDKs expect, while the rest of the JSON API lives under `/api/*` too.
+        .route("/:project_id/envelope/", post(ingest::envelope))
+        // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
+        .route("/:project_id/store/", post(ingest::store))
         // --- Projects ---
         .route(
             "/projects",
@@ -84,11 +94,18 @@ pub fn build(state: AppState) -> Router {
             "/profile",
             get(api::profile::get).patch(api::profile::update),
         )
+        // --- Invites (preview/accept). The browser-facing accept *page* is the
+        // SPA route `/invite/{token}`; this is the JSON API it calls. ---
+        .route(
+            "/invite/:token",
+            get(auth::get_invite).post(auth::accept_invite),
+        )
         // --- Service settings & admin ---
         .route(
             "/settings",
             get(api::settings::get).patch(api::settings::update),
         )
+        .route("/settings/test-email", post(api::settings::test_email))
         .route("/admin/users", get(api::settings::list_users));
 
     let auth_routes = Router::new()
@@ -100,22 +117,18 @@ pub fn build(state: AppState) -> Router {
         // OIDC / SSO — browser navigations, not JSON.
         .route("/auth/oidc/login", get(auth::oidc_login))
         .route("/auth/oidc/callback", get(auth::oidc_callback))
-        .route("/auth/config", get(auth::auth_config))
-        .route(
-            "/invite/:token",
-            get(auth::get_invite).post(auth::accept_invite),
-        );
+        .route("/auth/config", get(auth::auth_config));
 
     Router::new()
         // Health
         .route("/healthz", get(healthz))
-        // Ingestion (DSN auth, Sentry-compatible)
-        .route("/api/:project_id/envelope/", post(ingest::envelope))
-        // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
-        .route("/api/:project_id/store/", post(ingest::store))
-        // Internal API + auth
+        // Auth lives at the root (no SPA page collides with `/auth/*`, and the
+        // OIDC redirect URL is a stable, externally-registered path).
         .merge(auth_routes)
-        .merge(api_routes)
+        // The entire JSON API (including Sentry-compatible ingestion) lives under
+        // `/api/*`, keeping the root path namespace free for SPA client routes
+        // (`/teams/{id}`, `/projects/{id}`, …) which the fallback serves.
+        .nest("/api", api_routes)
         // SPA + embedded static assets — fallback last.
         .fallback(web::spa_fallback)
         .layer(CompressionLayer::new())
