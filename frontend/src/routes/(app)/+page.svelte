@@ -12,6 +12,7 @@
   import VolumeX from '@lucide/svelte/icons/volume-x';
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -56,6 +57,8 @@
     void invalidateAll();
   }
 </script>
+
+<PageTitle title="Dashboard" />
 
 <div class="space-y-6">
   <div class="flex items-end justify-between gap-4">

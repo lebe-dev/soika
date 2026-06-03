@@ -11,6 +11,7 @@
   import EventContext from '$lib/components/event-context.svelte';
   import { parseEvent } from '$lib/stacktrace';
   import { formatCount, formatDateTime, formatRelative } from '$lib/format';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -104,6 +105,8 @@
     if (eventIndex > 0) eventIndex -= 1;
   }
 </script>
+
+<PageTitle title={issue.title} />
 
 <div class="space-y-6">
   <a

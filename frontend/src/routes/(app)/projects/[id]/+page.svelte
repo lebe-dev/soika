@@ -6,6 +6,7 @@
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import { cn } from '$lib/utils';
   import { formatCount, formatRelative } from '$lib/format';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { LayoutData } from './$types';
   import Inbox from '@lucide/svelte/icons/inbox';
 
@@ -138,6 +139,8 @@
     setParam('level', value, 'all');
   }
 </script>
+
+<PageTitle title={`${data.project.name} · Issues`} />
 
 <div class="space-y-4">
   <div class="flex flex-wrap items-center gap-3">

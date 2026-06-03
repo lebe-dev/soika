@@ -3,6 +3,7 @@
   import * as Card from '$lib/components/ui/card';
   import * as Tabs from '$lib/components/ui/tabs';
   import CopyField from '$lib/components/copy-field.svelte';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   // SDK Setup — per-project, language-aware snippets showing the DSN and minimal
@@ -13,6 +14,8 @@
   const snippets = $derived(setup.snippets);
   let active = $state(untrack(() => data.setup.snippets[0]?.language ?? 'go'));
 </script>
+
+<PageTitle title={`${data.project.name} · SDK Setup`} />
 
 <div class="space-y-6">
   <Card.Root>

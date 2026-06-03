@@ -8,6 +8,7 @@
   import * as Card from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { toast } from '$lib/components/ui/sonner';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -42,6 +43,8 @@
     }
   }
 </script>
+
+<PageTitle title="Invite" />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">

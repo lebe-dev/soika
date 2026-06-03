@@ -11,6 +11,7 @@
   import { toast } from '$lib/components/ui/sonner';
   import Plus from '@lucide/svelte/icons/plus';
   import Users from '@lucide/svelte/icons/users';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   // Teams — team list. Any authenticated user can browse teams;
@@ -48,6 +49,8 @@
 
   const list = $derived<TeamSummary[]>(data.teams);
 </script>
+
+<PageTitle title="Teams" />
 
 <div class="space-y-6">
   <div class="flex items-center justify-between">

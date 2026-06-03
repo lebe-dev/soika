@@ -6,6 +6,7 @@
   import { Input } from '$lib/components/ui/input';
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
+  import PageTitle from '$lib/components/page-title.svelte';
 
   // First-run setup: creates the built-in instance admin and names the
   // organization. The root layout only routes here while the instance is
@@ -44,6 +45,8 @@
     }
   }
 </script>
+
+<PageTitle title="Setup" />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">

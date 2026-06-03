@@ -7,6 +7,7 @@
   import { Input } from '$lib/components/ui/input';
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
+  import PageTitle from '$lib/components/page-title.svelte';
 
   // Maps callback `?error=<slug>` values to user-facing messages.
   const ERROR_MESSAGES: Record<string, string> = {
@@ -74,6 +75,8 @@
     }
   }
 </script>
+
+<PageTitle title="Sign in" />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">

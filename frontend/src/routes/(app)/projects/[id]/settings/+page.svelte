@@ -18,6 +18,7 @@
   import { toast } from '$lib/components/ui/sonner';
   import CopyField from '$lib/components/copy-field.svelte';
   import { formatRelative } from '$lib/format';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import UserPlus from '@lucide/svelte/icons/user-plus';
@@ -179,6 +180,8 @@
     }
   }
 </script>
+
+<PageTitle title={`${project.name} · Settings`} />
 
 <div class="space-y-6">
   <!-- General settings -->
@@ -359,7 +362,7 @@
             <select
               id="invite-role"
               bind:value={inviteRole}
-              class="border-input bg-background focus-visible:ring-ring/50 h-9 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none"
+              class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-3"
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>

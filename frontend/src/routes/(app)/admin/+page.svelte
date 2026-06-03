@@ -16,6 +16,7 @@
   import Check from '@lucide/svelte/icons/check';
   import Mail from '@lucide/svelte/icons/mail';
   import MailX from '@lucide/svelte/icons/mail-x';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   // Admin — service settings, users, and teams overview.
@@ -82,6 +83,8 @@
     allowSignup = data.settings.allow_signup;
   }
 </script>
+
+<PageTitle title="Admin" />
 
 <div class="space-y-6">
   <div>

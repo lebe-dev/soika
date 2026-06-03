@@ -8,6 +8,7 @@
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
   import { cn } from '$lib/utils';
+  import PageTitle from '$lib/components/page-title.svelte';
 
   // The root layout seeds the auth store with the current user, so we render
   // from it directly rather than refetching. `user` is always present here:
@@ -95,6 +96,8 @@
     }
   }
 </script>
+
+<PageTitle title="Profile" />
 
 <div class="mx-auto max-w-2xl space-y-6">
   <h1 class="text-2xl font-semibold tracking-tight">Profile</h1>

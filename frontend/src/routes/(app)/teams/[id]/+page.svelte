@@ -15,6 +15,7 @@
   import UserMinus from '@lucide/svelte/icons/user-minus';
   import FolderKanban from '@lucide/svelte/icons/folder-kanban';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
   // Team detail members + assigned projects, with admin-only rename,
@@ -115,6 +116,8 @@
     }
   }
 </script>
+
+<PageTitle title={team.name} />
 
 <div class="space-y-6">
   <div>
