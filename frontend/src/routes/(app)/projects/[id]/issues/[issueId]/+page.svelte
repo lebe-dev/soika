@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { issues as issuesApi, errorMessage, type Issue, type SoikaEvent } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
@@ -57,6 +57,7 @@
       issue = { ...issue, ...updated };
       const labels = { resolve: 'resolved', mute: 'muted', unresolve: 'reopened' } as const;
       toast.success(`Issue ${labels[action]}`);
+      await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Action failed'));
     } finally {
@@ -86,6 +87,7 @@
       const updated = await issuesApi.setFingerprint(issue.id, next);
       toast.success('Fingerprint updated');
       editingFp = false;
+      await invalidateAll();
       if (updated.id !== issue.id) {
         await goto(`/projects/${projectId}/issues/${updated.id}`);
         return;
