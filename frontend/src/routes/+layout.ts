@@ -15,23 +15,41 @@ import type { LayoutLoad } from './$types';
 export const ssr = false;
 export const prerender = false;
 
+// This load reads `url` for first-run routing, so SvelteKit reruns it on every
+// navigation AND on preload-on-hover (see `data-sveltekit-preload-data` in
+// app.html). The bootstrap config is URL-independent, so refetching it on each
+// rerun would fire GET /auth/config many times per page. We memoize the fetch
+// and only re-issue it when the URL did NOT change between runs — i.e. on the
+// initial load or an explicit `invalidateAll()` after a mutation — reusing the
+// cached promise for the route-to-route (and preload) reruns.
+let cachedConfig: Promise<AuthConfig> | null = null;
+let lastUrl: string | null = null;
+
 export const load: LayoutLoad = async ({ fetch, url }) => {
   let user: User | null = null;
   let config: AuthConfig | null = null;
   let telemetry: ClientConfig | null = null;
 
+  const sameUrl = lastUrl === url.href;
+  lastUrl = url.href;
+  if (!cachedConfig || sameUrl) {
+    cachedConfig = auth.config({ fetch });
+  }
+
   // Single bootstrap fetch; tolerate failures so a backend hiccup doesn't trap
   // the user. Redirects are decided AFTER this block — `redirect()` throws, and
   // we must not swallow it inside the catch.
   try {
-    config = await auth.config({ fetch });
+    config = await cachedConfig;
     // `user`/`telemetry` are embedded for an authenticated session and `null`
     // for an anonymous one — route guards handle the auth redirects.
     user = config.user;
     telemetry = config.telemetry;
   } catch {
     // Network/server error: treat as unauthenticated with unknown config; route
-    // guards handle auth redirects and we skip first-run routing below.
+    // guards handle auth redirects and we skip first-run routing below. Drop the
+    // memo so a later run retries instead of replaying the rejection.
+    cachedConfig = null;
   }
 
   if (config) {
