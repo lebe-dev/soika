@@ -120,8 +120,8 @@
   </a>
 
   <!-- Header: title, status, counters, actions -->
-  <div class="flex flex-wrap items-start justify-between gap-4">
-    <div class="min-w-0 space-y-1">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1 space-y-1">
       <div class="flex items-center gap-2">
         {#if issue.level}
           <span class="text-muted-foreground text-xs font-semibold tracking-wide uppercase"
