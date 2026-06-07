@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { projects as projectsApi, errorMessage } from '$lib/api';
   import type { Project } from '$lib/api';
   import { Button } from '$lib/components/ui/button';
@@ -50,11 +50,6 @@
     } finally {
       submitting = false;
     }
-  }
-
-  // Re-fetch counts when returning to the dashboard after changes elsewhere.
-  function refresh() {
-    void invalidateAll();
   }
 </script>
 
@@ -162,7 +157,6 @@
         <a
           href={`/projects/${project.id}`}
           class="group focus-visible:ring-ring rounded-lg transition focus-visible:ring-2 focus-visible:outline-none"
-          onclick={refresh}
         >
           <Card.Root class="group-hover:border-primary/50 h-full transition-colors">
             <Card.Header>

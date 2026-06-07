@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import {
     projects,
     errorMessage,
@@ -72,6 +72,9 @@
         retention_days: retentionDays
       });
       project = updated;
+      // Re-run the parent layout load so the project header (name/slug) and
+      // sibling pages reflect the change without a manual reload.
+      await invalidateAll();
       toast.success('Project updated');
     } catch (err) {
       toast.error(errorMessage(err, 'Update failed'));
@@ -87,6 +90,7 @@
     try {
       const updated = await projects.mute(project.id, !project.muted);
       project = updated;
+      await invalidateAll();
       toast.success(project.muted ? 'Project muted' : 'Project unmuted');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update mute'));
@@ -108,6 +112,7 @@
     try {
       const updated = await projects.update(project.id, { webhook_url: webhookUrl.trim() });
       project = updated;
+      await invalidateAll();
       toast.success('Webhook updated');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update webhook'));

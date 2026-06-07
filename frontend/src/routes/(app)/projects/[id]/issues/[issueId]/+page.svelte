@@ -113,7 +113,7 @@
 <div class="space-y-6">
   <a
     href={`/projects/${projectId}`}
-    class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
+    class="text-primary hover:text-primary/80 inline-flex items-center gap-1.5 text-sm transition-colors"
   >
     <ArrowLeft class="size-4" />
     Back to issues
