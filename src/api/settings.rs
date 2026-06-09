@@ -6,12 +6,13 @@
 //! READ-ONLY here. All endpoints require an instance admin.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{AdminUser, ApiError};
-use crate::domain::{Id, ServiceSettings, Timestamp, User};
+use crate::domain::{Id, ServiceSettings, Timestamp, User, UserStatus};
 use crate::error::Error;
+use crate::ports::UserUpdate;
 use crate::state::AppState;
 
 /// Full settings view returned to the admin UI.
@@ -52,6 +53,8 @@ pub struct AdminUserRow {
     pub display_name: String,
     pub is_admin: bool,
     pub notifications_enabled: bool,
+    /// Activation status: `active` | `pending` (awaiting admin approval).
+    pub status: UserStatus,
     pub created_at: Timestamp,
 }
 
@@ -63,6 +66,7 @@ impl From<User> for AdminUserRow {
             display_name: u.display_name,
             is_admin: u.is_admin,
             notifications_enabled: u.notifications_enabled,
+            status: u.status,
             created_at: u.created_at,
         }
     }
@@ -184,6 +188,72 @@ pub async fn list_users(
     Ok(Json(users.into_iter().map(AdminUserRow::from).collect()))
 }
 
+/// Parse a path id segment into a domain [`Id`], mapping a bad UUID to a 400.
+fn parse_user_id(raw: &str) -> Result<Id, Error> {
+    Id::parse_str(raw).map_err(|_| Error::validation(format!("invalid user id: {raw}")))
+}
+
+/// `POST /admin/users/{id}/approve` — approve a pending account (instance admin).
+///
+/// Flips the account to `active`, letting it hold a session on the next sign-in.
+/// Approving an already-active account is a harmless no-op. Returns the updated row.
+pub async fn approve_user(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AdminUserRow>, ApiError> {
+    let user_id = parse_user_id(&id)?;
+    let user = state
+        .users
+        .update(
+            user_id,
+            UserUpdate {
+                status: Some(UserStatus::Active),
+                ..Default::default()
+            },
+        )
+        .await?;
+    Ok(Json(AdminUserRow::from(user)))
+}
+
+/// `DELETE /admin/users/{id}` — reject/delete an account (instance admin).
+///
+/// Used to reject a pending account, but works on any account. Guards against an
+/// admin removing themselves or another instance admin: those are refused with a
+/// `403` so the instance can never be left without an admin via this endpoint.
+pub async fn delete_user(
+    AdminUser(admin): AdminUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<DeletedUser>, ApiError> {
+    let user_id = parse_user_id(&id)?;
+    if user_id == admin.id {
+        return Err(ApiError(Error::Forbidden(
+            "you cannot delete your own account".into(),
+        )));
+    }
+
+    let target = state
+        .users
+        .find_by_id(user_id)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("user not found: {user_id}")))?;
+    if target.is_admin {
+        return Err(ApiError(Error::Forbidden(
+            "cannot delete an instance admin".into(),
+        )));
+    }
+
+    state.users.delete(user_id).await?;
+    Ok(Json(DeletedUser { id: user_id }))
+}
+
+/// Response for a successful user deletion.
+#[derive(Debug, Serialize)]
+pub struct DeletedUser {
+    pub id: Id,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,11 +266,13 @@ mod tests {
             display_name: "A".into(),
             is_admin: true,
             notifications_enabled: true,
+            status: UserStatus::Active,
             created_at: chrono::Utc::now(),
         };
         let json = serde_json::to_string(&row).unwrap();
         assert!(!json.contains("password"));
         assert!(json.contains("\"is_admin\":true"));
+        assert!(json.contains("\"status\":\"active\""));
     }
 
     #[test]

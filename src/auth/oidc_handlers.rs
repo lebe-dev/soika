@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::client_config::ClientConfigView;
 use crate::api::profile::ProfileView;
 use crate::api::teams::OptionalAuthUser;
-use crate::domain::AuthProvider;
+use crate::domain::{AuthProvider, UserStatus};
 use crate::error::Error;
 use crate::ports::NewUser;
 use crate::state::AppState;
@@ -290,6 +290,14 @@ async fn run_callback(
     // login. Refusing the admin here closes an account-takeover
     // vector where the public IdP could assume the highest-privilege account by
     // email match.
+    //
+    // When admin approval is required, a freshly provisioned account starts in
+    // `Pending`; an already-existing account keeps whatever status it has.
+    let initial_status = if provider.require_approval() {
+        UserStatus::Pending
+    } else {
+        UserStatus::Active
+    };
     let user = match state.users.find_by_email(&claims.email).await? {
         Some(existing) if existing.is_admin => {
             return Err(Error::Forbidden(
@@ -306,10 +314,20 @@ async fn run_callback(
                     password_hash: String::new(),
                     is_admin: false,
                     auth_provider: AuthProvider::Oidc,
+                    status: initial_status,
                 })
                 .await?
         }
     };
+
+    // A pending account exists but holds no session: send the visitor to the
+    // "awaiting approval" page instead of starting a session. This gate keys off
+    // the stored status (not the flag), so an account provisioned while approval
+    // was required stays locked out until an admin acts, even if the flag is
+    // later turned off.
+    if user.status.is_pending() {
+        return Ok(redirect_to_pending(cookie_secure(&state.config)));
+    }
 
     let (_, session_cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
@@ -385,6 +403,20 @@ fn redirect_to_login(err: &Error, clear_cookie: Option<String>) -> Response {
     if let Some(cookie) = clear_cookie
         && let Ok(value) = HeaderValue::from_str(&cookie)
     {
+        headers.append(SET_COOKIE, value);
+    }
+    (StatusCode::FOUND, headers).into_response()
+}
+
+/// Redirect a freshly authenticated but not-yet-approved account to the SPA
+/// "awaiting approval" page. No session is issued; the transient OIDC state
+/// cookie is cleared so a later attempt starts clean.
+fn redirect_to_pending(secure: bool) -> Response {
+    let mut headers = HeaderMap::new();
+    if let Ok(value) = HeaderValue::from_str("/pending") {
+        headers.insert(LOCATION, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&build_clearing_state_cookie(secure)) {
         headers.append(SET_COOKIE, value);
     }
     (StatusCode::FOUND, headers).into_response()

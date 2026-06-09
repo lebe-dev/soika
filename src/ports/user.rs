@@ -1,6 +1,6 @@
 //! User repository port.
 
-use crate::domain::{AuthProvider, Id, User};
+use crate::domain::{AuthProvider, Id, User, UserStatus};
 use crate::error::Result;
 use async_trait::async_trait;
 
@@ -14,6 +14,9 @@ pub struct NewUser {
     pub is_admin: bool,
     /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
+    /// Activation status. Local flows pass `Active`; the OIDC admin-approval
+    /// flow passes `Pending`.
+    pub status: UserStatus,
 }
 
 /// Mutable profile fields. `None` leaves the field unchanged.
@@ -22,6 +25,8 @@ pub struct UserUpdate {
     pub display_name: Option<String>,
     pub password_hash: Option<String>,
     pub notifications_enabled: Option<bool>,
+    /// Activation status; used to approve a pending account.
+    pub status: Option<UserStatus>,
 }
 
 /// CRUD + lookups for users.

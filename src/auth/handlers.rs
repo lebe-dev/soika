@@ -309,6 +309,7 @@ pub async fn setup(
         password_hash,
         is_admin: true,
         auth_provider: crate::domain::AuthProvider::Local,
+        status: crate::domain::UserStatus::Active,
     };
     // A UNIQUE(email) conflict here means a concurrent setup won the race; map it
     // to the same "already initialized" outcome rather than a raw error.
@@ -513,6 +514,7 @@ async fn create_user(
         password_hash,
         is_admin: false,
         auth_provider: crate::domain::AuthProvider::Local,
+        status: crate::domain::UserStatus::Active,
     };
     state.users.create(new).await
 }

@@ -182,6 +182,7 @@ mod tests {
             is_admin,
             notifications_enabled: true,
             auth_provider: crate::domain::AuthProvider::Local,
+            status: crate::domain::UserStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

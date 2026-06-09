@@ -317,6 +317,7 @@ mod tests {
             is_admin: false,
             notifications_enabled,
             auth_provider: crate::domain::AuthProvider::Local,
+            status: crate::domain::UserStatus::Active,
             created_at: now,
             updated_at: now,
         }

@@ -60,9 +60,7 @@
   const filteredAndSorted = $derived.by(() => {
     const q = debouncedQuery.toLowerCase().trim();
     const filtered =
-      q === ''
-        ? overviews
-        : overviews.filter((o) => o.project.name.toLowerCase().includes(q));
+      q === '' ? overviews : overviews.filter((o) => o.project.name.toLowerCase().includes(q));
 
     return [...filtered].sort((a, b) => {
       const aFav = favoritedIds.has(a.project.id) ? 1 : 0;
@@ -210,7 +208,12 @@
       placeholder="Search projects…"
       class="max-w-sm"
       aria-label="Search projects"
-      onkeydown={(e) => { if (e.key === 'Escape') { searchQuery = ''; (e.target as HTMLInputElement).blur(); } }}
+      onkeydown={(e) => {
+        if (e.key === 'Escape') {
+          searchQuery = '';
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
     />
 
     {#if filteredAndSorted.length === 0}
@@ -243,7 +246,7 @@
                       aria-label={favoritedIds.has(project.id)
                         ? 'Remove from favorites'
                         : 'Add to favorites'}
-                      class="rounded p-1 transition-colors hover:bg-accent"
+                      class="hover:bg-accent rounded p-1 transition-colors"
                     >
                       <Star
                         class="size-4 transition-colors {favoritedIds.has(project.id)

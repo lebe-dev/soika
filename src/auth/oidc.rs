@@ -91,6 +91,10 @@ pub trait OidcProvider: Send + Sync {
 
     /// Optional allow-list of email domains for auto-provisioning.
     fn allowed_email_domains(&self) -> &[String];
+
+    /// Whether newly provisioned accounts require admin approval before they can
+    /// hold a session (`OAUTH_REQUIRE_APPROVAL`).
+    fn require_approval(&self) -> bool;
 }
 
 /// Production [`OidcProvider`] backed by [`openidconnect::core::CoreClient`].
@@ -99,6 +103,7 @@ pub struct OidcClient {
     scopes: Vec<String>,
     provider_name: String,
     allowed_email_domains: Vec<String>,
+    require_approval: bool,
 }
 
 impl OidcClient {
@@ -126,6 +131,7 @@ impl OidcClient {
             scopes: config.scopes.clone(),
             provider_name: config.provider_name.clone(),
             allowed_email_domains: config.allowed_email_domains.clone(),
+            require_approval: config.require_approval,
         })
     }
 }
@@ -185,6 +191,10 @@ impl OidcProvider for OidcClient {
 
     fn allowed_email_domains(&self) -> &[String] {
         &self.allowed_email_domains
+    }
+
+    fn require_approval(&self) -> bool {
+        self.require_approval
     }
 }
 
@@ -337,6 +347,7 @@ mod tests {
             scopes: vec!["openid".into(), "email".into(), "profile".into()],
             provider_name: "GitLab".into(),
             allowed_email_domains: vec![],
+            require_approval: false,
         }
     }
 
@@ -376,6 +387,7 @@ mod tests {
             scopes: cfg.scopes.clone(),
             provider_name: cfg.provider_name.clone(),
             allowed_email_domains: cfg.allowed_email_domains.clone(),
+            require_approval: cfg.require_approval,
         }
     }
 

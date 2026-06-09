@@ -33,6 +33,42 @@ impl AuthProvider {
     }
 }
 
+/// Account activation status.
+///
+/// `Active` accounts authenticate normally. `Pending` accounts exist but cannot
+/// hold a session: they are created when the OAuth admin-approval flow
+/// (`OAUTH_REQUIRE_APPROVAL`) is on and stay locked out until an instance admin
+/// approves them. Local/password accounts are always `Active`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserStatus {
+    Active,
+    Pending,
+}
+
+impl UserStatus {
+    /// TEXT representation stored in the `users.status` column.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UserStatus::Active => "active",
+            UserStatus::Pending => "pending",
+        }
+    }
+
+    /// Parse the stored TEXT value; unknown values fall back to `Active`.
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "pending" => UserStatus::Pending,
+            _ => UserStatus::Active,
+        }
+    }
+
+    /// Whether the account is awaiting admin approval.
+    pub fn is_pending(&self) -> bool {
+        matches!(self, UserStatus::Pending)
+    }
+}
+
 /// An authenticated account with credentials and profile settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -48,6 +84,8 @@ pub struct User {
     pub notifications_enabled: bool,
     /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
+    /// Activation status; `Pending` accounts await admin approval and hold no session.
+    pub status: UserStatus,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }

@@ -21,10 +21,13 @@ default:
 # Format the code.
 fmt:
     cargo fmt --all
+    cd frontend && yarn prettier --write .
 
 # Check formatting without writing changes.
 fmt-check:
     cargo fmt --all -- --check
+
+format: fmt
 
 # Build the workspace (debug). Run `just dist` first for fresh embedded assets.
 build:

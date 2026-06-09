@@ -3,7 +3,7 @@
 use super::{
     Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
-use crate::domain::{AuthProvider, Id, Timestamp, User};
+use crate::domain::{AuthProvider, Id, Timestamp, User, UserStatus};
 use crate::error::{Error, Result};
 use crate::ports::{NewUser, UserRepository, UserUpdate};
 use async_trait::async_trait;
@@ -30,6 +30,7 @@ struct UserRow {
     is_admin: i64,
     notifications_enabled: i64,
     auth_provider: String,
+    status: String,
     created_at: String,
     updated_at: String,
 }
@@ -44,6 +45,7 @@ impl UserRow {
             is_admin: bool_from_db(self.is_admin),
             notifications_enabled: bool_from_db(self.notifications_enabled),
             auth_provider: AuthProvider::from_db(&self.auth_provider),
+            status: UserStatus::from_db(&self.status),
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
         })
@@ -51,7 +53,7 @@ impl UserRow {
 }
 
 const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, is_admin, \
-    notifications_enabled, auth_provider, created_at, updated_at FROM users";
+    notifications_enabled, auth_provider, status, created_at, updated_at FROM users";
 
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
@@ -61,8 +63,8 @@ impl UserRepository for SqliteUserRepository {
 
         sqlx::query(
             "INSERT INTO users (id, email, display_name, password_hash, is_admin, \
-             notifications_enabled, auth_provider, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+             notifications_enabled, auth_provider, status, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
         )
         .bind(id_to_db(id))
         .bind(&new.email)
@@ -70,6 +72,7 @@ impl UserRepository for SqliteUserRepository {
         .bind(&new.password_hash)
         .bind(bool_to_db(new.is_admin))
         .bind(new.auth_provider.as_str())
+        .bind(new.status.as_str())
         .bind(ts_to_db(now))
         .bind(ts_to_db(now))
         .execute(&self.db)
@@ -84,6 +87,7 @@ impl UserRepository for SqliteUserRepository {
             is_admin: new.is_admin,
             notifications_enabled: true,
             auth_provider: new.auth_provider,
+            status: new.status,
             created_at: now,
             updated_at: now,
         })
@@ -119,6 +123,9 @@ impl UserRepository for SqliteUserRepository {
         if update.notifications_enabled.is_some() {
             sql.push_str(", notifications_enabled = ?");
         }
+        if update.status.is_some() {
+            sql.push_str(", status = ?");
+        }
         sql.push_str(" WHERE id = ?");
 
         let mut query = sqlx::query(&sql).bind(ts_to_db(now));
@@ -130,6 +137,9 @@ impl UserRepository for SqliteUserRepository {
         }
         if let Some(enabled) = update.notifications_enabled {
             query = query.bind(bool_to_db(enabled));
+        }
+        if let Some(status) = update.status {
+            query = query.bind(status.as_str());
         }
         query = query.bind(id_to_db(id));
 
@@ -185,6 +195,7 @@ mod tests {
             password_hash: "$argon2id$v=19$m=4096,t=3,p=1$abc$def".to_string(),
             is_admin: false,
             auth_provider: AuthProvider::Local,
+            status: UserStatus::Active,
         }
     }
 
@@ -196,6 +207,7 @@ mod tests {
             password_hash: String::new(),
             is_admin: false,
             auth_provider: AuthProvider::Oidc,
+            status: UserStatus::Active,
         }
     }
 
@@ -299,6 +311,35 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, Error::NotFound(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn create_defaults_status_active_and_approve_via_update() {
+        let repo = SqliteUserRepository::new(test_pool().await);
+        let created = repo.create(sample("status@example.com")).await.unwrap();
+        // Local accounts are seeded active.
+        assert_eq!(created.status, UserStatus::Active);
+
+        // A pending OIDC account round-trips and can be approved via `update`.
+        let mut pending = oidc_sample("pending@example.com");
+        pending.status = UserStatus::Pending;
+        let pending = repo.create(pending).await.unwrap();
+        assert_eq!(pending.status, UserStatus::Pending);
+
+        let reloaded = repo.find_by_id(pending.id).await.unwrap().unwrap();
+        assert_eq!(reloaded.status, UserStatus::Pending);
+
+        let approved = repo
+            .update(
+                pending.id,
+                UserUpdate {
+                    status: Some(UserStatus::Active),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(approved.status, UserStatus::Active);
     }
 
     #[tokio::test]

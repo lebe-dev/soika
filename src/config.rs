@@ -90,6 +90,10 @@ pub struct OidcConfig {
     /// Optional whitelist of allowed email domains for auto-provisioning
     /// (`OAUTH_ALLOWED_EMAIL_DOMAINS`, comma-separated). Empty = any domain.
     pub allowed_email_domains: Vec<String>,
+    /// When true (`OAUTH_REQUIRE_APPROVAL`), a user provisioned on first SSO
+    /// login is created in a `pending` status and receives no session until an
+    /// instance admin approves the account. Default `false`.
+    pub require_approval: bool,
 }
 
 /// Fully resolved runtime configuration.
@@ -257,6 +261,7 @@ impl Config {
             &env_opt("OAUTH_ALLOWED_EMAIL_DOMAINS").unwrap_or_default(),
             ',',
         );
+        let require_approval = parse_bool(&env_or("OAUTH_REQUIRE_APPROVAL", "false"));
 
         Ok(Some(OidcConfig {
             issuer_url,
@@ -266,6 +271,7 @@ impl Config {
             scopes,
             provider_name,
             allowed_email_domains,
+            require_approval,
         }))
     }
 }

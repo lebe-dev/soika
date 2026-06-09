@@ -14,7 +14,7 @@ use openidconnect::url::Url;
 use openidconnect::{CsrfToken, Nonce, PkceCodeChallenge, PkceCodeVerifier};
 use serde_json::Value;
 use soika::auth::{AuthorizeRequest, OidcClaims, OidcProvider, hash_password};
-use soika::domain::AuthProvider;
+use soika::domain::{AuthProvider, UserStatus};
 use soika::ports::NewUser;
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use tower::ServiceExt;
@@ -28,6 +28,7 @@ struct FakeProvider {
     claims: OidcClaims,
     allowed_domains: Vec<String>,
     csrf_state: String,
+    require_approval: bool,
 }
 
 impl FakeProvider {
@@ -36,6 +37,16 @@ impl FakeProvider {
             claims,
             allowed_domains: vec![],
             csrf_state: "fixed-csrf-state".into(),
+            require_approval: false,
+        }
+    }
+
+    /// Same as [`FakeProvider::new`] but with the admin-approval flow enabled, so
+    /// first-login provisioning lands in `pending`.
+    fn with_approval(claims: OidcClaims) -> Self {
+        FakeProvider {
+            require_approval: true,
+            ..FakeProvider::new(claims)
         }
     }
 }
@@ -69,6 +80,10 @@ impl OidcProvider for FakeProvider {
 
     fn allowed_email_domains(&self) -> &[String] {
         &self.allowed_domains
+    }
+
+    fn require_approval(&self) -> bool {
+        self.require_approval
     }
 }
 
@@ -172,6 +187,7 @@ async fn seed_user(state: &AppState, email: &str, password: &str, is_admin: bool
             password_hash: hash_password(password).expect("hash"),
             is_admin,
             auth_provider: AuthProvider::Local,
+            status: UserStatus::Active,
         })
         .await
         .expect("seed user");
@@ -577,6 +593,229 @@ async fn login_wrong_password_unauthorized_when_oauth_enabled() {
     .await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// --- Admin approval flow (OAUTH_REQUIRE_APPROVAL) ---------------------------
+
+/// Send a request carrying a `Cookie` header and return (status, parsed JSON).
+async fn send_with_cookie(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    cookie: &str,
+) -> (StatusCode, Value) {
+    let request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router response");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
+    let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, json)
+}
+
+/// Drive a full SSO callback for `email` and return the callback response
+/// (status, Location, Set-Cookie list).
+async fn run_callback(
+    router: &axum::Router,
+    _email: &str,
+) -> (StatusCode, Option<String>, Vec<String>) {
+    let (_s, _l, cookies) = get(router, "/auth/oidc/login", None).await;
+    let cookie = state_cookie_header(&cookies);
+    get(
+        router,
+        "/auth/oidc/callback?code=any-code&state=fixed-csrf-state",
+        Some(&cookie),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn callback_provisions_pending_and_withholds_session_when_approval_required() {
+    let email = "pending@example.com";
+    let (router, state) = build_app(Some(Arc::new(FakeProvider::with_approval(
+        verified_claims(email),
+    ))))
+    .await;
+
+    let (status, location, set_cookies) = run_callback(&router, email).await;
+
+    // No session: the visitor is parked on the awaiting-approval page.
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location.as_deref(), Some("/pending"));
+    assert!(
+        !set_cookies.iter().any(|c| c.starts_with("soika_session=")),
+        "no session cookie for a pending account: {set_cookies:?}"
+    );
+    // The transient OIDC state cookie is still cleared.
+    assert!(
+        set_cookies
+            .iter()
+            .any(|c| c.starts_with("soika_oidc_state=") && c.contains("Max-Age=0")),
+        "state cookie cleared: {set_cookies:?}"
+    );
+
+    // Account exists but is pending.
+    let user = state
+        .users
+        .find_by_email(email)
+        .await
+        .expect("query user")
+        .expect("user provisioned");
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.auth_provider, AuthProvider::Oidc);
+}
+
+#[tokio::test]
+async fn pending_account_stays_locked_out_on_repeat_login() {
+    let email = "pending@example.com";
+    let (router, _state) = build_app(Some(Arc::new(FakeProvider::with_approval(
+        verified_claims(email),
+    ))))
+    .await;
+
+    // First login provisions the pending account.
+    let _ = run_callback(&router, email).await;
+    // A second SSO attempt finds the existing pending account and still withholds
+    // a session.
+    let (status, location, set_cookies) = run_callback(&router, email).await;
+
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location.as_deref(), Some("/pending"));
+    assert!(
+        !set_cookies.iter().any(|c| c.starts_with("soika_session=")),
+        "still no session before approval: {set_cookies:?}"
+    );
+}
+
+#[tokio::test]
+async fn admin_can_approve_then_account_signs_in() {
+    let email = "pending@example.com";
+    let (router, state) = build_app(Some(Arc::new(FakeProvider::with_approval(
+        verified_claims(email),
+    ))))
+    .await;
+    seed_user(&state, "admin@example.com", "supersecret", true).await;
+
+    // Provision the pending account.
+    let _ = run_callback(&router, email).await;
+    let pending = state
+        .users
+        .find_by_email(email)
+        .await
+        .expect("query")
+        .expect("user");
+    assert_eq!(pending.status, UserStatus::Pending);
+
+    // Admin approves it.
+    let admin_cookie = login_session_cookie(&router, "admin@example.com", "supersecret").await;
+    let (status, json) = send_with_cookie(
+        &router,
+        "POST",
+        &format!("/api/admin/users/{}/approve", pending.id),
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["status"], "active");
+
+    // The account is now active and the next SSO callback issues a session.
+    let (status, location, set_cookies) = run_callback(&router, email).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location.as_deref(), Some("/"));
+    assert!(
+        set_cookies.iter().any(|c| c.starts_with("soika_session=")),
+        "session issued after approval: {set_cookies:?}"
+    );
+}
+
+#[tokio::test]
+async fn admin_can_reject_pending_account() {
+    let email = "pending@example.com";
+    let (router, state) = build_app(Some(Arc::new(FakeProvider::with_approval(
+        verified_claims(email),
+    ))))
+    .await;
+    seed_user(&state, "admin@example.com", "supersecret", true).await;
+
+    let _ = run_callback(&router, email).await;
+    let pending = state
+        .users
+        .find_by_email(email)
+        .await
+        .expect("query")
+        .expect("user");
+
+    let admin_cookie = login_session_cookie(&router, "admin@example.com", "supersecret").await;
+    let (status, _json) = send_with_cookie(
+        &router,
+        "DELETE",
+        &format!("/api/admin/users/{}", pending.id),
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        state
+            .users
+            .find_by_email(email)
+            .await
+            .expect("query")
+            .is_none(),
+        "rejected account is removed"
+    );
+}
+
+#[tokio::test]
+async fn admin_cannot_delete_self_or_other_admin() {
+    let (router, state) = build_app(Some(enabled_provider())).await;
+    seed_user(&state, "admin@example.com", "supersecret", true).await;
+    seed_user(&state, "boss@example.com", "supersecret", true).await;
+
+    let admin = state
+        .users
+        .find_by_email("admin@example.com")
+        .await
+        .expect("query")
+        .expect("admin");
+    let other_admin = state
+        .users
+        .find_by_email("boss@example.com")
+        .await
+        .expect("query")
+        .expect("other admin");
+
+    let cookie = login_session_cookie(&router, "admin@example.com", "supersecret").await;
+
+    // Deleting yourself is refused.
+    let (status, _json) = send_with_cookie(
+        &router,
+        "DELETE",
+        &format!("/api/admin/users/{}", admin.id),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Deleting another instance admin is refused.
+    let (status, _json) = send_with_cookie(
+        &router,
+        "DELETE",
+        &format!("/api/admin/users/{}", other_admin.id),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
 // --- /auth/setup (first-run admin provisioning) -----------------------

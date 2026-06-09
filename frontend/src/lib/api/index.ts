@@ -12,6 +12,7 @@ import type {
   CreateInviteRequest,
   CreateProjectRequest,
   CreateTeamRequest,
+  DeletedUser,
   Dsn,
   Id,
   Invite,
@@ -155,7 +156,13 @@ export const settings = {
 };
 
 export const admin = {
-  users: (ctx?: Ctx) => http.get<AdminUser[]>('/admin/users', { fetch: ctx?.fetch })
+  users: (ctx?: Ctx) => http.get<AdminUser[]>('/admin/users', { fetch: ctx?.fetch }),
+  /** Approve a pending account so it can sign in. Returns the updated row. */
+  approve: (id: Id, ctx?: Ctx) =>
+    http.post<AdminUser>(`/admin/users/${id}/approve`, { fetch: ctx?.fetch }),
+  /** Reject/delete an account (used for pending sign-ups). */
+  remove: (id: Id, ctx?: Ctx) =>
+    http.delete<DeletedUser>(`/admin/users/${id}`, { fetch: ctx?.fetch })
 };
 
 /** Aggregate namespace so callers can `import { api } from '$lib/api'`. */

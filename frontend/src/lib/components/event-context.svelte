@@ -30,7 +30,8 @@
               class="text-muted-foreground text-[10px] leading-none font-medium tracking-wide uppercase"
               >{chip.key}</span
             >
-            <span class="text-xs leading-none font-medium tracking-wide break-all">{chip.value}</span
+            <span class="text-xs leading-none font-medium tracking-wide break-all"
+              >{chip.value}</span
             >
           </div>
         {/each}

@@ -120,7 +120,12 @@ pub fn build(state: AppState) -> Router {
             get(api::settings::get).patch(api::settings::update),
         )
         .route("/settings/test-email", post(api::settings::test_email))
-        .route("/admin/users", get(api::settings::list_users));
+        .route("/admin/users", get(api::settings::list_users))
+        .route(
+            "/admin/users/:id/approve",
+            post(api::settings::approve_user),
+        )
+        .route("/admin/users/:id", delete(api::settings::delete_user));
 
     let auth_routes = Router::new()
         .route("/auth/login", post(auth::login))

@@ -1,7 +1,7 @@
 //! SQLite [`MembershipRepository`] adapter.
 
 use super::{Db, bool_from_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
-use crate::domain::{AuthProvider, Id, Membership, Role, Timestamp, User};
+use crate::domain::{AuthProvider, Id, Membership, Role, Timestamp, User, UserStatus};
 use crate::error::{Error, Result};
 use crate::ports::MembershipRepository;
 use async_trait::async_trait;
@@ -48,6 +48,7 @@ struct MemberRow {
     is_admin: i64,
     notifications_enabled: i64,
     auth_provider: String,
+    status: String,
     created_at: String,
     updated_at: String,
     role: String,
@@ -63,6 +64,7 @@ impl MemberRow {
             is_admin: bool_from_db(self.is_admin),
             notifications_enabled: bool_from_db(self.notifications_enabled),
             auth_provider: AuthProvider::from_db(&self.auth_provider),
+            status: UserStatus::from_db(&self.status),
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
         };
@@ -139,7 +141,7 @@ impl MembershipRepository for SqliteMembershipRepository {
     async fn members(&self, project_id: Id) -> Result<Vec<(User, Role)>> {
         let rows = sqlx::query_as::<_, MemberRow>(
             "SELECT u.id, u.email, u.display_name, u.password_hash, u.is_admin, \
-             u.notifications_enabled, u.auth_provider, u.created_at, u.updated_at, m.role \
+             u.notifications_enabled, u.auth_provider, u.status, u.created_at, u.updated_at, m.role \
              FROM users u JOIN memberships m ON m.user_id = u.id \
              WHERE m.project_id = ? ORDER BY u.display_name",
         )

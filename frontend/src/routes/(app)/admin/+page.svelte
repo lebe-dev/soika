@@ -15,6 +15,9 @@
   import Shield from '@lucide/svelte/icons/shield';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Check from '@lucide/svelte/icons/check';
+  import Clock from '@lucide/svelte/icons/clock';
+  import UserCheck from '@lucide/svelte/icons/user-check';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
   import Mail from '@lucide/svelte/icons/mail';
   import MailX from '@lucide/svelte/icons/mail-x';
   import PageTitle from '$lib/components/page-title.svelte';
@@ -83,6 +86,40 @@
     orgName = data.settings.org_name;
     allowSignup = data.settings.allow_signup;
   }
+
+  // Per-user in-flight flag so approve/reject buttons disable while the request
+  // runs and we avoid double-submits.
+  let busyUserId = $state<string | null>(null);
+
+  // Count of accounts awaiting approval — surfaced on the Users tab label.
+  const pendingCount = $derived(data.users.filter((u) => u.status === 'pending').length);
+
+  async function approveUser(id: string) {
+    busyUserId = id;
+    try {
+      await api.admin.approve(id);
+      toast.success('Account approved');
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to approve account'));
+    } finally {
+      busyUserId = null;
+    }
+  }
+
+  async function rejectUser(id: string, email: string) {
+    if (!confirm(`Reject and delete the pending account ${email}? This cannot be undone.`)) return;
+    busyUserId = id;
+    try {
+      await api.admin.remove(id);
+      toast.success('Account rejected');
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to reject account'));
+    } finally {
+      busyUserId = null;
+    }
+  }
 </script>
 
 <PageTitle title="Admin" />
@@ -96,7 +133,12 @@
   <Tabs.Root value="settings">
     <Tabs.List>
       <Tabs.Trigger value="settings">Service settings</Tabs.Trigger>
-      <Tabs.Trigger value="users">Users ({data.users.length})</Tabs.Trigger>
+      <Tabs.Trigger value="users">
+        Users ({data.users.length})
+        {#if pendingCount > 0}
+          <Badge variant="secondary" class="ml-1.5">{pendingCount} pending</Badge>
+        {/if}
+      </Tabs.Trigger>
       <Tabs.Trigger value="teams">Teams ({data.teams.length})</Tabs.Trigger>
     </Tabs.List>
 
@@ -231,16 +273,19 @@
                   <Table.Head>Name</Table.Head>
                   <Table.Head>Email</Table.Head>
                   <Table.Head>Role</Table.Head>
+                  <Table.Head>Status</Table.Head>
                   <Table.Head>Notifications</Table.Head>
                   <Table.Head>Joined</Table.Head>
+                  <Table.Head class="text-right">Actions</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
                 {#each data.users as u (u.id)}
+                  {@const isSelf = authStore.user != null && u.id === authStore.user.id}
                   <Table.Row>
                     <Table.Cell class="font-medium">
                       {u.display_name}
-                      {#if authStore.user && u.id === authStore.user.id}
+                      {#if isSelf}
                         <span class="text-muted-foreground ml-1 text-xs">(you)</span>
                       {/if}
                     </Table.Cell>
@@ -256,12 +301,48 @@
                       {/if}
                     </Table.Cell>
                     <Table.Cell>
+                      {#if u.status === 'pending'}
+                        <Badge variant="secondary">
+                          <Clock class="size-3" />
+                          Pending
+                        </Badge>
+                      {:else}
+                        <Badge variant="outline">Active</Badge>
+                      {/if}
+                    </Table.Cell>
+                    <Table.Cell>
                       <span class="text-muted-foreground text-sm">
                         {u.notifications_enabled ? 'On' : 'Off'}
                       </span>
                     </Table.Cell>
                     <Table.Cell class="text-muted-foreground">{formatDate(u.created_at)}</Table.Cell
                     >
+                    <Table.Cell class="text-right">
+                      {#if u.status === 'pending'}
+                        <div class="flex items-center justify-end gap-2">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            disabled={busyUserId === u.id}
+                            onclick={() => approveUser(u.id)}
+                          >
+                            <UserCheck class="size-4" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busyUserId === u.id || isSelf}
+                            onclick={() => rejectUser(u.id, u.email)}
+                          >
+                            <Trash2 class="size-4" />
+                            Reject
+                          </Button>
+                        </div>
+                      {:else}
+                        <span class="text-muted-foreground text-xs">—</span>
+                      {/if}
+                    </Table.Cell>
                   </Table.Row>
                 {/each}
               </Table.Body>
@@ -312,14 +393,14 @@
     </Tabs.Content>
   </Tabs.Root>
 
-  <div class="border-t pt-4 flex items-center justify-center gap-2 select-none">
+  <div class="flex items-center justify-center gap-2 border-t pt-4 select-none">
     <span class="text-muted-foreground/75 text-xs">v{version}</span>
     <span class="text-muted-foreground/50 text-xs">|</span>
     <a
       href="https://github.com/lebe-dev/soika"
       target="_blank"
       rel="noopener noreferrer"
-      class="text-muted-foreground/75 hover:text-foreground text-xs transition-colors flex items-center gap-1 underline"
+      class="text-muted-foreground/75 hover:text-foreground flex items-center gap-1 text-xs underline transition-colors"
     >
       GitHub
       <ExternalLink class="size-2.5" />

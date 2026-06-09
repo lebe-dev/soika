@@ -15,6 +15,8 @@ export type Role = 'admin' | 'member';
 export type IssueStatus = 'unresolved' | 'resolved' | 'muted';
 /** Account origin (`UserView.auth_provider`); `oidc` accounts have no local password. */
 export type AuthProvider = 'local' | 'oidc';
+/** Account activation status; `pending` accounts await admin approval and hold no session. */
+export type UserStatus = 'active' | 'pending';
 
 /** Error body shape returned by every failing endpoint: `{ "error": "..." }`. */
 export interface ApiErrorBody {
@@ -366,5 +368,12 @@ export interface AdminUser {
   display_name: string;
   is_admin: boolean;
   notifications_enabled: boolean;
+  /** Activation status: `active` or `pending` (awaiting admin approval). */
+  status: UserStatus;
   created_at: Timestamp;
+}
+
+/** `DELETE /admin/users/{id}` response: the id of the removed account. */
+export interface DeletedUser {
+  id: Id;
 }
