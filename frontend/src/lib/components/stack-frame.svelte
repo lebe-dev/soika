@@ -6,7 +6,11 @@
 
   // A single stack frame row with collapsible source context. Source
   // lines render exactly as the SDK reported them — no demangling / source maps.
-  let { frame, expanded = false }: { frame: Frame; expanded?: boolean } = $props();
+  let {
+    frame,
+    expanded = false,
+    crashing = false
+  }: { frame: Frame; expanded?: boolean; crashing?: boolean } = $props();
 
   // Seed the open state from the initial `expanded` prop only; toggling is local.
   let open = $state(untrack(() => expanded));
@@ -42,7 +46,13 @@
   }
 </script>
 
-<div class={cn('border-b last:border-b-0', inApp ? 'bg-background' : 'bg-muted/30')}>
+<div
+  class={cn(
+    'border-b last:border-b-0',
+    inApp ? 'bg-background' : 'bg-muted/30',
+    crashing && 'border-l-primary bg-primary/[0.03] border-l-2'
+  )}
+>
   <button
     type="button"
     class={cn(

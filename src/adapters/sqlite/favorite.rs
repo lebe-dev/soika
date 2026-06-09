@@ -35,23 +35,19 @@ impl FavoriteRepository for SqliteFavoriteRepository {
     }
 
     async fn remove(&self, user_id: Id, project_id: Id) -> Result<()> {
-        sqlx::query(
-            "DELETE FROM project_favorites WHERE user_id = ? AND project_id = ?",
-        )
-        .bind(user_id.to_string())
-        .bind(project_id.to_string())
-        .execute(&self.db)
-        .await?;
+        sqlx::query("DELETE FROM project_favorites WHERE user_id = ? AND project_id = ?")
+            .bind(user_id.to_string())
+            .bind(project_id.to_string())
+            .execute(&self.db)
+            .await?;
         Ok(())
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Id>> {
-        let rows = sqlx::query(
-            "SELECT project_id FROM project_favorites WHERE user_id = ?",
-        )
-        .bind(user_id.to_string())
-        .fetch_all(&self.db)
-        .await?;
+        let rows = sqlx::query("SELECT project_id FROM project_favorites WHERE user_id = ?")
+            .bind(user_id.to_string())
+            .fetch_all(&self.db)
+            .await?;
 
         rows.iter()
             .map(|row| {

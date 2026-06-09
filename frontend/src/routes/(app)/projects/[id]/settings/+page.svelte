@@ -178,6 +178,7 @@
     try {
       await projects.remove(project.id);
       toast.success('Project deleted');
+      await invalidateAll();
       await goto('/');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to delete project'));

@@ -8,7 +8,8 @@ import {
   hasSourceContext,
   isInApp,
   mostRelevantFrame,
-  parseEvent
+  parseEvent,
+  stacktraceToText
 } from './stacktrace';
 
 function frame(partial: Partial<Frame> = {}): Frame {
@@ -186,5 +187,38 @@ describe('frame ordering', () => {
       'app1',
       'oldest'
     ]);
+  });
+});
+
+describe('stacktraceToText', () => {
+  it('renders crashing frame first with file:line and indented source', () => {
+    const st: Stacktrace = {
+      frames: [
+        frame({
+          module: 'com.example.app',
+          function: 'loadThumbnail',
+          filename: 'ImageLoader.kt',
+          lineno: 88
+        }),
+        frame({
+          module: 'com.example.app',
+          function: 'onBindViewHolder',
+          filename: 'FeedAdapter.kt',
+          lineno: 55,
+          context_line: '  holder.thumbnail.setImageBitmap(item.path)'
+        })
+      ]
+    };
+    expect(stacktraceToText(st)).toBe(
+      [
+        '  at com.example.app in onBindViewHolder (FeedAdapter.kt:55)',
+        '      holder.thumbnail.setImageBitmap(item.path)',
+        '  at com.example.app in loadThumbnail (ImageLoader.kt:88)'
+      ].join('\n')
+    );
+  });
+
+  it('falls back to <unknown> when no location is available', () => {
+    expect(stacktraceToText({ frames: [frame()] })).toBe('  at <unknown>');
   });
 });

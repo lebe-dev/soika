@@ -3,14 +3,18 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { issues as issuesApi, errorMessage, type Issue, type SoikaEvent } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { toast } from '$lib/components/ui/sonner';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import StacktraceViewer from '$lib/components/stacktrace-viewer.svelte';
   import EventContext from '$lib/components/event-context.svelte';
+  import IssueTimeline from '$lib/components/issue-timeline.svelte';
   import { parseEvent } from '$lib/stacktrace';
   import { formatCount, formatDateTime, formatRelative } from '$lib/format';
+  import { severityStyle } from '$lib/severity';
+  import { cn } from '$lib/utils';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -19,6 +23,10 @@
   import CheckCircle2 from '@lucide/svelte/icons/circle-check-big';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import VolumeX from '@lucide/svelte/icons/volume-x';
+  import Crosshair from '@lucide/svelte/icons/crosshair';
+  import Activity from '@lucide/svelte/icons/activity';
+  import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+  import Copy from '@lucide/svelte/icons/copy';
 
   // Issue detail with stacktrace viewer, event navigation, and resolve/mute
   // actions. Members and admins may both resolve/mute.
@@ -47,6 +55,10 @@
 
   const currentEvent = $derived<SoikaEvent | undefined>(events[eventIndex]);
   const parsed = $derived(currentEvent ? parseEvent(currentEvent.payload) : undefined);
+
+  // Severity-driven accent (rail, level pill, hero tint, accent border).
+  const sev = $derived(severityStyle(issue.level));
+  const SevIcon = $derived(sev.icon);
 
   let acting = $state(false);
 
@@ -106,11 +118,22 @@
   function nextEvent() {
     if (eventIndex > 0) eventIndex -= 1;
   }
+
+  // Copy the issue (with the currently shown event) to the clipboard as JSON.
+  async function copyAsJson() {
+    const json = JSON.stringify({ ...issue, event: currentEvent ?? null }, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      toast.success('Copied issue as JSON');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not copy to clipboard'));
+    }
+  }
 </script>
 
-<PageTitle title={data.project.name} />
+<PageTitle title={issue.title.length > 60 ? issue.title.slice(0, 60) + '…' : issue.title} />
 
-<div class="space-y-6">
+<div class="reveal space-y-6">
   <a
     href={`/projects/${projectId}`}
     class="text-primary hover:text-primary/80 inline-flex items-center gap-1.5 text-sm transition-colors"
@@ -119,75 +142,96 @@
     Back to issues
   </a>
 
-  <!-- Header: title, status, counters, actions -->
-  <div class="flex items-start justify-between gap-4">
-    <div class="min-w-0 flex-1 space-y-1">
-      <div class="flex items-center gap-2">
-        {#if issue.level}
-          <span class="text-muted-foreground text-xs font-semibold tracking-wide uppercase"
-            >{issue.level}</span
+  <!-- Hero: severity rail, level, title, culprit, actions -->
+  <div class={cn('ring-foreground/10 flex gap-4 overflow-hidden rounded-xl ring-1', sev.tint)}>
+    <div class={cn('w-1.5 shrink-0', sev.rail)} aria-hidden="true"></div>
+    <div class="min-w-0 flex-1 space-y-3 py-4 pr-4">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span
+            class={cn(
+              'inline-flex h-5 items-center gap-1.5 rounded-[min(var(--radius-md),12px)] border px-2 py-0.5 text-xs font-semibold tracking-wide uppercase',
+              sev.pill
+            )}
           >
-        {/if}
-        <IssueStatusBadge status={issue.status} />
+            <SevIcon class="size-3" />
+            {sev.label}
+          </span>
+          <IssueStatusBadge status={issue.status} class="rounded-[min(var(--radius-md),12px)]" />
+        </div>
+
+        <div class="flex shrink-0 gap-2">
+          {#if issue.status === 'resolved'}
+            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
+              <RotateCcw class="size-4" />
+              Reopen
+            </Button>
+          {:else}
+            <Button size="sm" disabled={acting} onclick={() => run('resolve')}>
+              <CheckCircle2 class="size-4" />
+              Resolve
+            </Button>
+          {/if}
+
+          {#if issue.status === 'muted'}
+            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
+              <VolumeX class="size-4" />
+              Unmute
+            </Button>
+          {:else}
+            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('mute')}>
+              <VolumeX class="size-4" />
+              Mute
+            </Button>
+          {/if}
+
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <Button variant="outline" size="sm" class="px-2" aria-label="More actions">
+                <EllipsisVertical class="size-4" />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-44">
+              <DropdownMenu.Item onclick={copyAsJson} class="text-xs">
+                <Copy class="size-4" />
+                Copy as JSON
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
       </div>
-      <h1 class="text-xl font-semibold tracking-tight break-words">{issue.title}</h1>
-      {#if issue.culprit}
-        <p class="text-muted-foreground font-mono text-sm break-all">{issue.culprit}</p>
-      {/if}
-    </div>
 
-    <div class="flex shrink-0 gap-2">
-      {#if issue.status === 'resolved'}
-        <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
-          <RotateCcw class="size-4" />
-          Reopen
-        </Button>
-      {:else}
-        <Button variant="outline" size="sm" disabled={acting} onclick={() => run('resolve')}>
-          <CheckCircle2 class="size-4" />
-          Resolve
-        </Button>
-      {/if}
-
-      {#if issue.status === 'muted'}
-        <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
-          <VolumeX class="size-4" />
-          Unmute
-        </Button>
-      {:else}
-        <Button variant="outline" size="sm" disabled={acting} onclick={() => run('mute')}>
-          <VolumeX class="size-4" />
-          Mute
-        </Button>
-      {/if}
+      <div class="space-y-1">
+        <h1 class="text-2xl font-semibold tracking-tight break-words">{issue.title}</h1>
+        {#if issue.culprit}
+          <p class="text-muted-foreground flex items-center gap-1.5 font-mono text-sm break-all">
+            <Crosshair class="size-3.5 shrink-0" />
+            {issue.culprit}
+          </p>
+        {/if}
+      </div>
     </div>
   </div>
 
-  <!-- Stats -->
-  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-    <Card.Root>
-      <Card.Content class="p-4">
-        <div class="text-muted-foreground text-xs tracking-wide uppercase">Events</div>
-        <div class="text-lg font-semibold tabular-nums">{formatCount(issue.event_count)}</div>
-      </Card.Content>
-    </Card.Root>
-    <Card.Root>
-      <Card.Content class="p-4">
-        <div class="text-muted-foreground text-xs tracking-wide uppercase">First seen</div>
-        <div class="text-sm font-medium" title={formatDateTime(issue.first_seen)}>
-          {formatRelative(issue.first_seen)}
+  <!-- Stats: Events hero metric, lifetime timeline, fingerprint -->
+  <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <Card.Root class="sm:col-span-1">
+      <Card.Content class="flex h-full flex-col justify-between gap-2 p-4">
+        <div
+          class="text-muted-foreground flex items-center gap-1.5 text-xs tracking-wide uppercase"
+        >
+          <Activity class="size-3.5" />
+          Events
         </div>
+        <div class="text-3xl font-semibold tabular-nums">{formatCount(issue.event_count)}</div>
       </Card.Content>
     </Card.Root>
-    <Card.Root>
-      <Card.Content class="p-4">
-        <div class="text-muted-foreground text-xs tracking-wide uppercase">Last seen</div>
-        <div class="text-sm font-medium" title={formatDateTime(issue.last_seen)}>
-          {formatRelative(issue.last_seen)}
-        </div>
+    <Card.Root class="sm:col-span-2">
+      <Card.Content class="flex h-full flex-col justify-center p-4">
+        <IssueTimeline firstSeen={issue.first_seen} lastSeen={issue.last_seen} />
       </Card.Content>
     </Card.Root>
-    <Card.Root>
+    <Card.Root class="sm:col-span-1">
       <Card.Content class="space-y-2 p-4">
         <div class="text-muted-foreground text-xs tracking-wide uppercase">Fingerprint</div>
         {#if editingFp}
@@ -271,7 +315,7 @@
 
     <!-- Exception summary -->
     {#if parsed?.exceptionType || parsed?.exceptionValue}
-      <Card.Root>
+      <Card.Root class={cn('border-l-2', sev.accentBorder)}>
         <Card.Content class="space-y-1 p-4">
           {#if parsed.exceptionType}
             <div class="font-mono text-sm font-semibold">{parsed.exceptionType}</div>
@@ -312,3 +356,44 @@
     </Card.Root>
   {/if}
 </div>
+
+<style>
+  /* One orchestrated page-load reveal: each top-level section fades/slides up
+     with a short stagger. Disabled under reduced-motion. */
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .reveal > :global(*) {
+    animation: reveal 0.35s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+  }
+  .reveal > :global(*:nth-child(1)) {
+    animation-delay: 0ms;
+  }
+  .reveal > :global(*:nth-child(2)) {
+    animation-delay: 40ms;
+  }
+  .reveal > :global(*:nth-child(3)) {
+    animation-delay: 80ms;
+  }
+  .reveal > :global(*:nth-child(4)) {
+    animation-delay: 120ms;
+  }
+  .reveal > :global(*:nth-child(5)) {
+    animation-delay: 160ms;
+  }
+  .reveal > :global(*:nth-child(n + 6)) {
+    animation-delay: 200ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal > :global(*) {
+      animation: none;
+    }
+  }
+</style>

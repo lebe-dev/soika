@@ -23,9 +23,15 @@
     {#if ctx.highlights.length > 0}
       <div class="flex flex-wrap gap-2">
         {#each ctx.highlights as chip (chip.key)}
-          <div class="bg-muted/40 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1">
-            <span class="text-muted-foreground text-xs tracking-wide uppercase">{chip.key}</span>
-            <span class="font-mono text-xs font-medium break-all">{chip.value}</span>
+          <div
+            class="bg-muted/40 inline-flex items-baseline gap-1.5 rounded-[min(var(--radius-md),12px)] border px-2.5 py-1"
+          >
+            <span
+              class="text-muted-foreground text-[10px] leading-none font-medium tracking-wide uppercase"
+              >{chip.key}</span
+            >
+            <span class="text-xs leading-none font-medium tracking-wide break-all">{chip.value}</span
+            >
           </div>
         {/each}
       </div>

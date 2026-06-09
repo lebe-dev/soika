@@ -209,6 +209,7 @@
       placeholder="Search projects…"
       class="max-w-sm"
       aria-label="Search projects"
+      onkeydown={(e) => { if (e.key === 'Escape') { searchQuery = ''; (e.target as HTMLInputElement).blur(); } }}
     />
 
     {#if filteredAndSorted.length === 0}

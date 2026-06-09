@@ -4,6 +4,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { cn } from '$lib/utils';
   import type { LayoutData } from './$types';
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import FolderGit2 from '@lucide/svelte/icons/folder-git-2';
   import ListFilter from '@lucide/svelte/icons/list-filter';
   import Terminal from '@lucide/svelte/icons/terminal';
@@ -49,6 +50,14 @@
 </script>
 
 <div class="space-y-6">
+  <a
+    href="/"
+    class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
+  >
+    <ArrowLeft class="size-4" />
+    Back to dashboard
+  </a>
+
   <div class="flex flex-wrap items-center gap-3">
     <div class="bg-muted/40 flex size-10 items-center justify-center rounded-lg border">
       <FolderGit2 class="text-muted-foreground size-5" />

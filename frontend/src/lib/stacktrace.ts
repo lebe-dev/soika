@@ -213,3 +213,24 @@ export function mostRelevantFrame(st: Stacktrace): Frame | undefined {
 export function framesForDisplay(st: Stacktrace): Frame[] {
   return [...st.frames].reverse();
 }
+
+/**
+ * Render a stacktrace as plain text for the clipboard, crashing frame first
+ * (matching the viewer's display order). Each frame becomes a `location`
+ * (with `file:line` when available) line, followed by its `context_line`
+ * indented underneath when present.
+ */
+export function stacktraceToText(st: Stacktrace): string {
+  return framesForDisplay(st)
+    .map((frame) => {
+      const location = frameLocation(frame) ?? '<unknown>';
+      const file = frameFile(frame);
+      const at =
+        file && frame.lineno !== undefined
+          ? `  at ${location} (${file}:${frame.lineno})`
+          : `  at ${location}`;
+      const code = frame.context_line?.trim();
+      return code ? `${at}\n      ${code}` : at;
+    })
+    .join('\n');
+}

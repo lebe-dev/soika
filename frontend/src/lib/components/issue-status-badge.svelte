@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Badge } from '$lib/components/ui/badge';
+  import { cn } from '$lib/utils';
   import type { IssueStatus } from '$lib/api';
 
   // Maps an issue status to a labelled, colour-coded badge.
-  let { status }: { status: IssueStatus } = $props();
+  let { status, class: className }: { status: IssueStatus; class?: string } = $props();
 
   const config: Record<
     IssueStatus,
@@ -21,4 +22,4 @@
   const c = $derived(config[status]);
 </script>
 
-<Badge variant={c.variant} class={c.class}>{c.label}</Badge>
+<Badge variant={c.variant} class={cn(c.class, className)}>{c.label}</Badge>

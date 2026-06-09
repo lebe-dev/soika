@@ -13,6 +13,7 @@
   import { Input } from '$lib/components/ui/input';
   import { toast } from '$lib/components/ui/sonner';
   import Shield from '@lucide/svelte/icons/shield';
+  import ExternalLink from '@lucide/svelte/icons/external-link';
   import Check from '@lucide/svelte/icons/check';
   import Mail from '@lucide/svelte/icons/mail';
   import MailX from '@lucide/svelte/icons/mail-x';
@@ -205,19 +206,6 @@
         </Card.Content>
       </Card.Root>
 
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>About</Card.Title>
-          <Card.Description>Build information for this instance.</Card.Description>
-        </Card.Header>
-        <Card.Content>
-          <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-            <dt class="text-muted-foreground">Version</dt>
-            <dd class="font-mono">soika v{version}</dd>
-          </dl>
-        </Card.Content>
-      </Card.Root>
-
       <div class="flex items-center gap-2">
         <Button onclick={save} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save changes'}
@@ -323,4 +311,18 @@
       </Card.Root>
     </Tabs.Content>
   </Tabs.Root>
+
+  <div class="border-t pt-4 flex items-center justify-center gap-2 select-none">
+    <span class="text-muted-foreground/75 text-xs">v{version}</span>
+    <span class="text-muted-foreground/50 text-xs">|</span>
+    <a
+      href="https://github.com/lebe-dev/soika"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="text-muted-foreground/75 hover:text-foreground text-xs transition-colors flex items-center gap-1 underline"
+    >
+      GitHub
+      <ExternalLink class="size-2.5" />
+    </a>
+  </div>
 </div>

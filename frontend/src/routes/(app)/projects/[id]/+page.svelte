@@ -140,7 +140,7 @@
   }
 </script>
 
-<PageTitle title={`${data.project.name} · Issues`} />
+<PageTitle title={data.project.name} />
 
 <div class="space-y-4">
   <div class="flex flex-wrap items-center gap-3">
