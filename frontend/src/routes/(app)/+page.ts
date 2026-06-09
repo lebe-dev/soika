@@ -13,13 +13,18 @@ export interface ProjectOverview {
   project: Project;
   /** Number of unresolved issues for the project. */
   unresolvedCount: number;
+  favorited: boolean;
 }
 
 export const load: PageLoad = async ({ parent }) => {
   const { config } = await parent();
 
   const overviews: ProjectOverview[] = (config?.projects ?? []).map(
-    ({ unresolved_count, ...project }) => ({ project, unresolvedCount: unresolved_count })
+    ({ unresolved_count, favorited, ...project }) => ({
+      project,
+      unresolvedCount: unresolved_count,
+      favorited
+    })
   );
   const teams: TeamSummary[] = config?.teams ?? [];
 

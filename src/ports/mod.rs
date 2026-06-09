@@ -7,6 +7,7 @@
 
 mod clock;
 mod event;
+mod favorite;
 mod invite;
 mod issue;
 mod mailer;
@@ -19,6 +20,7 @@ mod user;
 
 pub use clock::Clock;
 pub use event::{EventRepository, NewEvent};
+pub use favorite::FavoriteRepository;
 pub use invite::{InviteRepository, NewInvite};
 pub use issue::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
 pub use mailer::{Mailer, OutboundEmail};

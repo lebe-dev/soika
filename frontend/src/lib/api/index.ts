@@ -90,6 +90,11 @@ export const projects = {
     http.get<SdkSetup>(`/projects/${id}/sdk-setup`, { fetch: ctx?.fetch }),
   mute: (id: Id, muted?: boolean, ctx?: Ctx) =>
     http.post<Project>(`/projects/${id}/mute`, { body: { muted }, fetch: ctx?.fetch }),
+  favorite: (id: Id, favorited: boolean, ctx?: Ctx) =>
+    http.post<{ favorited: boolean }>(`/projects/${id}/favorite`, {
+      body: { favorited },
+      fetch: ctx?.fetch
+    }),
   regenerateDsn: (id: Id, ctx?: Ctx) =>
     http.post<Dsn>(`/projects/${id}/regenerate-dsn`, { fetch: ctx?.fetch }),
   members: (id: Id, ctx?: Ctx) =>

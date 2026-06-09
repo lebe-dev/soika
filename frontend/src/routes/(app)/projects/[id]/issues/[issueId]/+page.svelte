@@ -108,7 +108,7 @@
   }
 </script>
 
-<PageTitle title={issue.title} />
+<PageTitle title={data.project.name} />
 
 <div class="space-y-6">
   <a

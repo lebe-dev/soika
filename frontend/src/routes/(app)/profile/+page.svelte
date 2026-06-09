@@ -68,6 +68,13 @@
   let confirmPassword = $state('');
   let changingPassword = $state(false);
 
+  const canChangePasswordSubmit = $derived(
+    currentPassword.length > 0 &&
+      newPassword.length > 0 &&
+      confirmPassword.length > 0 &&
+      newPassword === confirmPassword
+  );
+
   async function changePassword(event: SubmitEvent) {
     event.preventDefault();
     if (!currentPassword || !newPassword) {
@@ -216,7 +223,7 @@
           </div>
         </Card.Content>
         <Card.Footer class="justify-end">
-          <Button type="submit" disabled={changingPassword}>
+          <Button type="submit" disabled={changingPassword || !canChangePasswordSubmit}>
             {changingPassword ? 'Changing…' : 'Change password'}
           </Button>
         </Card.Footer>

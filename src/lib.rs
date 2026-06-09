@@ -57,9 +57,10 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
     use adapters::clock::SystemClock;
     use adapters::mailer::{NoopMailer, SmtpMailer};
     use adapters::sqlite::{
-        SqliteEventRepository, SqliteInviteRepository, SqliteIssueRepository,
-        SqliteMembershipRepository, SqliteProjectRepository, SqliteSessionRepository,
-        SqliteSettingsRepository, SqliteTeamRepository, SqliteUserRepository,
+        SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
+        SqliteIssueRepository, SqliteMembershipRepository, SqliteProjectRepository,
+        SqliteSessionRepository, SqliteSettingsRepository, SqliteTeamRepository,
+        SqliteUserRepository,
     };
     use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
@@ -79,6 +80,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
         memberships: Arc::new(SqliteMembershipRepository::new(pool.clone())),
         projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
+        favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
         issues: Arc::new(SqliteIssueRepository::new(pool.clone())),
         events: Arc::new(SqliteEventRepository::new(pool.clone())),
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),

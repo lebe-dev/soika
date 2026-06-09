@@ -271,15 +271,17 @@ pub struct ProjectOverviewView {
     #[serde(flatten)]
     pub project: ProjectView,
     pub unresolved_count: i64,
+    pub favorited: bool,
 }
 
-/// Projects visible to `user`, each with its unresolved-issue count.
+/// Projects visible to `user`, each with its unresolved-issue count and favorite flag.
 ///
 /// Mirrors [`list`]'s visibility rule (admins see all projects; others only
 /// their memberships), then fetches every project's open-issue count in a
 /// single batched query. Used by the `/auth/config` bootstrap so the dashboard
 /// renders from one request instead of fanning out to `/projects`, `/teams`
-/// and one `/issues` call per project.
+/// and one `/issues` call per project. Results are sorted: favorited projects
+/// first, then alphabetically by name.
 pub async fn overviews(
     state: &AppState,
     user: &User,
@@ -292,17 +294,29 @@ pub async fn overviews(
 
     let ids: Vec<Id> = projects.iter().map(|p| p.id).collect();
     let counts = state.issues.unresolved_counts(&ids).await?;
+    let favorite_ids = state.favorites.list_for_user(user.id).await?;
+    let favorite_set: std::collections::HashSet<Id> = favorite_ids.into_iter().collect();
 
-    Ok(projects
+    let mut views: Vec<ProjectOverviewView> = projects
         .into_iter()
         .map(|project| {
             let unresolved_count = counts.get(&project.id).copied().unwrap_or(0);
+            let favorited = favorite_set.contains(&project.id);
             ProjectOverviewView {
                 project: ProjectView::from_project(project, &state.config.base_url),
                 unresolved_count,
+                favorited,
             }
         })
-        .collect())
+        .collect();
+
+    views.sort_by(|a, b| {
+        b.favorited
+            .cmp(&a.favorited)
+            .then_with(|| a.project.name.cmp(&b.project.name))
+    });
+
+    Ok(views)
 }
 
 // ---------------------------------------------------------------------------
@@ -816,6 +830,62 @@ pub async fn regenerate_dsn(
             })
             .into_response()
         }
+        Err(err) => error_response(err),
+    }
+}
+
+/// Request body for `POST /projects/{id}/favorite`.
+#[derive(Debug, Deserialize, Default)]
+pub struct FavoriteRequest {
+    /// Desired favorite state. When absent the current state is toggled.
+    #[serde(default)]
+    pub favorited: Option<bool>,
+}
+
+/// Response body for `POST /projects/{id}/favorite`.
+#[derive(Debug, Serialize)]
+pub struct FavoriteResponse {
+    pub favorited: bool,
+}
+
+/// `POST /projects/{id}/favorite` — add/remove a project from the caller's favorites.
+///
+/// Accepts an optional `{ favorited: bool }` body. When `favorited` is omitted
+/// the current state is toggled. The caller must be a project member.
+pub async fn favorite(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+    body: Option<Json<FavoriteRequest>>,
+) -> Response {
+    let project_id = match parse_id(&id) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    if let Err(resp) = require_member(&state, &user, project_id).await {
+        return resp;
+    }
+
+    let target = match body.and_then(|Json(b)| b.favorited) {
+        Some(v) => v,
+        None => {
+            let favorites = match state.favorites.list_for_user(user.id).await {
+                Ok(f) => f,
+                Err(err) => return error_response(err),
+            };
+            !favorites.contains(&project_id)
+        }
+    };
+
+    let result = if target {
+        state.favorites.add(user.id, project_id).await
+    } else {
+        state.favorites.remove(user.id, project_id).await
+    };
+
+    match result {
+        Ok(()) => Json(FavoriteResponse { favorited: target }).into_response(),
         Err(err) => error_response(err),
     }
 }

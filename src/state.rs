@@ -10,8 +10,9 @@ use crate::auth::{LoginGuard, OidcProvider};
 use crate::config::Config;
 use crate::ingest::RateLimiter;
 use crate::ports::{
-    Clock, EventRepository, InviteRepository, IssueRepository, Mailer, MembershipRepository,
-    ProjectRepository, SessionRepository, SettingsRepository, TeamRepository, UserRepository,
+    Clock, EventRepository, FavoriteRepository, InviteRepository, IssueRepository, Mailer,
+    MembershipRepository, ProjectRepository, SessionRepository, SettingsRepository, TeamRepository,
+    UserRepository,
 };
 
 /// Application state shared across all handlers (cheaply cloneable).
@@ -23,6 +24,7 @@ pub struct AppState {
     pub teams: Arc<dyn TeamRepository>,
     pub memberships: Arc<dyn MembershipRepository>,
     pub projects: Arc<dyn ProjectRepository>,
+    pub favorites: Arc<dyn FavoriteRepository>,
     pub issues: Arc<dyn IssueRepository>,
     pub events: Arc<dyn EventRepository>,
     pub invites: Arc<dyn InviteRepository>,

@@ -17,6 +17,7 @@
 //! schema is migrated.
 
 mod event;
+mod favorite;
 mod invite;
 mod issue;
 mod membership;
@@ -27,6 +28,7 @@ mod team;
 mod user;
 
 pub use event::SqliteEventRepository;
+pub use favorite::SqliteFavoriteRepository;
 pub use invite::SqliteInviteRepository;
 pub use issue::SqliteIssueRepository;
 pub use membership::SqliteMembershipRepository;

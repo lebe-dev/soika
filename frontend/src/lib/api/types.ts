@@ -68,6 +68,7 @@ export interface AuthConfig {
 /** A project plus its unresolved-issue count (the `/auth/config` dashboard slice). */
 export interface ProjectOverview extends Project {
   unresolved_count: number;
+  favorited: boolean;
 }
 
 /**

@@ -12,6 +12,7 @@
   import VolumeX from '@lucide/svelte/icons/volume-x';
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import Star from '@lucide/svelte/icons/star';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
@@ -19,6 +20,57 @@
 
   const overviews = $derived(data.overviews);
   const teams = $derived(data.teams);
+
+  // --- Favorites (local state for optimistic updates) ---
+  let favoritedIds = $state(new Set<string>());
+  $effect(() => {
+    favoritedIds = new Set(overviews.filter((o) => o.favorited).map((o) => o.project.id));
+  });
+
+  async function toggleFavorite(e: MouseEvent, projectId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const wasFav = favoritedIds.has(projectId);
+    const previous = new Set(favoritedIds);
+    // Optimistic update
+    const next = new Set(favoritedIds);
+    if (wasFav) next.delete(projectId);
+    else next.add(projectId);
+    favoritedIds = next;
+    try {
+      await projectsApi.favorite(projectId, !wasFav);
+    } catch (err) {
+      favoritedIds = previous;
+      toast.error(errorMessage(err, 'Failed to update favorite'));
+    }
+  }
+
+  // --- Search with debounce ---
+  let searchQuery = $state('');
+  let debouncedQuery = $state('');
+
+  $effect(() => {
+    const q = searchQuery;
+    const timer = setTimeout(() => {
+      debouncedQuery = q;
+    }, 300);
+    return () => clearTimeout(timer);
+  });
+
+  const filteredAndSorted = $derived.by(() => {
+    const q = debouncedQuery.toLowerCase().trim();
+    const filtered =
+      q === ''
+        ? overviews
+        : overviews.filter((o) => o.project.name.toLowerCase().includes(q));
+
+    return [...filtered].sort((a, b) => {
+      const aFav = favoritedIds.has(a.project.id) ? 1 : 0;
+      const bFav = favoritedIds.has(b.project.id) ? 1 : 0;
+      if (bFav !== aFav) return bFav - aFav;
+      return a.project.name.localeCompare(b.project.name);
+    });
+  });
 
   // --- Create-project dialog state ---
   let createOpen = $state(false);
@@ -41,7 +93,7 @@
     submitting = true;
     try {
       const project: Project = await projectsApi.create({ name: name.trim(), team_id: teamId });
-      toast.success(`Project “${project.name}” created`);
+      toast.success(`Project "${project.name}" created`);
       createOpen = false;
       name = '';
       await goto(`/projects/${project.id}`);
@@ -152,46 +204,72 @@
       </Card.Content>
     </Card.Root>
   {:else}
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {#each overviews as { project, unresolvedCount } (project.id)}
-        <a
-          href={`/projects/${project.id}`}
-          class="group focus-visible:ring-ring rounded-lg transition focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <Card.Root class="group-hover:border-primary/50 h-full transition-colors">
-            <Card.Header>
-              <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0">
-                  <Card.Title class="truncate">{project.name}</Card.Title>
-                  <Card.Description class="truncate font-mono text-xs">
-                    {project.slug}
-                  </Card.Description>
+    <Input
+      bind:value={searchQuery}
+      placeholder="Search projects…"
+      class="max-w-sm"
+      aria-label="Search projects"
+    />
+
+    {#if filteredAndSorted.length === 0}
+      <p class="text-muted-foreground text-sm">No projects match your search.</p>
+    {:else}
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
+          <a
+            href={`/projects/${project.id}`}
+            class="group focus-visible:ring-ring rounded-lg transition focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <Card.Root class="group-hover:border-primary/50 h-full transition-colors">
+              <Card.Header>
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <Card.Title class="truncate">{project.name}</Card.Title>
+                    <Card.Description class="truncate font-mono text-xs">
+                      {project.slug}
+                    </Card.Description>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1">
+                    {#if project.muted}
+                      <Badge variant="secondary" class="gap-1">
+                        <VolumeX class="size-3" />
+                        Muted
+                      </Badge>
+                    {/if}
+                    <button
+                      onclick={(e) => toggleFavorite(e, project.id)}
+                      aria-label={favoritedIds.has(project.id)
+                        ? 'Remove from favorites'
+                        : 'Add to favorites'}
+                      class="rounded p-1 transition-colors hover:bg-accent"
+                    >
+                      <Star
+                        class="size-4 transition-colors {favoritedIds.has(project.id)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-muted-foreground'}"
+                      />
+                    </button>
+                  </div>
                 </div>
-                {#if project.muted}
-                  <Badge variant="secondary" class="shrink-0 gap-1">
-                    <VolumeX class="size-3" />
-                    Muted
-                  </Badge>
+              </Card.Header>
+              <Card.Content>
+                {#if unresolvedCount === 0}
+                  <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
+                    <CircleCheck class="size-4 text-emerald-500" />
+                    No unresolved issues
+                  </p>
+                {:else}
+                  <p class="flex items-center gap-1.5 text-sm font-medium">
+                    <CircleAlert class="text-destructive size-4" />
+                    {unresolvedCount}
+                    {unresolvedCount === 1 ? 'unresolved issue' : 'unresolved issues'}
+                  </p>
                 {/if}
-              </div>
-            </Card.Header>
-            <Card.Content>
-              {#if unresolvedCount === 0}
-                <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
-                  <CircleCheck class="size-4 text-emerald-500" />
-                  No unresolved issues
-                </p>
-              {:else}
-                <p class="flex items-center gap-1.5 text-sm font-medium">
-                  <CircleAlert class="text-destructive size-4" />
-                  {unresolvedCount}
-                  {unresolvedCount === 1 ? 'unresolved issue' : 'unresolved issues'}
-                </p>
-              {/if}
-            </Card.Content>
-          </Card.Root>
-        </a>
-      {/each}
-    </div>
+              </Card.Content>
+            </Card.Root>
+          </a>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
