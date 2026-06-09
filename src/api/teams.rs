@@ -199,7 +199,7 @@ impl From<User> for MemberView {
 /// A project assigned to a team.
 #[derive(Debug, Serialize)]
 pub struct ProjectView {
-    pub id: Id,
+    pub id: String,
     pub name: String,
     pub slug: String,
 }
@@ -242,7 +242,7 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
         projects: projects
             .into_iter()
             .map(|p| ProjectView {
-                id: p.id,
+                id: p.short_id,
                 name: p.name,
                 slug: p.slug,
             })
