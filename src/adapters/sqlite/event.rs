@@ -118,6 +118,18 @@ impl EventRepository for SqliteEventRepository {
         Ok(row.try_get::<i64, _>("n")?)
     }
 
+    async fn count_in_window(&self, issue_id: Id, since: Timestamp) -> Result<i64> {
+        // received_at is RFC3339 TEXT; lexical comparison equals chronological
+        // comparison for fixed-offset UTC strings (mirrors `delete_older_than`).
+        let row =
+            sqlx::query("SELECT COUNT(*) AS n FROM events WHERE issue_id = ? AND received_at >= ?")
+                .bind(issue_id.to_string())
+                .bind(since.to_rfc3339())
+                .fetch_one(&self.db)
+                .await?;
+        Ok(row.try_get::<i64, _>("n")?)
+    }
+
     async fn prune_events_over_retention(
         &self,
         project_id: Id,
@@ -361,5 +373,35 @@ mod tests {
         let deleted = repo.delete_older_than(project_id, cutoff).await.unwrap();
         assert_eq!(deleted, 2, "seconds 0 and 1 are strictly before cutoff");
         assert_eq!(repo.count_for_project(project_id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn count_in_window_counts_from_since_inclusive() {
+        let pool = pool().await;
+        let (project_id, issue_id) = seed(&pool).await;
+        let repo = SqliteEventRepository::new(pool);
+
+        let base = chrono::Utc::now() - chrono::Duration::seconds(100);
+        // Five events at base + {0,1,2,3,4} seconds.
+        for i in 0..5 {
+            repo.insert(new_event(
+                project_id,
+                issue_id,
+                base + chrono::Duration::seconds(i),
+            ))
+            .await
+            .unwrap();
+        }
+
+        // since = base+2s → events at 2,3,4 are counted (inclusive lower bound).
+        let since = base + chrono::Duration::seconds(2);
+        assert_eq!(repo.count_in_window(issue_id, since).await.unwrap(), 3);
+
+        // since at/before the first event counts them all.
+        assert_eq!(repo.count_in_window(issue_id, base).await.unwrap(), 5);
+
+        // A different issue is not counted.
+        let other = Id::new_v4();
+        assert_eq!(repo.count_in_window(other, base).await.unwrap(), 0);
     }
 }

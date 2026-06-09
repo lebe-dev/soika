@@ -11,7 +11,7 @@
 //! SQL is ANSI-friendly; the only SQLite-specific bit is TEXT row decoding.
 
 use super::Db;
-use crate::domain::{Id, Issue, IssueStatus, Timestamp};
+use crate::domain::{Id, Issue, IssueStatus, MuteSpec, Timestamp};
 use crate::error::{Error, Result};
 use crate::ports::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
 use async_trait::async_trait;
@@ -32,6 +32,7 @@ impl SqliteIssueRepository {
 
 const ISSUE_COLS: &str = "id, short_id, project_id, fingerprint, title, culprit, level, \
      environment, release, status, \
+     muted_at, muted_until, mute_threshold, mute_window_seconds, \
      first_seen, last_seen, event_count, created_at, updated_at";
 
 fn row_to_issue(row: &sqlx::sqlite::SqliteRow) -> Result<Issue> {
@@ -47,6 +48,10 @@ fn row_to_issue(row: &sqlx::sqlite::SqliteRow) -> Result<Issue> {
         environment: row.try_get("environment")?,
         release: row.try_get("release")?,
         status: IssueStatus::from_str(&status)?,
+        muted_at: parse_ts_opt(row.try_get::<Option<String>, _>("muted_at")?)?,
+        muted_until: parse_ts_opt(row.try_get::<Option<String>, _>("muted_until")?)?,
+        mute_threshold: row.try_get("mute_threshold")?,
+        mute_window_seconds: row.try_get("mute_window_seconds")?,
         first_seen: parse_ts(row.try_get::<String, _>("first_seen")?)?,
         last_seen: parse_ts(row.try_get::<String, _>("last_seen")?)?,
         event_count: row.try_get("event_count")?,
@@ -63,6 +68,11 @@ fn parse_ts(s: String) -> Result<Timestamp> {
     chrono::DateTime::parse_from_rfc3339(&s)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .map_err(|e| Error::internal(format!("invalid timestamp in db: {e}")))
+}
+
+/// Decode a nullable timestamp column (`None` → `None`).
+fn parse_ts_opt(s: Option<String>) -> Result<Option<Timestamp>> {
+    s.map(parse_ts).transpose()
 }
 
 #[async_trait]
@@ -193,8 +203,15 @@ impl IssueRepository for SqliteIssueRepository {
     }
 
     async fn set_status(&self, issue_id: Id, status: IssueStatus) -> Result<Issue> {
+        // Any non-muted status clears the mute bookkeeping so a re-opened or
+        // resolved issue never carries a stale expiry/threshold. (This method
+        // is only used for resolve/unresolve; muting goes through `mute`.)
         let sql = format!(
-            "UPDATE issues SET status = ?, updated_at = ? WHERE id = ? RETURNING {ISSUE_COLS}"
+            "UPDATE issues SET status = ?, \
+                muted_at = NULL, muted_until = NULL, \
+                mute_threshold = NULL, mute_window_seconds = NULL, \
+                updated_at = ? \
+             WHERE id = ? RETURNING {ISSUE_COLS}"
         );
         let row = sqlx::query(&sql)
             .bind(status.as_str())
@@ -206,6 +223,57 @@ impl IssueRepository for SqliteIssueRepository {
             Some(r) => row_to_issue(&r),
             None => Err(Error::not_found(format!("issue {issue_id}"))),
         }
+    }
+
+    async fn mute(&self, issue_id: Id, spec: MuteSpec, now: Timestamp) -> Result<Issue> {
+        // Translate the spec into the three mutually-exclusive column groups;
+        // `Forever` leaves period/rate NULL (only `muted_at` is recorded).
+        let (until, threshold, window) = match spec {
+            MuteSpec::Forever => (None, None, None),
+            MuteSpec::Until(until) => (Some(until.to_rfc3339()), None, None),
+            MuteSpec::EventRate {
+                threshold,
+                window_seconds,
+            } => (None, Some(threshold), Some(window_seconds)),
+        };
+        let now = now.to_rfc3339();
+        let sql = format!(
+            "UPDATE issues SET status = 'muted', \
+                muted_at = ?, muted_until = ?, \
+                mute_threshold = ?, mute_window_seconds = ?, \
+                updated_at = ? \
+             WHERE id = ? RETURNING {ISSUE_COLS}"
+        );
+        let row = sqlx::query(&sql)
+            .bind(&now)
+            .bind(&until)
+            .bind(threshold)
+            .bind(window)
+            .bind(&now)
+            .bind(issue_id.to_string())
+            .fetch_optional(&self.db)
+            .await?;
+        match row {
+            Some(r) => row_to_issue(&r),
+            None => Err(Error::not_found(format!("issue {issue_id}"))),
+        }
+    }
+
+    async fn clear_expired_mutes(&self, now: Timestamp) -> Result<u64> {
+        // Time-based mutes only (muted_until set & passed). Event-rate mutes
+        // (muted_until NULL) are resurfaced by ingestion, never here.
+        let result = sqlx::query(
+            "UPDATE issues SET status = 'unresolved', \
+                muted_at = NULL, muted_until = NULL, \
+                mute_threshold = NULL, mute_window_seconds = NULL, \
+                updated_at = ? \
+             WHERE status = 'muted' AND muted_until IS NOT NULL AND muted_until <= ?",
+        )
+        .bind(now.to_rfc3339())
+        .bind(now.to_rfc3339())
+        .execute(&self.db)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>> {
@@ -570,6 +638,188 @@ mod tests {
         assert_eq!(
             again.issue.event_count, 2,
             "muted issue keeps counting events"
+        );
+    }
+
+    #[tokio::test]
+    async fn mute_forever_sets_status_and_leaves_period_null() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let created = repo
+            .upsert_by_fingerprint(upsert(project_id, "fp1", chrono::Utc::now()))
+            .await
+            .unwrap();
+        let now = chrono::Utc::now();
+        let muted = repo
+            .mute(created.issue.id, MuteSpec::Forever, now)
+            .await
+            .unwrap();
+
+        assert_eq!(muted.status, IssueStatus::Muted);
+        assert!(muted.muted_at.is_some(), "mute baseline is recorded");
+        assert_eq!(muted.muted_until, None);
+        assert_eq!(muted.mute_threshold, None);
+        assert_eq!(muted.mute_window_seconds, None);
+    }
+
+    #[tokio::test]
+    async fn mute_until_persists_expiry() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let created = repo
+            .upsert_by_fingerprint(upsert(project_id, "fp1", chrono::Utc::now()))
+            .await
+            .unwrap();
+        let now = chrono::Utc::now();
+        let until = now + chrono::Duration::days(1);
+        let muted = repo
+            .mute(created.issue.id, MuteSpec::Until(until), now)
+            .await
+            .unwrap();
+
+        assert_eq!(muted.status, IssueStatus::Muted);
+        assert_eq!(muted.muted_until.unwrap().timestamp(), until.timestamp());
+        assert_eq!(muted.mute_threshold, None);
+    }
+
+    #[tokio::test]
+    async fn mute_event_rate_persists_threshold_and_window() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let created = repo
+            .upsert_by_fingerprint(upsert(project_id, "fp1", chrono::Utc::now()))
+            .await
+            .unwrap();
+        let muted = repo
+            .mute(
+                created.issue.id,
+                MuteSpec::EventRate {
+                    threshold: 5,
+                    window_seconds: 3600,
+                },
+                chrono::Utc::now(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(muted.mute_threshold, Some(5));
+        assert_eq!(muted.mute_window_seconds, Some(3600));
+        assert_eq!(muted.muted_until, None);
+    }
+
+    #[tokio::test]
+    async fn set_status_clears_mute_bookkeeping() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let created = repo
+            .upsert_by_fingerprint(upsert(project_id, "fp1", chrono::Utc::now()))
+            .await
+            .unwrap();
+        let now = chrono::Utc::now();
+        repo.mute(
+            created.issue.id,
+            MuteSpec::Until(now + chrono::Duration::days(1)),
+            now,
+        )
+        .await
+        .unwrap();
+
+        // Re-opening (unresolve) must wipe the stale expiry.
+        let reopened = repo
+            .set_status(created.issue.id, IssueStatus::Unresolved)
+            .await
+            .unwrap();
+        assert_eq!(reopened.status, IssueStatus::Unresolved);
+        assert_eq!(reopened.muted_at, None);
+        assert_eq!(reopened.muted_until, None);
+        assert_eq!(reopened.mute_threshold, None);
+        assert_eq!(reopened.mute_window_seconds, None);
+    }
+
+    #[tokio::test]
+    async fn clear_expired_mutes_only_unmutes_passed_time_based() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let now = chrono::Utc::now();
+
+        // (a) expired time-based mute → should be cleared.
+        let expired = repo
+            .upsert_by_fingerprint(upsert(project_id, "expired", now))
+            .await
+            .unwrap();
+        repo.mute(
+            expired.issue.id,
+            MuteSpec::Until(now - chrono::Duration::hours(1)),
+            now,
+        )
+        .await
+        .unwrap();
+
+        // (b) future time-based mute → must stay muted.
+        let future = repo
+            .upsert_by_fingerprint(upsert(project_id, "future", now))
+            .await
+            .unwrap();
+        repo.mute(
+            future.issue.id,
+            MuteSpec::Until(now + chrono::Duration::hours(1)),
+            now,
+        )
+        .await
+        .unwrap();
+
+        // (c) event-rate mute (no muted_until) → never cleared by this sweep.
+        let rate = repo
+            .upsert_by_fingerprint(upsert(project_id, "rate", now))
+            .await
+            .unwrap();
+        repo.mute(
+            rate.issue.id,
+            MuteSpec::EventRate {
+                threshold: 5,
+                window_seconds: 3600,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+
+        let cleared = repo.clear_expired_mutes(now).await.unwrap();
+        assert_eq!(cleared, 1, "only the expired time-based mute is cleared");
+
+        assert_eq!(
+            repo.find_by_id(expired.issue.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            IssueStatus::Unresolved
+        );
+        assert_eq!(
+            repo.find_by_id(future.issue.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            IssueStatus::Muted
+        );
+        assert_eq!(
+            repo.find_by_id(rate.issue.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            IssueStatus::Muted
         );
     }
 

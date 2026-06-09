@@ -65,9 +65,43 @@ pub struct Issue {
     /// Sentry top-level `release` (version/build identifier), if any.
     pub release: Option<String>,
     pub status: IssueStatus,
+    /// When the current mute was applied. `None` unless [`status`](Self::status)
+    /// is [`IssueStatus::Muted`]; baseline for the event-rate window.
+    pub muted_at: Option<Timestamp>,
+    /// Time-based mute expiry: the scheduler auto-unmutes once this passes.
+    /// `None` for an indefinite ("forever") or event-rate mute.
+    pub muted_until: Option<Timestamp>,
+    /// Event-rate mute: number of events within
+    /// [`mute_window_seconds`](Self::mute_window_seconds) that auto-resurfaces
+    /// the issue. `None` for an indefinite or time-based mute.
+    pub mute_threshold: Option<i64>,
+    /// Rolling window (seconds) paired with [`mute_threshold`](Self::mute_threshold).
+    pub mute_window_seconds: Option<i64>,
     pub first_seen: Timestamp,
     pub last_seen: Timestamp,
     pub event_count: i64,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+/// How long / under what condition an issue should stay muted.
+///
+/// Built by the API from the chosen dropdown period and persisted onto the
+/// issue's mute columns by [`IssueRepository::mute`](crate::ports::IssueRepository::mute).
+/// The three shapes are mutually exclusive; the default ([`MuteSpec::FOREVER`])
+/// is an indefinite mute that only ends when the user unmutes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MuteSpec {
+    /// Mute indefinitely — no expiry, no auto-resurface.
+    Forever,
+    /// Auto-unmute once `until` passes (time-based; cleared by the scheduler).
+    Until(Timestamp),
+    /// Auto-unmute once `threshold` events arrive within `window_seconds`
+    /// (event-rate; cleared by ingestion).
+    EventRate { threshold: i64, window_seconds: i64 },
+}
+
+impl MuteSpec {
+    /// The default indefinite mute (mirrors the bare "Mute" button).
+    pub const FOREVER: MuteSpec = MuteSpec::Forever;
 }

@@ -20,6 +20,7 @@ import type {
   IssueDetail,
   IssueListQuery,
   LoginRequest,
+  MuteRequest,
   Profile,
   Project,
   ProjectDetail,
@@ -116,7 +117,9 @@ export const issues = {
   events: (id: Id, limit?: number, ctx?: Ctx) =>
     http.get<SoikaEvent[]>(`/issues/${id}/events`, { query: { limit }, fetch: ctx?.fetch }),
   resolve: (id: Id, ctx?: Ctx) => http.post<Issue>(`/issues/${id}/resolve`, { fetch: ctx?.fetch }),
-  mute: (id: Id, ctx?: Ctx) => http.post<Issue>(`/issues/${id}/mute`, { fetch: ctx?.fetch }),
+  /** Mute an issue. Omit `body` to mute forever; pass a period/rate to auto-unmute. */
+  mute: (id: Id, body?: MuteRequest, ctx?: Ctx) =>
+    http.post<Issue>(`/issues/${id}/mute`, { body, fetch: ctx?.fetch }),
   unresolve: (id: Id, ctx?: Ctx) =>
     http.post<Issue>(`/issues/${id}/unresolve`, { fetch: ctx?.fetch }),
   /** Override an issue's fingerprint (merge / split). Returns the surviving issue. */

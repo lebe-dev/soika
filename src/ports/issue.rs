@@ -1,6 +1,6 @@
 //! Issue repository port.
 
-use crate::domain::{Id, Issue, IssueStatus, Timestamp};
+use crate::domain::{Id, Issue, IssueStatus, MuteSpec, Timestamp};
 use crate::error::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -77,8 +77,25 @@ pub trait IssueRepository: Send + Sync {
     /// (resolved → unresolved on a new event). Bumps `last_seen`.
     async fn upsert_by_fingerprint(&self, upsert: IssueUpsert) -> Result<UpsertOutcome>;
 
-    /// Set issue status (resolve / mute / unresolve).
+    /// Set issue status (resolve / unresolve).
+    ///
+    /// Transitioning to any non-muted status clears the mute bookkeeping
+    /// (`muted_at` / `muted_until` / `mute_threshold` / `mute_window_seconds`),
+    /// so re-opening or resolving a muted issue never leaves a stale expiry
+    /// behind. To mute, use [`mute`](Self::mute) instead.
     async fn set_status(&self, issue_id: Id, status: IssueStatus) -> Result<Issue>;
+
+    /// Mute an issue under `spec`, recording `now` as the mute baseline.
+    ///
+    /// Sets the status to [`IssueStatus::Muted`] and persists the period/rate
+    /// columns from `spec`; a [`MuteSpec::Forever`] leaves them all `NULL`.
+    async fn mute(&self, issue_id: Id, spec: MuteSpec, now: Timestamp) -> Result<Issue>;
+
+    /// Auto-unmute every issue whose time-based mute (`muted_until`) has passed
+    /// `now`, flipping it back to [`IssueStatus::Unresolved`] and clearing its
+    /// mute columns. Returns the number of issues unmuted. Driven by the
+    /// scheduler; event-rate mutes are cleared by ingestion instead.
+    async fn clear_expired_mutes(&self, now: Timestamp) -> Result<u64>;
 
     /// List issues in a project with filtering (issues list).
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>>;

@@ -15,7 +15,7 @@ mod user;
 
 pub use event::Event;
 pub use invite::Invite;
-pub use issue::{Issue, IssueStatus};
+pub use issue::{Issue, IssueStatus, MuteSpec};
 pub use membership::{Membership, Role};
 pub use project::Project;
 pub use settings::ServiceSettings;

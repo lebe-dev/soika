@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::api::projects::{CurrentUser, error_response, require_member, resolve_project};
-use crate::domain::{Event, Id, Issue, IssueStatus, Project};
+use crate::domain::{Event, Id, Issue, IssueStatus, MuteSpec, Project};
 use crate::ports::{IssueFilter, IssueSort};
 use crate::state::AppState;
 
@@ -62,6 +62,12 @@ pub struct IssueView {
     pub environment: Option<String>,
     pub release: Option<String>,
     pub status: IssueStatus,
+    /// Time-based mute expiry, if the issue is muted until a fixed time.
+    pub muted_until: Option<crate::domain::Timestamp>,
+    /// Event-rate mute threshold, if the issue is muted under a rate condition.
+    pub mute_threshold: Option<i64>,
+    /// Rolling window (seconds) paired with [`mute_threshold`](Self::mute_threshold).
+    pub mute_window_seconds: Option<i64>,
     pub first_seen: crate::domain::Timestamp,
     pub last_seen: crate::domain::Timestamp,
     pub event_count: i64,
@@ -83,6 +89,9 @@ impl IssueView {
             environment: issue.environment,
             release: issue.release,
             status: issue.status,
+            muted_until: issue.muted_until,
+            mute_threshold: issue.mute_threshold,
+            mute_window_seconds: issue.mute_window_seconds,
             first_seen: issue.first_seen,
             last_seen: issue.last_seen,
             event_count: issue.event_count,
@@ -330,16 +339,92 @@ pub async fn resolve(
     set_status(state, user, id, IssueStatus::Resolved).await
 }
 
-/// `POST /issues/{id}/mute` — mute the issue.
+/// Request body for `POST /issues/{id}/mute`.
+///
+/// Three mutually-exclusive shapes (validated by [`MuteRequest::to_spec`]):
+///   * empty body → mute forever;
+///   * `{ "duration_seconds": N }` → time-based mute, auto-unmutes after `N`s;
+///   * `{ "events": N, "window_seconds": W }` → event-rate mute, auto-unmutes
+///     once `N` events arrive within a rolling `W`-second window.
+#[derive(Debug, Deserialize, Default)]
+pub struct MuteRequest {
+    #[serde(default)]
+    pub duration_seconds: Option<i64>,
+    #[serde(default)]
+    pub events: Option<i64>,
+    #[serde(default)]
+    pub window_seconds: Option<i64>,
+}
+
+impl MuteRequest {
+    /// Validate and resolve the request into a [`MuteSpec`] anchored at `now`.
+    ///
+    /// Rejects mixing the duration and event-rate shapes, a partial event-rate
+    /// pair, and non-positive values.
+    fn to_spec(
+        &self,
+        now: crate::domain::Timestamp,
+    ) -> std::result::Result<MuteSpec, &'static str> {
+        let has_duration = self.duration_seconds.is_some();
+        let has_rate = self.events.is_some() || self.window_seconds.is_some();
+        if has_duration && has_rate {
+            return Err("specify either duration_seconds or events/window_seconds, not both");
+        }
+
+        if let Some(secs) = self.duration_seconds {
+            if secs <= 0 {
+                return Err("duration_seconds must be positive");
+            }
+            return Ok(MuteSpec::Until(now + chrono::Duration::seconds(secs)));
+        }
+
+        if has_rate {
+            let (Some(events), Some(window_seconds)) = (self.events, self.window_seconds) else {
+                return Err("event-rate mute requires both events and window_seconds");
+            };
+            if events <= 0 || window_seconds <= 0 {
+                return Err("events and window_seconds must be positive");
+            }
+            return Ok(MuteSpec::EventRate {
+                threshold: events,
+                window_seconds,
+            });
+        }
+
+        Ok(MuteSpec::Forever)
+    }
+}
+
+/// `POST /issues/{id}/mute` — mute the issue, optionally for a period or until
+/// it exceeds an event rate.
 ///
 /// Mute keeps accepting and counting events; it only suppresses notifications.
-/// It never affects ingestion.
+/// It never affects ingestion. A time-based mute is auto-cleared by the
+/// scheduler; an event-rate mute is auto-cleared by ingestion.
+///
+/// NOTE: the JSON body extractor consumes the request body, so it MUST be the
+/// LAST extractor.
 pub async fn mute(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
+    body: Option<Json<MuteRequest>>,
 ) -> Response {
-    set_status(state, user, id, IssueStatus::Muted).await
+    let req = body.map(|Json(r)| r).unwrap_or_default();
+    let spec = match req.to_spec(state.clock.now()) {
+        Ok(spec) => spec,
+        Err(msg) => return crate::api::projects::json_error(StatusCode::BAD_REQUEST, msg),
+    };
+
+    let (issue, project) = match authorize_issue(&state, &user, &id).await {
+        Ok(pair) => pair,
+        Err(resp) => return resp,
+    };
+
+    match state.issues.mute(issue.id, spec, state.clock.now()).await {
+        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
+        Err(err) => error_response(err),
+    }
 }
 
 /// `POST /issues/{id}/unresolve` — re-open a resolved/muted issue.
@@ -417,6 +502,79 @@ async fn set_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mute_request_empty_is_forever() {
+        let now = chrono::Utc::now();
+        let spec = MuteRequest::default().to_spec(now).expect("valid");
+        assert_eq!(spec, MuteSpec::Forever);
+    }
+
+    #[test]
+    fn mute_request_duration_resolves_to_until() {
+        let now = chrono::Utc::now();
+        let req = MuteRequest {
+            duration_seconds: Some(86_400),
+            ..Default::default()
+        };
+        match req.to_spec(now).expect("valid") {
+            MuteSpec::Until(until) => {
+                assert_eq!((until - now).num_seconds(), 86_400);
+            }
+            other => panic!("expected Until, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mute_request_event_rate_resolves() {
+        let req = MuteRequest {
+            events: Some(5),
+            window_seconds: Some(3600),
+            ..Default::default()
+        };
+        assert_eq!(
+            req.to_spec(chrono::Utc::now()).expect("valid"),
+            MuteSpec::EventRate {
+                threshold: 5,
+                window_seconds: 3600,
+            }
+        );
+    }
+
+    #[test]
+    fn mute_request_rejects_mixing_duration_and_rate() {
+        let req = MuteRequest {
+            duration_seconds: Some(86_400),
+            events: Some(5),
+            window_seconds: Some(3600),
+        };
+        assert!(req.to_spec(chrono::Utc::now()).is_err());
+    }
+
+    #[test]
+    fn mute_request_rejects_partial_event_rate() {
+        let req = MuteRequest {
+            events: Some(5),
+            ..Default::default()
+        };
+        assert!(req.to_spec(chrono::Utc::now()).is_err());
+    }
+
+    #[test]
+    fn mute_request_rejects_non_positive_values() {
+        let zero_duration = MuteRequest {
+            duration_seconds: Some(0),
+            ..Default::default()
+        };
+        assert!(zero_duration.to_spec(chrono::Utc::now()).is_err());
+
+        let zero_events = MuteRequest {
+            events: Some(0),
+            window_seconds: Some(3600),
+            ..Default::default()
+        };
+        assert!(zero_events.to_spec(chrono::Utc::now()).is_err());
+    }
 
     #[test]
     fn to_filter_parses_status_and_passes_paging() {

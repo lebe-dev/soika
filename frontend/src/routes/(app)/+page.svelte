@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { projects as projectsApi, errorMessage } from '$lib/api';
   import type { Project } from '$lib/api';
   import { Button } from '$lib/components/ui/button';
@@ -96,6 +96,7 @@
       toast.success(`Project "${project.name}" created`);
       createOpen = false;
       name = '';
+      await invalidateAll();
       await goto(`/projects/${project.id}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to create project'));

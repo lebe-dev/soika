@@ -15,7 +15,7 @@
 //! [`IngestOutcome::notify`] through the notify port.
 
 use crate::domain::stacktrace::NormalizedEvent;
-use crate::domain::{Event, Id, Issue, Timestamp};
+use crate::domain::{Event, Id, Issue, IssueStatus, Timestamp};
 use crate::error::Result;
 use crate::ports::{EventRepository, IssueRepository, IssueUpsert, NewEvent};
 
@@ -118,16 +118,61 @@ pub async fn ingest_normalized(
     // 3. Decide which notification to enqueue. Regression takes precedence over
     //    new-issue (a brand-new issue cannot also be a regression, but guard
     //    explicitly). Mute / per-user opt-out are applied by the caller.
-    let notify = notify_kind(&upsert);
+    let mut notify = notify_kind(&upsert);
+    let mut issue = upsert.issue;
+
+    // 4. Event-rate mute auto-resurface: a muted issue carrying a threshold +
+    //    window unmutes once enough events arrive within the rolling window
+    //    (counted from the mute baseline so pre-mute events never trip it). The
+    //    just-inserted event is included in the count.
+    if let Some(resurfaced) = resurface_if_rate_exceeded(issues, events, &issue, seen_at).await? {
+        issue = resurfaced;
+        // Treat the auto-unmute like a regression for notification purposes:
+        // the issue is live again and members should hear about it.
+        notify = NotifyKind::Regression;
+    }
 
     // The upserted issue already reflects the bumped count + advanced last_seen,
     // so callers see fresh stats without an extra read.
     Ok(IngestOutcome {
-        issue: upsert.issue,
+        issue,
         event,
         fingerprint,
         notify,
     })
+}
+
+/// If `issue` is muted under an event-rate condition that the newly-ingested
+/// event pushed over its threshold, unmute it and return the updated issue;
+/// otherwise `None` (no change).
+///
+/// The window starts at `max(muted_at, now - window_seconds)` so only events
+/// observed since the mute began count, and only within the rolling window.
+async fn resurface_if_rate_exceeded(
+    issues: &dyn IssueRepository,
+    events: &dyn EventRepository,
+    issue: &Issue,
+    now: Timestamp,
+) -> Result<Option<Issue>> {
+    if issue.status != IssueStatus::Muted {
+        return Ok(None);
+    }
+    let (Some(threshold), Some(window_seconds)) = (issue.mute_threshold, issue.mute_window_seconds)
+    else {
+        return Ok(None);
+    };
+
+    let window_start = now - chrono::Duration::seconds(window_seconds.max(0));
+    let since = issue
+        .muted_at
+        .map_or(window_start, |at| at.max(window_start));
+    let count = events.count_in_window(issue.id, since).await?;
+    if count < threshold {
+        return Ok(None);
+    }
+
+    let unmuted = issues.set_status(issue.id, IssueStatus::Unresolved).await?;
+    Ok(Some(unmuted))
 }
 
 /// Map an [`crate::ports::UpsertOutcome`] to the notification to enqueue.
@@ -182,6 +227,10 @@ mod tests {
             environment: upsert.environment.clone(),
             release: upsert.release.clone(),
             status: IssueStatus::Unresolved,
+            muted_at: None,
+            muted_until: None,
+            mute_threshold: None,
+            mute_window_seconds: None,
             first_seen: upsert.seen_at,
             last_seen: upsert.seen_at,
             // The real adapter inserts a brand-new issue with event_count = 1
@@ -269,7 +318,60 @@ mod tests {
                 .find(|i| i.id == issue_id)
                 .ok_or_else(|| Error::not_found("issue"))?;
             issue.status = status;
+            // Mirror the real adapter: leaving muted clears the mute bookkeeping.
+            issue.muted_at = None;
+            issue.muted_until = None;
+            issue.mute_threshold = None;
+            issue.mute_window_seconds = None;
             Ok(issue.clone())
+        }
+
+        async fn mute(
+            &self,
+            issue_id: Id,
+            spec: crate::domain::MuteSpec,
+            now: Timestamp,
+        ) -> Result<Issue> {
+            let mut rows = self.rows.lock().unwrap();
+            let issue = rows
+                .iter_mut()
+                .find(|i| i.id == issue_id)
+                .ok_or_else(|| Error::not_found("issue"))?;
+            issue.status = IssueStatus::Muted;
+            issue.muted_at = Some(now);
+            issue.muted_until = None;
+            issue.mute_threshold = None;
+            issue.mute_window_seconds = None;
+            match spec {
+                crate::domain::MuteSpec::Forever => {}
+                crate::domain::MuteSpec::Until(until) => issue.muted_until = Some(until),
+                crate::domain::MuteSpec::EventRate {
+                    threshold,
+                    window_seconds,
+                } => {
+                    issue.mute_threshold = Some(threshold);
+                    issue.mute_window_seconds = Some(window_seconds);
+                }
+            }
+            Ok(issue.clone())
+        }
+
+        async fn clear_expired_mutes(&self, now: Timestamp) -> Result<u64> {
+            let mut rows = self.rows.lock().unwrap();
+            let mut cleared = 0;
+            for issue in rows.iter_mut() {
+                if issue.status == IssueStatus::Muted
+                    && issue.muted_until.is_some_and(|until| until <= now)
+                {
+                    issue.status = IssueStatus::Unresolved;
+                    issue.muted_at = None;
+                    issue.muted_until = None;
+                    issue.mute_threshold = None;
+                    issue.mute_window_seconds = None;
+                    cleared += 1;
+                }
+            }
+            Ok(cleared)
         }
 
         async fn list(&self, _project_id: Id, _filter: IssueFilter) -> Result<Vec<Issue>> {
@@ -396,6 +498,16 @@ mod tests {
                 .unwrap()
                 .iter()
                 .filter(|e| e.project_id == project_id)
+                .count() as i64)
+        }
+
+        async fn count_in_window(&self, issue_id: Id, since: Timestamp) -> Result<i64> {
+            Ok(self
+                .rows
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|e| e.issue_id == issue_id && e.received_at >= since)
                 .count() as i64)
         }
 
@@ -590,5 +702,118 @@ mod tests {
 
         assert_eq!(second.issue.event_count, 2, "muting never drops counting");
         assert_eq!(second.notify, NotifyKind::None);
+    }
+
+    #[tokio::test]
+    async fn event_rate_mute_resurfaces_once_threshold_reached() {
+        use crate::domain::MuteSpec;
+
+        let issues = FakeIssues::default();
+        let events = FakeEvents::default();
+        let project = Id::new_v4();
+
+        // Create the issue, then mute it under "3 events per hour" with the mute
+        // baseline at ts(1000) so the creating event (ts(1)) never counts.
+        let first = ingest_normalized(&issues, &events, input(project, exc("ValueError")), ts(1))
+            .await
+            .unwrap();
+        issues
+            .mute(
+                first.issue.id,
+                MuteSpec::EventRate {
+                    threshold: 3,
+                    window_seconds: 3600,
+                },
+                ts(1000),
+            )
+            .await
+            .unwrap();
+
+        // Events 1 and 2 within the window stay under threshold → still muted.
+        let e1 = ingest_normalized(
+            &issues,
+            &events,
+            input(project, exc("ValueError")),
+            ts(1001),
+        )
+        .await
+        .unwrap();
+        assert_eq!(e1.issue.status, IssueStatus::Muted);
+        assert_eq!(e1.notify, NotifyKind::None);
+
+        let e2 = ingest_normalized(
+            &issues,
+            &events,
+            input(project, exc("ValueError")),
+            ts(1002),
+        )
+        .await
+        .unwrap();
+        assert_eq!(e2.issue.status, IssueStatus::Muted);
+
+        // The third event in the window hits the threshold → auto-resurface.
+        let e3 = ingest_normalized(
+            &issues,
+            &events,
+            input(project, exc("ValueError")),
+            ts(1003),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            e3.issue.status,
+            IssueStatus::Unresolved,
+            "threshold reached"
+        );
+        assert_eq!(e3.notify, NotifyKind::Regression, "resurface notifies");
+        assert_eq!(e3.issue.mute_threshold, None, "mute bookkeeping cleared");
+    }
+
+    #[tokio::test]
+    async fn event_rate_mute_ignores_events_before_baseline() {
+        use crate::domain::MuteSpec;
+
+        let issues = FakeIssues::default();
+        let events = FakeEvents::default();
+        let project = Id::new_v4();
+
+        // Three events arrive BEFORE the mute baseline, then the issue is muted
+        // with a low threshold. The pre-baseline events must not trip the rate.
+        ingest_normalized(&issues, &events, input(project, exc("ValueError")), ts(10))
+            .await
+            .unwrap();
+        ingest_normalized(&issues, &events, input(project, exc("ValueError")), ts(11))
+            .await
+            .unwrap();
+        let third = ingest_normalized(&issues, &events, input(project, exc("ValueError")), ts(12))
+            .await
+            .unwrap();
+
+        issues
+            .mute(
+                third.issue.id,
+                MuteSpec::EventRate {
+                    threshold: 2,
+                    window_seconds: 3600,
+                },
+                ts(1000),
+            )
+            .await
+            .unwrap();
+
+        // A single post-baseline event is under the threshold of 2.
+        let next = ingest_normalized(
+            &issues,
+            &events,
+            input(project, exc("ValueError")),
+            ts(1001),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            next.issue.status,
+            IssueStatus::Muted,
+            "pre-baseline events are excluded from the window count"
+        );
     }
 }

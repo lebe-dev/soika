@@ -237,9 +237,25 @@ export interface Issue {
   environment: string | null;
   release: string | null;
   status: IssueStatus;
+  /** Time-based mute expiry (RFC3339), if muted until a fixed time. */
+  muted_until: Timestamp | null;
+  /** Event-rate mute threshold, if muted under a rate condition. */
+  mute_threshold: number | null;
+  /** Rolling window (seconds) paired with `mute_threshold`. */
+  mute_window_seconds: number | null;
   first_seen: Timestamp;
   last_seen: Timestamp;
   event_count: number;
+}
+
+/** Body for `POST /issues/{id}/mute`. Empty object mutes forever. */
+export interface MuteRequest {
+  /** Time-based mute: auto-unmutes after this many seconds. */
+  duration_seconds?: number;
+  /** Event-rate mute: event count that auto-resurfaces the issue. */
+  events?: number;
+  /** Rolling window (seconds) paired with `events`. */
+  window_seconds?: number;
 }
 
 export interface SoikaEvent {

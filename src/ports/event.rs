@@ -29,6 +29,13 @@ pub trait EventRepository: Send + Sync {
     /// Count of events currently stored for a project.
     async fn count_for_project(&self, project_id: Id) -> Result<i64>;
 
+    /// Count events for an issue received at or after `since` (inclusive).
+    ///
+    /// Drives the event-rate mute check: ingestion passes the start of the
+    /// rolling window to decide whether a muted issue has exceeded its
+    /// threshold and should auto-resurface.
+    async fn count_in_window(&self, issue_id: Id, since: Timestamp) -> Result<i64>;
+
     /// Retention: keep at most `retention_events` most-recent events for the
     /// project, deleting older ones. Returns number of rows deleted.
     async fn prune_events_over_retention(

@@ -66,6 +66,11 @@ async fn run_loop(state: &AppState) -> Result<()> {
             tracing::warn!(error = %err, "scheduler: retention sweep failed");
         }
 
+        if let Err(err) = run_mute_expiry(state).await {
+            // Independent of retention: a failure here must not stop the loop.
+            tracing::warn!(error = %err, "scheduler: mute-expiry sweep failed");
+        }
+
         // Schedule the following occurrence relative to the one we just fired, so
         // a slow sweep can't cause us to skip an interval back-to-back.
         target = next_occurrence(&cron, target)?;
@@ -149,6 +154,18 @@ pub async fn run_retention(state: &AppState) -> Result<()> {
 
     if total_deleted > 0 {
         tracing::info!(total_deleted, "scheduler: retention sweep complete");
+    }
+    Ok(())
+}
+
+/// Auto-unmute issues whose time-based mute has expired.
+///
+/// Event-rate mutes are resurfaced by the ingest pipeline, not here; this sweep
+/// only clears mutes that were set "until" a fixed time.
+pub async fn run_mute_expiry(state: &AppState) -> Result<()> {
+    let unmuted = state.issues.clear_expired_mutes(state.clock.now()).await?;
+    if unmuted > 0 {
+        tracing::info!(unmuted, "scheduler: cleared expired issue mutes");
     }
     Ok(())
 }
@@ -466,6 +483,79 @@ mod tests {
         assert_eq!(
             issue.event_count, 5,
             "age-based pruning must not rewind the issue counter"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_mute_expiry_clears_only_passed_time_based_mutes() {
+        use crate::domain::{IssueStatus, MuteSpec};
+
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::MIGRATOR.run(&pool).await.unwrap();
+        let state = crate::build_state(pool, test_config(10_000));
+
+        let team = state.teams.create("team".into()).await.unwrap();
+        let project = state
+            .projects
+            .create(NewProject {
+                team_id: team.id,
+                name: "M".into(),
+                slug: "m".into(),
+                dsn_public_key: "dsn-m".into(),
+                retention_events: 10_000,
+                retention_days: 0,
+                webhook_url: None,
+            })
+            .await
+            .unwrap();
+
+        let now = state.clock.now();
+        let issue_id = ingest_n(&state, project.id, 1, now).await;
+
+        state
+            .issues
+            .mute(
+                issue_id,
+                MuteSpec::Until(now - chrono::Duration::hours(1)),
+                now,
+            )
+            .await
+            .unwrap();
+
+        run_mute_expiry(&state).await.unwrap();
+        assert_eq!(
+            state
+                .issues
+                .find_by_id(issue_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            IssueStatus::Unresolved,
+            "expired time-based mute is auto-cleared"
+        );
+
+        // A future mute on the same issue must survive the sweep.
+        state
+            .issues
+            .mute(
+                issue_id,
+                MuteSpec::Until(now + chrono::Duration::hours(1)),
+                now,
+            )
+            .await
+            .unwrap();
+        run_mute_expiry(&state).await.unwrap();
+        assert_eq!(
+            state
+                .issues
+                .find_by_id(issue_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            IssueStatus::Muted,
+            "a not-yet-expired mute is left alone"
         );
     }
 
