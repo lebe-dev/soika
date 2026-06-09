@@ -149,6 +149,16 @@ impl TeamRepository for SqliteTeamRepository {
         rows.into_iter().map(TeamRow::into_domain).collect()
     }
 
+    async fn is_member(&self, team_id: Id, user_id: Id) -> Result<bool> {
+        let row =
+            sqlx::query("SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1")
+                .bind(id_to_db(team_id))
+                .bind(id_to_db(user_id))
+                .fetch_optional(&self.db)
+                .await?;
+        Ok(row.is_some())
+    }
+
     async fn add_member(&self, team_id: Id, user_id: Id) -> Result<TeamMember> {
         let now: Timestamp = chrono::Utc::now();
         // Idempotent join: ignore a duplicate (team_id, user_id) pair.
@@ -243,8 +253,13 @@ mod tests {
         assert_eq!(teams_for_u1.len(), 1);
         assert_eq!(teams_for_u1[0].id, team.id);
 
+        // Membership probe mirrors the listing.
+        assert!(repo.is_member(team.id, u1).await.unwrap());
+        assert!(!repo.is_member(team.id, Id::new_v4()).await.unwrap());
+
         repo.remove_member(team.id, u1).await.unwrap();
         assert_eq!(repo.members(team.id).await.unwrap().len(), 1);
         assert!(repo.list_for_user(u1).await.unwrap().is_empty());
+        assert!(!repo.is_member(team.id, u1).await.unwrap());
     }
 }

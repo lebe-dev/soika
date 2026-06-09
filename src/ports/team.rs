@@ -16,6 +16,9 @@ pub trait TeamRepository: Send + Sync {
     /// Teams the given user is a member of.
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>>;
 
+    /// Whether `user_id` is a member of `team_id`.
+    async fn is_member(&self, team_id: Id, user_id: Id) -> Result<bool>;
+
     // --- membership (User × Team) ---
     async fn add_member(&self, team_id: Id, user_id: Id) -> Result<TeamMember>;
     async fn remove_member(&self, team_id: Id, user_id: Id) -> Result<()>;

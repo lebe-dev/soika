@@ -135,7 +135,7 @@ pub async fn auth_config(
     let (projects, teams) = match current_user.as_ref() {
         Some(user) => (
             crate::api::projects::overviews(&state, user).await.ok(),
-            crate::api::teams::summaries(&state).await.ok(),
+            crate::api::teams::summaries(&state, user).await.ok(),
         ),
         None => (None, None),
     };

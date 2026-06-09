@@ -254,11 +254,16 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// Team summaries (id, name, member/project counts) for every team.
+/// Team summaries (id, name, member/project counts) visible to `user`.
 ///
-/// Shared by `GET /teams` and the `/auth/config` dashboard bootstrap.
-pub async fn summaries(state: &AppState) -> Result<Vec<TeamSummary>, ApiError> {
-    let teams = state.teams.list().await?;
+/// Instance admins see every team; other users see only the teams they belong
+/// to. Shared by `GET /teams` and the `/auth/config` dashboard bootstrap.
+pub async fn summaries(state: &AppState, user: &User) -> Result<Vec<TeamSummary>, ApiError> {
+    let teams = if user.is_admin {
+        state.teams.list().await?
+    } else {
+        state.teams.list_for_user(user.id).await?
+    };
     let mut out = Vec::with_capacity(teams.len());
     for team in teams {
         let members = state.teams.members(team.id).await?;
@@ -273,12 +278,14 @@ pub async fn summaries(state: &AppState) -> Result<Vec<TeamSummary>, ApiError> {
     Ok(out)
 }
 
-/// `GET /teams` — list teams (any authenticated user). Returns summaries.
+/// `GET /teams` — list teams visible to the caller. Returns summaries.
+///
+/// Instance admins see all teams; other users see only their own.
 pub async fn list(
-    _user: AuthUser,
+    AuthUser(user): AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<TeamSummary>>, ApiError> {
-    Ok(Json(summaries(&state).await?))
+    Ok(Json(summaries(&state, &user).await?))
 }
 
 /// `POST /teams` — create a team (instance admin).
@@ -294,8 +301,11 @@ pub async fn create(
 }
 
 /// `GET /teams/{id}` — team detail (members, projects).
+///
+/// Visible to instance admins and to members of the team; other users get a
+/// `403`, consistent with the project access rules.
 pub async fn get(
-    _user: AuthUser,
+    AuthUser(user): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<TeamView>, ApiError> {
@@ -305,6 +315,11 @@ pub async fn get(
         .find_by_id(id)
         .await?
         .ok_or_else(|| Error::not_found(format!("team {id}")))?;
+    if !user.is_admin && !state.teams.is_member(id, user.id).await? {
+        return Err(ApiError(Error::Forbidden(
+            "you do not have access to this team".into(),
+        )));
+    }
     let view = load_team_view(&state, team).await?;
     Ok(Json(view))
 }

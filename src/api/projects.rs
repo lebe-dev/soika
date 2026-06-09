@@ -142,8 +142,13 @@ pub async fn resolve_project(
 
 /// Resolve the caller's effective role on a project.
 ///
-/// Instance admins (built-in admin) are treated as project admins. Returns
-/// `None` if the user has no access to the project.
+/// Resolution order:
+/// 1. Instance admins (built-in admin) are treated as project admins.
+/// 2. A direct `memberships` row grants its stored role (so a project admin
+///    keeps `Admin` even when the team grants only `Member`).
+/// 3. Membership in the team that owns the project grants `Member`.
+///
+/// Returns `None` if none of the above apply (no access).
 pub async fn effective_role(
     state: &AppState,
     user: &User,
@@ -157,7 +162,29 @@ pub async fn effective_role(
         .find(project_id, user.id)
         .await
         .map_err(error_response)?;
-    Ok(membership.map(|m| m.role))
+    if let Some(membership) = membership {
+        return Ok(Some(membership.role));
+    }
+
+    // Fall back to team membership: belonging to the project's owning team
+    // grants view-level (`Member`) access even without a direct membership row.
+    let Some(project) = state
+        .projects
+        .find_by_id(project_id)
+        .await
+        .map_err(error_response)?
+    else {
+        return Ok(None);
+    };
+    if state
+        .teams
+        .is_member(project.team_id, user.id)
+        .await
+        .map_err(error_response)?
+    {
+        return Ok(Some(Role::Member));
+    }
+    Ok(None)
 }
 
 /// Require that the caller can view the project (any role). Returns the role.
