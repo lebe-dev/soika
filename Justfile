@@ -83,6 +83,10 @@ run-backend:
 run-frontend:
     cd frontend && yarn && npm run dev -- --port=4200
 
+# Seed the local database with demo teams, projects, and issues.
+init-env:
+    bash scripts/seed_data.sh
+
 start-env:
     docker compose -f docker-compose-dev.yml up -d --build --force-recreate
 
