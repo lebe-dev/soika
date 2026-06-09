@@ -66,6 +66,10 @@ pub struct IssueFilter {
 #[async_trait]
 pub trait IssueRepository: Send + Sync {
     async fn find_by_id(&self, id: Id) -> Result<Option<Issue>>;
+
+    /// Resolve an issue from its short public id (web URLs / SPA API).
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>>;
+
     async fn find_by_fingerprint(&self, project_id: Id, fingerprint: &str)
     -> Result<Option<Issue>>;
 

@@ -15,8 +15,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::api::projects::{CurrentUser, error_response, parse_id, require_member};
-use crate::domain::{Event, Id, Issue, IssueStatus};
+use crate::api::projects::{CurrentUser, error_response, require_member, resolve_project};
+use crate::domain::{Event, Id, Issue, IssueStatus, Project};
 use crate::ports::{IssueFilter, IssueSort};
 use crate::state::AppState;
 
@@ -46,11 +46,15 @@ pub struct IssueListQuery {
     pub sort: Option<String>,
 }
 
-/// Issue as returned to the client (currently a straight projection).
+/// Issue as returned to the client.
+///
+/// Both ids are short public ids, not UUIDs: `id` is the issue's own short id and
+/// `project_id` is the parent project's short id — the frontend uses the latter
+/// to build the back-link to the project page. See [`IssueView::from_issue`].
 #[derive(Debug, Serialize)]
 pub struct IssueView {
-    pub id: Id,
-    pub project_id: Id,
+    pub id: String,
+    pub project_id: String,
     pub fingerprint: String,
     pub title: String,
     pub culprit: Option<String>,
@@ -63,11 +67,15 @@ pub struct IssueView {
     pub event_count: i64,
 }
 
-impl From<Issue> for IssueView {
-    fn from(issue: Issue) -> Self {
+impl IssueView {
+    /// Build a view from an issue plus its parent project's short id.
+    ///
+    /// `project_short_id` cannot be derived from the issue alone (it carries the
+    /// project UUID), so callers pass it in from the resolved/loaded project.
+    pub fn from_issue(issue: Issue, project_short_id: String) -> Self {
         IssueView {
-            id: issue.id,
-            project_id: issue.project_id,
+            id: issue.short_id,
+            project_id: project_short_id,
             fingerprint: issue.fingerprint,
             title: issue.title,
             culprit: issue.culprit,
@@ -172,12 +180,12 @@ pub async fn list_for_project(
     raw_project_id: String,
     query: IssueListQuery,
 ) -> Response {
-    let project_id = match parse_id(&raw_project_id) {
-        Ok(id) => id,
+    let project = match resolve_project(&state, &raw_project_id).await {
+        Ok(p) => p,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_member(&state, &user, project_id).await {
+    if let Err(resp) = require_member(&state, &user, project.id).await {
         return resp;
     }
 
@@ -186,9 +194,12 @@ pub async fn list_for_project(
         Err(resp) => return resp,
     };
 
-    match state.issues.list(project_id, filter).await {
+    match state.issues.list(project.id, filter).await {
         Ok(issues) => {
-            let views: Vec<IssueView> = issues.into_iter().map(IssueView::from).collect();
+            let views: Vec<IssueView> = issues
+                .into_iter()
+                .map(|i| IssueView::from_issue(i, project.short_id.clone()))
+                .collect();
             Json(views).into_response()
         }
         Err(err) => error_response(err),
@@ -204,33 +215,47 @@ pub async fn list_for_project(
 /// runs `require_member`).
 pub async fn default_project_issues(
     state: &AppState,
-    project_id: Id,
+    project: &Project,
 ) -> Result<Vec<IssueView>, crate::error::Error> {
     let filter = IssueFilter {
         status: Some(IssueStatus::Unresolved),
         ..IssueFilter::default()
     };
-    let issues = state.issues.list(project_id, filter).await?;
-    Ok(issues.into_iter().map(IssueView::from).collect())
+    let issues = state.issues.list(project.id, filter).await?;
+    Ok(issues
+        .into_iter()
+        .map(|i| IssueView::from_issue(i, project.short_id.clone()))
+        .collect())
 }
 
-/// Load an issue and verify the caller may view its project; returns the issue.
+/// Resolve an issue by its short public id and verify the caller may view its
+/// project; returns the issue together with its parent project.
+///
+/// The project is returned so callers can build [`IssueView`]s (which need the
+/// project's short id) without a second lookup.
 async fn authorize_issue(
     state: &AppState,
     user: &crate::domain::User,
     raw_id: &str,
-) -> std::result::Result<Issue, Response> {
-    let issue_id = parse_id(raw_id)?;
+) -> std::result::Result<(Issue, Project), Response> {
     let issue = state
         .issues
-        .find_by_id(issue_id)
+        .find_by_short_id(raw_id)
         .await
         .map_err(error_response)?
         .ok_or_else(|| {
             crate::api::projects::json_error(StatusCode::NOT_FOUND, "issue not found")
         })?;
-    require_member(state, user, issue.project_id).await?;
-    Ok(issue)
+    let project = state
+        .projects
+        .find_by_id(issue.project_id)
+        .await
+        .map_err(error_response)?
+        .ok_or_else(|| {
+            crate::api::projects::json_error(StatusCode::NOT_FOUND, "project not found")
+        })?;
+    require_member(state, user, project.id).await?;
+    Ok((issue, project))
 }
 
 /// `GET /issues/{id}` — issue detail (issue + latest event for the viewer).
@@ -239,8 +264,8 @@ pub async fn get(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let issue = match authorize_issue(&state, &user, &id).await {
-        Ok(issue) => issue,
+    let (issue, project) = match authorize_issue(&state, &user, &id).await {
+        Ok(pair) => pair,
         Err(resp) => return resp,
     };
 
@@ -257,7 +282,7 @@ pub async fn get(
     }
 
     Json(IssueDetail {
-        issue: IssueView::from(issue),
+        issue: IssueView::from_issue(issue, project.short_id),
         latest_event: latest,
     })
     .into_response()
@@ -281,8 +306,8 @@ pub async fn list_events(
     Path(id): Path<String>,
     Query(q): Query<EventsQuery>,
 ) -> Response {
-    let issue = match authorize_issue(&state, &user, &id).await {
-        Ok(issue) => issue,
+    let (issue, _project) = match authorize_issue(&state, &user, &id).await {
+        Ok(pair) => pair,
         Err(resp) => return resp,
     };
 
@@ -354,8 +379,8 @@ pub async fn update_fingerprint(
         );
     }
 
-    let issue = match authorize_issue(&state, &user, &id).await {
-        Ok(issue) => issue,
+    let (issue, project) = match authorize_issue(&state, &user, &id).await {
+        Ok(pair) => pair,
         Err(resp) => return resp,
     };
 
@@ -364,7 +389,9 @@ pub async fn update_fingerprint(
         .override_fingerprint(issue.id, trimmed.to_string())
         .await
     {
-        Ok(issue) => Json(IssueView::from(issue)).into_response(),
+        // The surviving issue stays in the same project, so its short id is the
+        // one we already loaded.
+        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
         Err(err) => error_response(err),
     }
 }
@@ -376,13 +403,13 @@ async fn set_status(
     raw_id: String,
     status: IssueStatus,
 ) -> Response {
-    let issue = match authorize_issue(&state, &user, &raw_id).await {
-        Ok(issue) => issue,
+    let (issue, project) = match authorize_issue(&state, &user, &raw_id).await {
+        Ok(pair) => pair,
         Err(resp) => return resp,
     };
 
     match state.issues.set_status(issue.id, status).await {
-        Ok(issue) => Json(IssueView::from(issue)).into_response(),
+        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
         Err(err) => error_response(err),
     }
 }

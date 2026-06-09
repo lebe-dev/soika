@@ -88,3 +88,10 @@ INSERT OR IGNORE INTO issues (id, project_id, fingerprint, title, culprit, level
     ('c0000004-0000-0000-0000-000000000013', 'b1b2c3d4-0003-0003-0003-000000000003', 'fp-and-013', 'Hilt injection failed: missing binding for Logger', 'AppComponent.kt:11',       'error',   'unresolved', '2026-06-09T01:00:00Z', '2026-06-09T14:30:00Z', 5,   '2026-06-09T01:00:00Z', '2026-06-09T14:30:00Z', 'staging',    '3.6.0-beta'),
     ('c0000004-0000-0000-0000-000000000014', 'b1b2c3d4-0003-0003-0003-000000000003', 'fp-and-014', 'ExoPlayer: MediaCodec dequeueOutputBuffer -1',      'VideoPlayer.kt:166',       'error',   'unresolved', '2026-05-26T14:00:00Z', '2026-06-09T07:00:00Z', 21,  '2026-05-26T14:00:00Z', '2026-06-09T07:00:00Z', 'production', '3.5.1'),
     ('c0000004-0000-0000-0000-000000000015', 'b1b2c3d4-0003-0003-0003-000000000003', 'fp-and-015', 'ProGuard: missing keep rule breaks reflection call', 'ReflectionUtil.kt:33',    'info',    'resolved',   '2026-05-11T10:00:00Z', '2026-05-12T08:00:00Z', 3,   '2026-05-11T10:00:00Z', '2026-05-12T08:00:00Z', 'production', '3.5.0');
+
+-- Assign random short public ids to the freshly-seeded rows. These INSERTs omit
+-- the column (added by migration 0007); a random 6-hex code is fine for the tiny
+-- seed dataset (collision odds are negligible at this size). Idempotent on
+-- re-run — only rows still missing a code are touched.
+UPDATE projects SET short_id = lower(hex(randomblob(3))) WHERE short_id IS NULL;
+UPDATE issues   SET short_id = lower(hex(randomblob(3))) WHERE short_id IS NULL;

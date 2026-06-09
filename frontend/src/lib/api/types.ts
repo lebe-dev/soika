@@ -1,7 +1,9 @@
 // Wire types mirroring the Rust JSON API DTOs.
 //
 // Conventions from the backend:
-//   * `Id`        -> UUID string
+//   * `Id`        -> opaque string id. Project and issue ids are short public
+//                    codes (6-char `a-z0-9`); other ids (user, team, event) are
+//                    UUID strings. Treat all as opaque.
 //   * `Timestamp` -> RFC 3339 / ISO-8601 string (chrono DateTime<Utc>)
 //   * `Role`        serializes lowercase: "admin" | "member"
 //   * `IssueStatus` serializes lowercase: "unresolved" | "resolved" | "muted"
@@ -117,6 +119,7 @@ export interface UpdateProfileRequest {
 /** `InviteView` returned by `GET /invite/{token}` (the accept page). */
 export interface InvitePreview {
   token: string;
+  /** Project's short public id; the accept flow redirects to `/projects/{id}`. */
   project_id: Id;
   role: Role;
   email: string | null;
@@ -132,6 +135,7 @@ export interface AcceptInviteRequest {
 // --- Projects (src/api/projects.rs) ---
 
 export interface Project {
+  /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
   id: Id;
   team_id: Id;
   name: string;
@@ -222,7 +226,9 @@ export interface CreateInviteRequest {
 // --- Issues & events (src/api/issues.rs, src/api/events.rs) ---
 
 export interface Issue {
+  /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
   id: Id;
+  /** Parent project's short public id (used to build the back-link), not a UUID. */
   project_id: Id;
   fingerprint: string;
   title: string;

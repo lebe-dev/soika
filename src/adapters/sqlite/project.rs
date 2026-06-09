@@ -29,7 +29,7 @@ impl SqliteProjectRepository {
 }
 
 /// Columns selected for a `Project`, in a fixed order shared by every query.
-const PROJECT_COLS: &str = "id, team_id, name, slug, dsn_public_key, \
+const PROJECT_COLS: &str = "id, short_id, team_id, name, slug, dsn_public_key, \
      retention_events, retention_days, muted, webhook_url, created_at, updated_at";
 
 /// Map a row (selected via [`PROJECT_COLS`]) into a domain [`Project`].
@@ -39,6 +39,7 @@ const PROJECT_COLS: &str = "id, team_id, name, slug, dsn_public_key, \
 fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Result<Project> {
     Ok(Project {
         id: parse_id(row.try_get::<String, _>("id")?)?,
+        short_id: row.try_get("short_id")?,
         team_id: parse_id(row.try_get::<String, _>("team_id")?)?,
         name: row.try_get("name")?,
         slug: row.try_get("slug")?,
@@ -66,15 +67,17 @@ fn parse_ts(s: String) -> Result<crate::domain::Timestamp> {
 impl ProjectRepository for SqliteProjectRepository {
     async fn create(&self, new: NewProject) -> Result<Project> {
         let id = Id::new_v4();
+        let short_id = super::unique_short_id(&self.db, "projects").await?;
         let now = chrono::Utc::now();
         let sql = format!(
             "INSERT INTO projects \
-                (id, team_id, name, slug, dsn_public_key, retention_events, retention_days, muted, webhook_url, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) \
+                (id, short_id, team_id, name, slug, dsn_public_key, retention_events, retention_days, muted, webhook_url, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) \
              RETURNING {PROJECT_COLS}"
         );
         let row = sqlx::query(&sql)
             .bind(id.to_string())
+            .bind(short_id)
             .bind(new.team_id.to_string())
             .bind(new.name)
             .bind(new.slug)
@@ -94,6 +97,15 @@ impl ProjectRepository for SqliteProjectRepository {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE id = ?");
         let row = sqlx::query(&sql)
             .bind(id.to_string())
+            .fetch_optional(&self.db)
+            .await?;
+        row.as_ref().map(row_to_project).transpose()
+    }
+
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Project>> {
+        let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE short_id = ?");
+        let row = sqlx::query(&sql)
+            .bind(short_id)
             .fetch_optional(&self.db)
             .await?;
         row.as_ref().map(row_to_project).transpose()
@@ -327,6 +339,49 @@ mod tests {
         // A user with no memberships sees nothing.
         let stranger = repo.list_for_user(Id::new_v4()).await.unwrap();
         assert!(stranger.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_assigns_short_id_resolvable_via_find_by_short_id() {
+        let pool = pool().await;
+        let team_id = seed_team(&pool).await;
+        let repo = SqliteProjectRepository::new(pool);
+
+        let created = repo
+            .create(new_project(team_id, "alpha", "dsn-short"))
+            .await
+            .unwrap();
+
+        // The short id is a compact 6-char lowercase-alphanumeric code, distinct
+        // from the UUID, and resolves back to the same project.
+        assert_eq!(created.short_id.len(), 6);
+        assert!(created.short_id.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_ne!(created.short_id, created.id.to_string());
+
+        let found = repo
+            .find_by_short_id(&created.short_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, created.id);
+        assert!(repo.find_by_short_id("zzzzzz").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn short_ids_are_unique_across_projects() {
+        let pool = pool().await;
+        let team_id = seed_team(&pool).await;
+        let repo = SqliteProjectRepository::new(pool);
+
+        let a = repo
+            .create(new_project(team_id, "a", "dsn-a"))
+            .await
+            .unwrap();
+        let b = repo
+            .create(new_project(team_id, "b", "dsn-b"))
+            .await
+            .unwrap();
+        assert_ne!(a.short_id, b.short_id);
     }
 
     #[tokio::test]

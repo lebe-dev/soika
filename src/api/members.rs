@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::api::projects::{
     CurrentUser, error_response, json_error, parse_id, require_admin, require_member,
+    resolve_project,
 };
 use crate::domain::{Id, Role};
 use crate::state::AppState;
@@ -29,8 +30,8 @@ pub async fn list(
     CurrentUser(user): CurrentUser,
     Path(project_id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&project_id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &project_id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 
@@ -64,8 +65,8 @@ pub async fn remove(
     CurrentUser(caller): CurrentUser,
     Path((project_id, user_id)): Path<(String, String)>,
 ) -> Response {
-    let project_id = match parse_id(&project_id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &project_id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
     let target_user = match parse_id(&user_id) {

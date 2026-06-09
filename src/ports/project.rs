@@ -39,6 +39,10 @@ pub struct ProjectUpdate {
 pub trait ProjectRepository: Send + Sync {
     async fn create(&self, new: NewProject) -> Result<Project>;
     async fn find_by_id(&self, id: Id) -> Result<Option<Project>>;
+
+    /// Resolve a project from its short public id (web URLs / SPA API).
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Project>>;
+
     async fn find_by_slug(&self, slug: &str) -> Result<Option<Project>>;
 
     /// Resolve a project from a DSN public key — ingestion auth.

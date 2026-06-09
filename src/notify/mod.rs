@@ -260,6 +260,7 @@ mod tests {
         let now = Utc::now();
         Project {
             id: Uuid::new_v4(),
+            short_id: "web001".to_string(),
             team_id: Uuid::new_v4(),
             name: "web".to_string(),
             slug: "web".to_string(),
@@ -285,6 +286,7 @@ mod tests {
         let now = Utc::now();
         Issue {
             id: Uuid::new_v4(),
+            short_id: "iss001".to_string(),
             project_id: Uuid::new_v4(),
             fingerprint: "fp".to_string(),
             title: "ValueError: boom".to_string(),

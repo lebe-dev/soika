@@ -173,6 +173,7 @@ mod tests {
     fn base_issue(upsert: &IssueUpsert) -> Issue {
         Issue {
             id: Id::new_v4(),
+            short_id: "test01".to_string(),
             project_id: upsert.project_id,
             fingerprint: upsert.fingerprint.clone(),
             title: upsert.title.clone(),
@@ -201,6 +202,16 @@ mod tests {
                 .unwrap()
                 .iter()
                 .find(|i| i.id == id)
+                .cloned())
+        }
+
+        async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>> {
+            Ok(self
+                .rows
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|i| i.short_id == short_id)
                 .cloned())
         }
 

@@ -15,8 +15,10 @@ use chrono::Duration;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::api::projects::{CurrentUser, error_response, json_error, parse_id, require_admin};
-use crate::domain::{Id, Invite, Role};
+use crate::api::projects::{
+    CurrentUser, error_response, json_error, require_admin, resolve_project,
+};
+use crate::domain::{Invite, Role};
 use crate::ports::{NewInvite, OutboundEmail};
 use crate::state::AppState;
 
@@ -30,7 +32,8 @@ const TOKEN_BYTES: usize = 32;
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
-    pub project_id: Id,
+    /// Parent project's short public id (matches the rest of the SPA API).
+    pub project_id: String,
     pub role: Role,
     pub email: Option<String>,
     /// Copyable / emailable acceptance link: `{BASE_URL}/invite/{token}`.
@@ -44,11 +47,16 @@ pub struct InviteView {
 }
 
 impl InviteView {
-    fn from_invite(invite: Invite, base_url: &str, email_sent: bool) -> Self {
+    fn from_invite(
+        invite: Invite,
+        project_short_id: String,
+        base_url: &str,
+        email_sent: bool,
+    ) -> Self {
         let link = invite_link(base_url, &invite.token);
         InviteView {
             token: invite.token,
-            project_id: invite.project_id,
+            project_id: project_short_id,
             role: invite.role,
             email: invite.email,
             link,
@@ -71,20 +79,27 @@ pub async fn list(
     CurrentUser(user): CurrentUser,
     Path(project_id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&project_id) {
-        Ok(id) => id,
+    let project = match resolve_project(&state, &project_id).await {
+        Ok(p) => p,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_admin(&state, &user, project_id).await {
+    if let Err(resp) = require_admin(&state, &user, project.id).await {
         return resp;
     }
 
-    match state.invites.list_for_project(project_id).await {
+    match state.invites.list_for_project(project.id).await {
         Ok(invites) => {
             let views: Vec<InviteView> = invites
                 .into_iter()
-                .map(|i| InviteView::from_invite(i, &state.config.base_url, false))
+                .map(|i| {
+                    InviteView::from_invite(
+                        i,
+                        project.short_id.clone(),
+                        &state.config.base_url,
+                        false,
+                    )
+                })
                 .collect();
             Json(views).into_response()
         }
@@ -114,12 +129,12 @@ pub async fn create(
     Path(project_id): Path<String>,
     body: Option<Json<CreateInviteRequest>>,
 ) -> Response {
-    let project_id = match parse_id(&project_id) {
-        Ok(id) => id,
+    let project = match resolve_project(&state, &project_id).await {
+        Ok(p) => p,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_admin(&state, &user, project_id).await {
+    if let Err(resp) = require_admin(&state, &user, project.id).await {
         return resp;
     }
 
@@ -145,7 +160,7 @@ pub async fn create(
 
     let new = NewInvite {
         token,
-        project_id,
+        project_id: project.id,
         role,
         email: email.clone(),
         created_by: Some(user.id),
@@ -179,7 +194,8 @@ pub async fn create(
         email_sent = state.mailer.send(message).await.is_ok();
     }
 
-    let view = InviteView::from_invite(invite, &state.config.base_url, email_sent);
+    let view =
+        InviteView::from_invite(invite, project.short_id, &state.config.base_url, email_sent);
     (StatusCode::CREATED, Json(view)).into_response()
 }
 
@@ -189,8 +205,8 @@ pub async fn revoke(
     CurrentUser(user): CurrentUser,
     Path((project_id, token)): Path<(String, String)>,
 ) -> Response {
-    let project_id = match parse_id(&project_id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &project_id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 

@@ -78,6 +78,67 @@ pub(crate) fn bool_to_db(v: bool) -> i64 {
     i64::from(v)
 }
 
+/// Alphabet for short public ids — lowercase alphanumerics, URL-friendly and
+/// unambiguous in a browser address bar (36^6 ≈ 2.1B combinations at length 6).
+const SHORT_ID_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+
+/// Length of a generated short id. Kept small for compact URLs.
+const SHORT_ID_LEN: usize = 6;
+
+/// Generate a random short public id (see [`SHORT_ID_ALPHABET`]).
+///
+/// Callers persist this into a UNIQUE column; the astronomically rare collision
+/// is handled by retrying (see [`unique_short_id`]).
+pub(crate) fn generate_short_id() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..SHORT_ID_LEN)
+        .map(|_| SHORT_ID_ALPHABET[rng.gen_range(0..SHORT_ID_ALPHABET.len())] as char)
+        .collect()
+}
+
+/// Assign a unique random short id to every project/issue row still missing one.
+///
+/// Runs once at startup, right after migrations: migration 0007 adds the
+/// `short_id` column (leaving existing rows NULL) and the backfill cannot live in
+/// SQL because a random value there could collide and abort the UNIQUE-index
+/// build. Here each NULL row gets a code from [`unique_short_id`], which retries
+/// until it finds a free one — random *and* guaranteed unique. A no-op on a fresh
+/// database (and on every subsequent boot once all rows are filled).
+pub async fn backfill_short_ids(db: &Db) -> Result<(), Error> {
+    for table in ["projects", "issues"] {
+        let select = format!("SELECT id FROM {table} WHERE short_id IS NULL LIMIT 1");
+        let update = format!("UPDATE {table} SET short_id = ? WHERE id = ?");
+        while let Some(row) = sqlx::query(&select).fetch_optional(db).await? {
+            let id: String = sqlx::Row::try_get(&row, "id")?;
+            let code = unique_short_id(db, table).await?;
+            sqlx::query(&update).bind(code).bind(id).execute(db).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Generate a short id not already present in `table.short_id`.
+///
+/// Pre-checks for a free code (rather than relying on the UNIQUE constraint and
+/// distinguishing it from the slug/DSN constraints on the same INSERT). The loop
+/// is bounded; with a 2.1-billion keyspace it effectively never iterates twice.
+pub(crate) async fn unique_short_id(db: &Db, table: &str) -> Result<String, Error> {
+    let sql = format!("SELECT 1 FROM {table} WHERE short_id = ? LIMIT 1");
+    for _ in 0..16 {
+        let candidate = generate_short_id();
+        let taken = sqlx::query(&sql)
+            .bind(&candidate)
+            .fetch_optional(db)
+            .await?
+            .is_some();
+        if !taken {
+            return Ok(candidate);
+        }
+    }
+    Err(Error::internal("could not allocate a unique short id"))
+}
+
 /// Inspect an `INSERT`/`UPDATE` error and classify a UNIQUE-constraint
 /// violation as a domain [`Error::Conflict`]. SQLite surfaces these as a
 /// `Database` error whose message mentions "UNIQUE constraint failed"; this
@@ -144,10 +205,12 @@ pub(crate) mod tests {
         let id = crate::domain::Id::new_v4();
         let now = super::ts_to_db(chrono::Utc::now());
         sqlx::query(
-            "INSERT INTO projects (id, team_id, name, slug, dsn_public_key, retention_events, \
-             muted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1000, 0, ?, ?)",
+            "INSERT INTO projects (id, short_id, team_id, name, slug, dsn_public_key, \
+             retention_events, muted, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, 1000, 0, ?, ?)",
         )
         .bind(super::id_to_db(id))
+        .bind(super::generate_short_id())
         .bind(super::id_to_db(team_id))
         .bind(slug)
         .bind(slug)
@@ -158,6 +221,61 @@ pub(crate) mod tests {
         .await
         .expect("insert project");
         id
+    }
+
+    #[tokio::test]
+    async fn backfill_short_ids_fills_null_rows_with_unique_codes() {
+        let pool = test_pool().await;
+        let team_id = insert_team(&pool, "t").await;
+
+        // Two projects with NULL short_id (mimicking rows created before
+        // migration 0007 added the column).
+        let now = super::ts_to_db(chrono::Utc::now());
+        for (n, slug) in [("a", "sa"), ("b", "sb")] {
+            sqlx::query(
+                "INSERT INTO projects (id, team_id, name, slug, dsn_public_key, \
+                 retention_events, muted, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 1000, 0, ?, ?)",
+            )
+            .bind(super::id_to_db(crate::domain::Id::new_v4()))
+            .bind(super::id_to_db(team_id))
+            .bind(n)
+            .bind(slug)
+            .bind(format!("dsn-{slug}"))
+            .bind(&now)
+            .bind(&now)
+            .execute(&pool)
+            .await
+            .expect("insert null-short_id project");
+        }
+
+        super::backfill_short_ids(&pool).await.expect("backfill");
+
+        let codes: Vec<String> = sqlx::query("SELECT short_id FROM projects")
+            .fetch_all(&pool)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| sqlx::Row::try_get::<String, _>(r, "short_id").unwrap())
+            .collect();
+        assert_eq!(codes.len(), 2);
+        assert!(codes.iter().all(|c| c.len() == 6));
+        assert_ne!(codes[0], codes[1], "backfilled codes are unique");
+
+        // Idempotent: a second run leaves the now-filled rows untouched.
+        super::backfill_short_ids(&pool)
+            .await
+            .expect("second backfill");
+        let after: Vec<String> = sqlx::query("SELECT short_id FROM projects ORDER BY short_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| sqlx::Row::try_get::<String, _>(r, "short_id").unwrap())
+            .collect();
+        let mut sorted = codes.clone();
+        sorted.sort();
+        assert_eq!(after, sorted, "second run is a no-op");
     }
 
     /// Insert a user row directly and return its id.

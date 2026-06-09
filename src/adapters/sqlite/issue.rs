@@ -30,7 +30,7 @@ impl SqliteIssueRepository {
     }
 }
 
-const ISSUE_COLS: &str = "id, project_id, fingerprint, title, culprit, level, \
+const ISSUE_COLS: &str = "id, short_id, project_id, fingerprint, title, culprit, level, \
      environment, release, status, \
      first_seen, last_seen, event_count, created_at, updated_at";
 
@@ -38,6 +38,7 @@ fn row_to_issue(row: &sqlx::sqlite::SqliteRow) -> Result<Issue> {
     let status: String = row.try_get("status")?;
     Ok(Issue {
         id: parse_id(row.try_get::<String, _>("id")?)?,
+        short_id: row.try_get("short_id")?,
         project_id: parse_id(row.try_get::<String, _>("project_id")?)?,
         fingerprint: row.try_get("fingerprint")?,
         title: row.try_get("title")?,
@@ -75,6 +76,15 @@ impl IssueRepository for SqliteIssueRepository {
         row.as_ref().map(row_to_issue).transpose()
     }
 
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>> {
+        let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE short_id = ?");
+        let row = sqlx::query(&sql)
+            .bind(short_id)
+            .fetch_optional(&self.db)
+            .await?;
+        row.as_ref().map(row_to_issue).transpose()
+    }
+
     async fn find_by_fingerprint(
         &self,
         project_id: Id,
@@ -91,6 +101,12 @@ impl IssueRepository for SqliteIssueRepository {
     }
 
     async fn upsert_by_fingerprint(&self, upsert: IssueUpsert) -> Result<UpsertOutcome> {
+        // Allocate the short id up front, before opening the transaction: the
+        // uniqueness pre-check borrows a pooled connection, and the test pool is
+        // pinned to a single connection — doing it while the tx holds that
+        // connection would deadlock. Only the new-issue branch consumes it.
+        let short_id = super::unique_short_id(&self.db, "issues").await?;
+
         // Run in a transaction so the read-then-write is consistent under
         // concurrent ingestion of the same fingerprint.
         let mut tx = self.db.begin().await?;
@@ -145,14 +161,15 @@ impl IssueRepository for SqliteIssueRepository {
         let id = Id::new_v4();
         let insert_sql = format!(
             "INSERT INTO issues \
-                (id, project_id, fingerprint, title, culprit, level, \
+                (id, short_id, project_id, fingerprint, title, culprit, level, \
                  environment, release, status, \
                  first_seen, last_seen, event_count, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unresolved', ?, ?, 1, ?, ?) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unresolved', ?, ?, 1, ?, ?) \
              RETURNING {ISSUE_COLS}"
         );
         let inserted = sqlx::query(&insert_sql)
             .bind(id.to_string())
+            .bind(short_id)
             .bind(upsert.project_id.to_string())
             .bind(&upsert.fingerprint)
             .bind(&upsert.title)
@@ -449,6 +466,31 @@ mod tests {
             release: release.map(str::to_string),
             ..upsert(project_id, fp, at)
         }
+    }
+
+    #[tokio::test]
+    async fn upsert_assigns_short_id_resolvable_via_find_by_short_id() {
+        let pool = pool().await;
+        let project_id = seed_project(&pool).await;
+        let repo = SqliteIssueRepository::new(pool);
+
+        let created = repo
+            .upsert_by_fingerprint(upsert(project_id, "fp-short", chrono::Utc::now()))
+            .await
+            .unwrap()
+            .issue;
+
+        // A new issue gets a compact 6-char public code that resolves back to it.
+        assert_eq!(created.short_id.len(), 6);
+        assert!(created.short_id.chars().all(|c| c.is_ascii_alphanumeric()));
+
+        let found = repo
+            .find_by_short_id(&created.short_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, created.id);
+        assert!(repo.find_by_short_id("zzzzzz").await.unwrap().is_none());
     }
 
     #[tokio::test]

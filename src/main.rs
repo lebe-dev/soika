@@ -160,6 +160,14 @@ async fn connect_and_migrate(database_url: &str) -> Result<sqlx::SqlitePool> {
         .context("opening SQLite pool")?;
 
     MIGRATOR.run(&pool).await.context("running migrations")?;
+
+    // Give pre-existing projects/issues a random short public id (migration 0007
+    // adds the column but leaves old rows NULL). New rows are assigned one on
+    // insert; this is a no-op once every row is filled.
+    soika::adapters::sqlite::backfill_short_ids(&pool)
+        .await
+        .context("backfilling short ids")?;
+
     Ok(pool)
 }
 

@@ -143,7 +143,9 @@ pub struct SetupRequest {
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
-    pub project_id: Id,
+    /// Parent project's short public id, so the accept flow can redirect to
+    /// `/projects/{short_id}` after joining.
+    pub project_id: String,
     pub role: Role,
     pub email: Option<String>,
     /// True when no account exists for the invite's target email, so the UI
@@ -388,9 +390,18 @@ pub async fn get_invite(
         None => false,
     };
 
+    // The accept page redirects to the project by its short public id, so resolve
+    // the internal UUID to that code here.
+    let project_short_id = state
+        .projects
+        .find_by_id(invite.project_id)
+        .await?
+        .map(|p| p.short_id)
+        .ok_or_else(|| Error::not_found("project"))?;
+
     Ok(Json(InviteView {
         token: invite.token,
-        project_id: invite.project_id,
+        project_id: project_short_id,
         role: invite.role,
         email: invite.email,
         requires_registration,

@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: Id,
+    /// Short, URL-friendly public code (6 chars, `a-z0-9`); used in web URLs and
+    /// the SPA-facing API instead of the verbose UUID. The UUID [`id`](Self::id)
+    /// remains the internal key (foreign keys, DSN, ingestion).
+    pub short_id: String,
     pub team_id: Id,
     pub name: String,
     pub slug: String,

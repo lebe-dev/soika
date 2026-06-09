@@ -51,6 +51,10 @@ impl FromStr for IssueStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
     pub id: Id,
+    /// Short, URL-friendly public code (6 chars, `a-z0-9`); used in web URLs and
+    /// the SPA-facing API instead of the verbose UUID. The UUID [`id`](Self::id)
+    /// remains the internal key.
+    pub short_id: String,
     pub project_id: Id,
     pub fingerprint: String,
     pub title: String,

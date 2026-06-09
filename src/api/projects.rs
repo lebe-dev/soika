@@ -115,8 +115,29 @@ pub fn error_response(err: Error) -> Response {
 }
 
 /// Parse a path id into a [`Id`] (UUID), mapping failure to a `400`.
+///
+/// Used for ids that are still UUIDs on the wire (user ids, event ids). Project
+/// and issue path params are short public ids — resolve those with
+/// [`resolve_project`] / `issues::authorize_issue` instead.
 pub fn parse_id(raw: &str) -> std::result::Result<Id, Response> {
     Id::parse_str(raw).map_err(|_| json_error(StatusCode::BAD_REQUEST, "invalid id"))
+}
+
+/// Resolve a project from its short public id (the web URL / SPA path param),
+/// returning the full project or a `404` JSON response.
+///
+/// The internal UUID lives on [`Project::id`]; handlers use that for membership
+/// checks and downstream queries while the wire only ever speaks short ids.
+pub async fn resolve_project(
+    state: &AppState,
+    short_id: &str,
+) -> std::result::Result<Project, Response> {
+    state
+        .projects
+        .find_by_short_id(short_id)
+        .await
+        .map_err(error_response)?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "project not found"))
 }
 
 /// Resolve the caller's effective role on a project.
@@ -169,19 +190,6 @@ pub async fn require_admin(
     }
 }
 
-/// Load a project by id or return a `404` JSON response.
-pub async fn load_project(
-    state: &AppState,
-    project_id: Id,
-) -> std::result::Result<Project, Response> {
-    state
-        .projects
-        .find_by_id(project_id)
-        .await
-        .map_err(error_response)?
-        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "project not found"))
-}
-
 /// Build the full DSN string for a project from its public key.
 ///
 /// Format mirrors Sentry: `{scheme}://{public_key}@{host}[:port]/{project_id}`.
@@ -213,7 +221,9 @@ fn ingest_urls(base_url: &str, project_id: Id) -> (String, String) {
 /// Project as returned to the SvelteKit client (includes derived DSN).
 #[derive(Debug, Serialize)]
 pub struct ProjectView {
-    pub id: Id,
+    /// Short public id (used in web URLs and as the SPA-facing path param). The
+    /// internal UUID is never exposed to the client.
+    pub id: String,
     pub team_id: Id,
     pub name: String,
     pub slug: String,
@@ -233,7 +243,7 @@ impl ProjectView {
     fn from_project(project: Project, base_url: &str) -> Self {
         let dsn = build_dsn(base_url, &project.dsn_public_key, project.id);
         ProjectView {
-            id: project.id,
+            id: project.short_id,
             team_id: project.team_id,
             name: project.name,
             slug: project.slug,
@@ -455,21 +465,16 @@ pub async fn get(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
-
-    if let Err(resp) = require_member(&state, &user, project_id).await {
-        return resp;
-    }
-
-    let project = match load_project(&state, project_id).await {
+    let project = match resolve_project(&state, &id).await {
         Ok(project) => project,
         Err(resp) => return resp,
     };
 
-    let issues = match crate::api::issues::default_project_issues(&state, project_id).await {
+    if let Err(resp) = require_member(&state, &user, project.id).await {
+        return resp;
+    }
+
+    let issues = match crate::api::issues::default_project_issues(&state, &project).await {
         Ok(issues) => issues,
         Err(err) => return error_response(err),
     };
@@ -507,8 +512,8 @@ pub async fn update(
     Path(id): Path<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 
@@ -576,8 +581,8 @@ pub async fn delete(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 
@@ -618,19 +623,14 @@ pub async fn dsn(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
-
-    if let Err(resp) = require_member(&state, &user, project_id).await {
-        return resp;
-    }
-
-    let project = match load_project(&state, project_id).await {
+    let project = match resolve_project(&state, &id).await {
         Ok(p) => p,
         Err(resp) => return resp,
     };
+
+    if let Err(resp) = require_member(&state, &user, project.id).await {
+        return resp;
+    }
 
     let dsn = build_dsn(&state.config.base_url, &project.dsn_public_key, project.id);
     Json(DsnView {
@@ -665,19 +665,14 @@ pub async fn sdk_setup(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
-
-    if let Err(resp) = require_member(&state, &user, project_id).await {
-        return resp;
-    }
-
-    let project = match load_project(&state, project_id).await {
+    let project = match resolve_project(&state, &id).await {
         Ok(p) => p,
         Err(resp) => return resp,
     };
+
+    if let Err(resp) = require_member(&state, &user, project.id).await {
+        return resp;
+    }
 
     let dsn = build_dsn(&state.config.base_url, &project.dsn_public_key, project.id);
     let (envelope_url, store_url) = ingest_urls(&state.config.base_url, project.id);
@@ -774,19 +769,14 @@ pub async fn mute(
     Path(id): Path<String>,
     body: Option<Json<MuteRequest>>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
-
-    if let Err(resp) = require_admin(&state, &user, project_id).await {
-        return resp;
-    }
-
-    let project = match load_project(&state, project_id).await {
+    let project = match resolve_project(&state, &id).await {
         Ok(p) => p,
         Err(resp) => return resp,
     };
+
+    if let Err(resp) = require_admin(&state, &user, project.id).await {
+        return resp;
+    }
 
     let target = body.and_then(|Json(b)| b.muted).unwrap_or(!project.muted);
 
@@ -795,7 +785,7 @@ pub async fn mute(
         ..Default::default()
     };
 
-    match state.projects.update(project_id, update).await {
+    match state.projects.update(project.id, update).await {
         Ok(project) => {
             let view = ProjectView::from_project(project, &state.config.base_url);
             Json(view).into_response()
@@ -810,8 +800,8 @@ pub async fn regenerate_dsn(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 
@@ -858,8 +848,8 @@ pub async fn favorite(
     Path(id): Path<String>,
     body: Option<Json<FavoriteRequest>>,
 ) -> Response {
-    let project_id = match parse_id(&id) {
-        Ok(id) => id,
+    let project_id = match resolve_project(&state, &id).await {
+        Ok(project) => project.id,
         Err(resp) => return resp,
     };
 
@@ -931,7 +921,7 @@ mod tests {
         // level (flattened) plus a sibling `issues` array — assert that contract.
         let now = chrono::Utc::now();
         let project = ProjectView {
-            id: Uuid::nil(),
+            id: "n".into(),
             team_id: Uuid::nil(),
             name: "n".into(),
             slug: "n".into(),
