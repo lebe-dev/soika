@@ -340,6 +340,7 @@ mod tests {
 
     fn test_config() -> OidcConfig {
         OidcConfig {
+            kind: crate::config::OAuthProviderKind::Oidc,
             issuer_url: "https://idp.example.com".into(),
             client_id: "client-123".into(),
             client_secret: "secret-456".into(),

@@ -4,15 +4,18 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import CopyField from '$lib/components/copy-field.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
+  import { sdkSnippets } from '$lib/sdk-snippets';
   import type { PageData } from './$types';
 
   // SDK Setup — per-project, language-aware snippets showing the DSN and minimal
-  // init code (Go, Rust, Svelte/JS, generic) to start sending events.
+  // init code (Go, Rust, Svelte/JS, generic) to start sending events. Snippets
+  // are derived on the client from the project's DSN (loaded once by the parent
+  // layout), so opening this tab fires no requests.
   let { data }: { data: PageData } = $props();
 
-  const setup = $derived(data.setup);
-  const snippets = $derived(setup.snippets);
-  let active = $state(untrack(() => data.setup.snippets[0]?.language ?? 'go'));
+  const dsn = $derived(data.project.dsn);
+  const snippets = $derived(sdkSnippets(data.project.dsn, data.project.dsn_public_key));
+  let active = $state(untrack(() => 'go'));
 </script>
 
 <PageTitle title={`${data.project.name} · SDK Setup`} />
@@ -26,7 +29,7 @@
       </Card.Description>
     </Card.Header>
     <Card.Content>
-      <CopyField value={setup.dsn} label="DSN" />
+      <CopyField value={dsn} label="DSN" />
     </Card.Content>
   </Card.Root>
 

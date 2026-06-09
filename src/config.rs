@@ -69,10 +69,24 @@ pub struct SentryConfig {
     pub environment: Option<String>,
 }
 
+/// Which OAuth provider flavour to speak.
+///
+/// `Oidc` is the generic OpenID Connect flow (discovery + ID-token), used by
+/// GitLab, Google, Keycloak, Authentik, Okta, Entra, … `Github` is plain OAuth
+/// 2.0 (no discovery, no ID-token): GitHub OAuth Apps are not OIDC providers, so
+/// identity is read from the REST API instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OAuthProviderKind {
+    Oidc,
+    Github,
+}
+
 /// Optional OAuth 2.0 / OpenID Connect configuration. When `None`, SSO is
 /// disabled and password login behaves exactly as before.
 #[derive(Debug, Clone)]
 pub struct OidcConfig {
+    /// Provider flavour (`OAUTH_PROVIDER`): generic `oidc` (default) or `github`.
+    pub kind: OAuthProviderKind,
     /// Issuer base URL used for OIDC discovery (`OAUTH_ISSUER_URL`), e.g.
     /// `https://gitlab.com`. Discovery hits `{issuer}/.well-known/openid-configuration`.
     pub issuer_url: String,
@@ -248,14 +262,41 @@ impl Config {
             return Ok(None);
         }
 
-        let issuer_url = required_env("OAUTH_ISSUER_URL")?;
+        let kind = match env_or("OAUTH_PROVIDER", "oidc")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "" | "oidc" => OAuthProviderKind::Oidc,
+            "github" => OAuthProviderKind::Github,
+            other => {
+                return Err(Error::validation(format!(
+                    "OAUTH_PROVIDER: unknown value '{other}' (expected 'oidc' or 'github')"
+                )));
+            }
+        };
+
         let client_id = required_env("OAUTH_CLIENT_ID")?;
         let client_secret = required_env("OAUTH_CLIENT_SECRET")?;
+
+        // GitHub is not an OIDC provider: it has no discovery document, so the
+        // issuer URL is informational and defaults to github.com. Generic OIDC
+        // requires it (discovery hits `{issuer}/.well-known/openid-configuration`).
+        let issuer_url = match kind {
+            OAuthProviderKind::Github => env_or("OAUTH_ISSUER_URL", "https://github.com"),
+            OAuthProviderKind::Oidc => required_env("OAUTH_ISSUER_URL")?,
+        };
 
         let redirect_url = env_opt("OAUTH_REDIRECT_URL")
             .unwrap_or_else(|| format!("{}/auth/oidc/callback", base_url.trim_end_matches('/')));
 
-        let scopes = split_list(&env_or("OAUTH_SCOPES", "openid email profile"), ' ');
+        // GitHub uses its own scope names (`read:user user:email`) and has no
+        // `openid` scope; generic OIDC uses the standard `openid email profile`.
+        let default_scopes = match kind {
+            OAuthProviderKind::Github => "read:user user:email",
+            OAuthProviderKind::Oidc => "openid email profile",
+        };
+        let scopes = split_list(&env_or("OAUTH_SCOPES", default_scopes), ' ');
         let provider_name = env_or("OAUTH_PROVIDER_NAME", "SSO");
         let allowed_email_domains = split_list(
             &env_opt("OAUTH_ALLOWED_EMAIL_DOMAINS").unwrap_or_default(),
@@ -264,6 +305,7 @@ impl Config {
         let require_approval = parse_bool(&env_or("OAUTH_REQUIRE_APPROVAL", "false"));
 
         Ok(Some(OidcConfig {
+            kind,
             issuer_url,
             client_id,
             client_secret,
@@ -327,6 +369,7 @@ mod tests {
 
     const OAUTH_KEYS: &[&str] = &[
         "OAUTH_ENABLED",
+        "OAUTH_PROVIDER",
         "OAUTH_ISSUER_URL",
         "OAUTH_CLIENT_ID",
         "OAUTH_CLIENT_SECRET",
@@ -373,6 +416,62 @@ mod tests {
         unsafe { std::env::set_var("OAUTH_CLIENT_ID", "abc") };
 
         let err = Config::oidc_from_env("http://localhost:8080").unwrap_err();
+        assert!(matches!(err, Error::Validation(_)), "got {err:?}");
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn github_provider_skips_issuer_requirement_and_defaults_scopes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "true") };
+        unsafe { std::env::set_var("OAUTH_PROVIDER", "github") };
+        // No OAUTH_ISSUER_URL set: GitHub does not need one (no discovery).
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "gh-client") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_SECRET", "gh-secret") };
+
+        let oidc = Config::oidc_from_env("https://errors.example.com")
+            .unwrap()
+            .expect("oidc should be Some when enabled");
+
+        assert_eq!(oidc.kind, OAuthProviderKind::Github);
+        assert_eq!(oidc.issuer_url, "https://github.com");
+        // GitHub-flavoured default scopes (no `openid`).
+        assert_eq!(oidc.scopes, vec!["read:user", "user:email"]);
+        assert_eq!(
+            oidc.redirect_url,
+            "https://errors.example.com/auth/oidc/callback"
+        );
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn unknown_provider_is_validation_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "true") };
+        unsafe { std::env::set_var("OAUTH_PROVIDER", "facebook") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "id") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_SECRET", "secret") };
+
+        let err = Config::oidc_from_env("https://base").unwrap_err();
+        assert!(matches!(err, Error::Validation(_)), "got {err:?}");
+
+        clear_oauth_env();
+    }
+
+    #[test]
+    fn oidc_provider_still_requires_issuer() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_oauth_env();
+        unsafe { std::env::set_var("OAUTH_ENABLED", "true") };
+        // Default provider is oidc; issuer is mandatory there.
+        unsafe { std::env::set_var("OAUTH_CLIENT_ID", "id") };
+        unsafe { std::env::set_var("OAUTH_CLIENT_SECRET", "secret") };
+
+        let err = Config::oidc_from_env("https://base").unwrap_err();
         assert!(matches!(err, Error::Validation(_)), "got {err:?}");
 
         clear_oauth_env();

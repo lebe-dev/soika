@@ -12,8 +12,8 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use soika::auth::{OidcClient, OidcProvider};
-use soika::config::SentryConfig;
+use soika::auth::{GithubProvider, OidcClient, OidcProvider};
+use soika::config::{OAuthProviderKind, SentryConfig};
 use soika::{Config, MIGRATOR, build_state, scheduler};
 
 #[tokio::main]
@@ -49,10 +49,26 @@ async fn main() -> Result<()> {
                      provider may auto-provision an account; set it to restrict sign-ups"
                 );
             }
-            let client = OidcClient::discover(oidc_config)
-                .await
-                .context("OIDC discovery failed at startup")?;
-            Some(Arc::new(client))
+            // GitHub is OAuth2-only (no OIDC discovery / ID-token); the generic
+            // flavour discovers the issuer up front so a misconfig fails the boot.
+            let provider: Arc<dyn OidcProvider> = match oidc_config.kind {
+                OAuthProviderKind::Github => {
+                    tracing::info!("configuring GitHub OAuth2 provider (no OIDC discovery)");
+                    Arc::new(
+                        GithubProvider::new(oidc_config)
+                            .context("building GitHub OAuth2 provider")?,
+                    )
+                }
+                OAuthProviderKind::Oidc => {
+                    tracing::info!(issuer = %oidc_config.issuer_url, "performing OIDC discovery");
+                    Arc::new(
+                        OidcClient::discover(oidc_config)
+                            .await
+                            .context("OIDC discovery failed at startup")?,
+                    )
+                }
+            };
+            Some(provider)
         }
         None => None,
     };

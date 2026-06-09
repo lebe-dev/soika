@@ -59,9 +59,10 @@
   let loading = $state(false);
   let loadError = $state<string | null>(null);
 
-  // Re-fetch whenever the project, status filter, sort, or field filters change.
-  // For the default view the layout seed is shown immediately (no loading flash)
-  // and a background fetch always runs to guarantee fresh data after mutations.
+  // Re-fetch only for non-default views (a status/sort/field filter is active).
+  // The default view is served straight from the layout seed — opening or
+  // returning to the Issues tab fires no request. The seed stays fresh because
+  // issue mutations call `invalidateAll()`, which re-runs the layout load.
   $effect(() => {
     const status = urlStatus;
     const sort = urlSort;
@@ -77,14 +78,15 @@
       environment === '' &&
       release === '';
 
-    // Seed from layout data for immediate render; show loading only for
-    // non-default views that have no pre-loaded data.
+    // Default view: render the pre-loaded layout seed, no request.
     if (isDefaultView) {
       issues = data.issues;
       loading = false;
-    } else {
-      loading = true;
+      loadError = null;
+      return;
     }
+
+    loading = true;
     loadError = null;
 
     // Omit defaults/empties so URLs/requests stay clean (all status, last_seen

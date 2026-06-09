@@ -25,7 +25,9 @@
 
   // Project Settings: retention, project mute, members list, and
   // invite generation with a copyable link. Admin actions are gated; non-admins
-  // see read-only sections (the API also enforces this).
+  // see read-only sections (the API also enforces this). Project, members and
+  // invites all come from the parent layout load (fetched once on project open);
+  // mutations update local state and `invalidateAll()` re-runs that load.
   let { data }: { data: PageData } = $props();
 
   // Local copy of the project (from the parent layout) so mute/retention edits

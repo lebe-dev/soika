@@ -13,6 +13,7 @@
 //! session id; the authoritative record lives in the DB via `SessionRepository`.
 
 pub mod extractor;
+pub mod github;
 pub mod handlers;
 pub mod invite_token;
 pub mod lockout;
@@ -44,6 +45,7 @@ pub use session::{
 };
 
 // --- OIDC surface (used by oidc handlers in) ---------
+pub use github::GithubProvider;
 pub use oidc::{
     AuthorizeRequest, OidcClaims, OidcClient, OidcProvider, STATE_COOKIE, StatePayload,
     build_clearing_state_cookie, build_state_cookie, decode_state_cookie, email_domain_allowed,

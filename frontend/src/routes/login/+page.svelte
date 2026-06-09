@@ -22,12 +22,9 @@
   let submitting = $state(false);
   let config = $state<AuthConfig | null>(null);
 
-  // The built-in admin can always reach the password form via `?admin=1` even
-  // when SSO replaces password login for everyone else.
-  const adminFallback = $derived($page.url.searchParams.get('admin') === '1');
-  const showPasswordForm = $derived(
-    config === null || config.password_login_enabled || adminFallback
-  );
+  // Password login stays a first-class option on the form even when SSO is on:
+  // the built-in admin (and any account allowed to use a password) signs in here,
+  // while SSO is offered as an additional button rather than replacing the form.
   const showSso = $derived(config?.oauth_enabled ?? false);
 
   // Open-redirect guard mirroring the backend `validated_next`: only a
@@ -82,51 +79,52 @@
   <Card.Root class="w-full max-w-sm">
     <Card.Header>
       <Card.Title>Sign in to soika</Card.Title>
-      <Card.Description>
-        {showPasswordForm ? 'Enter your credentials to continue.' : 'Continue with single sign-on.'}
-      </Card.Description>
+      <Card.Description>Enter your credentials to continue.</Card.Description>
     </Card.Header>
 
-    {#if showSso}
+    <form onsubmit={submit} class="contents">
       <Card.Content class="space-y-4">
-        <Button href={ssoHref} class="w-full" data-sveltekit-reload>
-          Войти через {config?.oauth_provider_name || 'SSO'}
-        </Button>
+        <div class="space-y-2">
+          <label for="email" class="text-sm font-medium">Email</label>
+          <Input id="email" type="email" autocomplete="email" bind:value={email} required />
+        </div>
+        <div class="space-y-2">
+          <label for="password" class="text-sm font-medium">Password</label>
+          <Input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            bind:value={password}
+            required
+          />
+        </div>
       </Card.Content>
-    {/if}
+      <Card.Footer class="flex-col items-stretch gap-3">
+        <Button type="submit" disabled={submitting}>
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </Button>
+        {#if config?.allow_signup ?? true}
+          <p class="text-muted-foreground text-center text-sm">
+            No account?
+            <a href="/register" class="text-foreground underline-offset-4 hover:underline">
+              Register
+            </a>
+          </p>
+        {/if}
 
-    {#if showPasswordForm}
-      <form onsubmit={submit} class="contents">
-        <Card.Content class="space-y-4">
-          <div class="space-y-2">
-            <label for="email" class="text-sm font-medium">Email</label>
-            <Input id="email" type="email" autocomplete="email" bind:value={email} required />
+        {#if showSso}
+          <!-- SSO is offered as an additional option, not a replacement for the
+               password form (the built-in admin always needs the password path). -->
+          <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
+            <span class="bg-border h-px flex-1"></span>
+            or
+            <span class="bg-border h-px flex-1"></span>
           </div>
-          <div class="space-y-2">
-            <label for="password" class="text-sm font-medium">Password</label>
-            <Input
-              id="password"
-              type="password"
-              autocomplete="current-password"
-              bind:value={password}
-              required
-            />
-          </div>
-        </Card.Content>
-        <Card.Footer class="flex-col items-stretch gap-3">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign in'}
+          <Button variant="outline" href={ssoHref} class="w-full" data-sveltekit-reload>
+            Войти через {config?.oauth_provider_name || 'SSO'}
           </Button>
-          {#if config?.allow_signup ?? true}
-            <p class="text-muted-foreground text-center text-sm">
-              No account?
-              <a href="/register" class="text-foreground underline-offset-4 hover:underline">
-                Register
-              </a>
-            </p>
-          {/if}
-        </Card.Footer>
-      </form>
-    {/if}
+        {/if}
+      </Card.Footer>
+    </form>
   </Card.Root>
 </div>
