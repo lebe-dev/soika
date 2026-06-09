@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { projects, errorMessage, type Id, type Issue, type IssueStatus } from '$lib/api';
+  import { projects, errorMessage, type Issue, type IssueStatus } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import { cn } from '$lib/utils';
@@ -56,16 +56,12 @@
   const urlRelease = $derived($page.url.searchParams.get('release') ?? '');
 
   let issues = $state<Issue[]>([]);
-  let loading = $state(true);
+  let loading = $state(false);
   let loadError = $state<string | null>(null);
 
-  // The project layout seeds the default (unresolved / last_seen) issue list, so
-  // the first render of that default view reuses it instead of re-fetching.
-  // Tracked per project id (plain, non-reactive) so navigating to another
-  // project consumes its seed once, and any filter change still fetches fresh.
-  let consumedSeedFor: Id | null = null;
-
   // Re-fetch whenever the project, status filter, sort, or field filters change.
+  // For the default view the layout seed is shown immediately (no loading flash)
+  // and a background fetch always runs to guarantee fresh data after mutations.
   $effect(() => {
     const status = urlStatus;
     const sort = urlSort;
@@ -74,24 +70,23 @@
     const release = urlRelease.trim();
     const id = projectId;
 
-    // Default view (matches what the layout seeded): reuse the seed once per
-    // project rather than issuing a duplicate request on initial render.
     const isDefaultView =
       status === 'unresolved' &&
       sort === 'last_seen' &&
       level === 'all' &&
       environment === '' &&
       release === '';
-    if (isDefaultView && consumedSeedFor !== id) {
-      consumedSeedFor = id;
+
+    // Seed from layout data for immediate render; show loading only for
+    // non-default views that have no pre-loaded data.
+    if (isDefaultView) {
       issues = data.issues;
       loading = false;
-      loadError = null;
-      return;
+    } else {
+      loading = true;
     }
-
-    loading = true;
     loadError = null;
+
     // Omit defaults/empties so URLs/requests stay clean (all status, last_seen
     // sort, all levels, no environment/release filter). buildUrl skips
     // undefined/null but NOT empty strings, so empty values must be omitted here.
@@ -102,18 +97,25 @@
       ...(environment === '' ? {} : { environment }),
       ...(release === '' ? {} : { release })
     };
+    let cancelled = false;
     projects
       .issues(id, query)
       .then((res) => {
-        issues = res;
+        if (!cancelled) {
+          issues = res;
+          loading = false;
+        }
       })
       .catch((err) => {
-        loadError = errorMessage(err, 'Failed to load issues');
-        issues = [];
-      })
-      .finally(() => {
-        loading = false;
+        if (!cancelled) {
+          loadError = errorMessage(err, 'Failed to load issues');
+          issues = [];
+          loading = false;
+        }
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Set or delete a single URL search param, preserving the others. An empty /

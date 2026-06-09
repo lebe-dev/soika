@@ -1,7 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
-  import { issues as issuesApi, errorMessage, type Issue, type SoikaEvent } from '$lib/api';
+  import {
+    issues as issuesApi,
+    errorMessage,
+    type Issue,
+    type MuteRequest,
+    type SoikaEvent
+  } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { Button } from '$lib/components/ui/button';
@@ -20,6 +26,7 @@
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import CheckCircle2 from '@lucide/svelte/icons/circle-check-big';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import VolumeX from '@lucide/svelte/icons/volume-x';
@@ -62,16 +69,44 @@
 
   let acting = $state(false);
 
-  async function run(action: 'resolve' | 'mute' | 'unresolve') {
+  async function run(action: 'resolve' | 'unresolve') {
     acting = true;
     try {
       const updated = await issuesApi[action](issue.id);
       issue = { ...issue, ...updated };
-      const labels = { resolve: 'resolved', mute: 'muted', unresolve: 'reopened' } as const;
+      const labels = { resolve: 'resolved', unresolve: 'reopened' } as const;
       toast.success(`Issue ${labels[action]}`);
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Action failed'));
+    } finally {
+      acting = false;
+    }
+  }
+
+  // Mute period options for the "Mute for/until" dropdown. `body` is undefined
+  // for an indefinite mute (the bare Mute button); a duration or event-rate
+  // otherwise. Auto-unmute is enforced server-side (scheduler / ingestion).
+  const DAY = 86_400;
+  const muteOptions: { label: string; body?: MuteRequest }[] = [
+    { label: '1 day', body: { duration_seconds: DAY } },
+    { label: '1 week', body: { duration_seconds: 7 * DAY } },
+    { label: '1 month', body: { duration_seconds: 30 * DAY } },
+    { label: '3 months', body: { duration_seconds: 90 * DAY } },
+    { label: '5 events per hour', body: { events: 5, window_seconds: 3600 } },
+    { label: '5 events per 24 hours', body: { events: 5, window_seconds: DAY } },
+    { label: '100 events per 24 hours', body: { events: 100, window_seconds: DAY } }
+  ];
+
+  async function mute(body?: MuteRequest, label?: string) {
+    acting = true;
+    try {
+      const updated = await issuesApi.mute(issue.id, body);
+      issue = { ...issue, ...updated };
+      toast.success(label ? `Issue muted (${label})` : 'Issue muted');
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not mute issue'));
     } finally {
       acting = false;
     }
@@ -179,10 +214,46 @@
               Unmute
             </Button>
           {:else}
-            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('mute')}>
-              <VolumeX class="size-4" />
-              Mute
-            </Button>
+            <!-- Split button: bare "Mute" (forever) + a dropdown of periods. -->
+            <div class="flex">
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-r-none border-r-0"
+                disabled={acting}
+                onclick={() => mute()}
+              >
+                <VolumeX class="size-4" />
+                Mute
+              </Button>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="rounded-l-none px-2"
+                    disabled={acting}
+                    aria-label="Mute for/until"
+                  >
+                    <ChevronDown class="size-4" />
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" class="w-52">
+                  <DropdownMenu.Label class="text-muted-foreground text-xs">
+                    Mute for/until
+                  </DropdownMenu.Label>
+                  <DropdownMenu.Separator />
+                  {#each muteOptions as opt (opt.label)}
+                    <DropdownMenu.Item
+                      onclick={() => mute(opt.body, opt.label)}
+                      class="text-xs font-medium"
+                    >
+                      {opt.label}
+                    </DropdownMenu.Item>
+                  {/each}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </div>
           {/if}
 
           <DropdownMenu.Root>
