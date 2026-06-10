@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { auth, errorMessage, type AuthConfig } from '$lib/api';
@@ -8,6 +9,8 @@
   import * as Card from '$lib/components/ui/card';
   import { toast } from '$lib/components/ui/sonner';
   import PageTitle from '$lib/components/page-title.svelte';
+
+  const EMAIL_STORAGE_KEY = 'soika:login:email';
 
   // Maps callback `?error=<slug>` values to user-facing messages.
   const ERROR_MESSAGES: Record<string, string> = {
@@ -21,6 +24,10 @@
   let password = $state('');
   let submitting = $state(false);
   let config = $state<AuthConfig | null>(null);
+  let emailInput = $state<HTMLInputElement | null>(null);
+  let passwordInput = $state<HTMLInputElement | null>(null);
+
+  const canSubmit = $derived(email.trim() !== '' && password !== '');
 
   // Password login stays a first-class option on the form even when SSO is on:
   // the built-in admin (and any account allowed to use a password) signs in here,
@@ -50,6 +57,17 @@
     void loadConfig();
   });
 
+  onMount(() => {
+    const savedEmail = localStorage.getItem(EMAIL_STORAGE_KEY);
+    if (savedEmail) email = savedEmail;
+
+    if (!email) {
+      emailInput?.focus();
+    } else if (!password) {
+      passwordInput?.focus();
+    }
+  });
+
   async function loadConfig() {
     try {
       config = await auth.config();
@@ -63,6 +81,7 @@
     submitting = true;
     try {
       const user = await auth.login({ email, password });
+      localStorage.setItem(EMAIL_STORAGE_KEY, email);
       authStore.set(user);
       await goto(safeNext($page.url.searchParams.get('next')) ?? '/');
     } catch (err) {
@@ -86,7 +105,14 @@
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="email" class="text-sm font-medium">Email</label>
-          <Input id="email" type="email" autocomplete="email" bind:value={email} required />
+          <Input
+            id="email"
+            type="email"
+            autocomplete="email"
+            bind:value={email}
+            bind:ref={emailInput}
+            required
+          />
         </div>
         <div class="space-y-2">
           <label for="password" class="text-sm font-medium">Password</label>
@@ -95,12 +121,13 @@
             type="password"
             autocomplete="current-password"
             bind:value={password}
+            bind:ref={passwordInput}
             required
           />
         </div>
       </Card.Content>
       <Card.Footer class="flex-col items-stretch gap-3">
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || !canSubmit}>
           {submitting ? 'Signing in…' : 'Sign in'}
         </Button>
         {#if config?.allow_signup ?? true}
