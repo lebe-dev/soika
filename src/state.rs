@@ -11,8 +11,8 @@ use crate::config::Config;
 use crate::ingest::RateLimiter;
 use crate::ports::{
     Clock, EventRepository, FavoriteRepository, InviteRepository, IssueRepository, Mailer,
-    MembershipRepository, ProjectRepository, SessionRepository, SettingsRepository, TeamRepository,
-    UserRepository,
+    MembershipRepository, ProjectRepository, SessionRepository, SettingsRepository,
+    TagMuteRuleRepository, TeamRepository, UserRepository,
 };
 
 /// Application state shared across all handlers (cheaply cloneable).
@@ -27,6 +27,8 @@ pub struct AppState {
     pub favorites: Arc<dyn FavoriteRepository>,
     pub issues: Arc<dyn IssueRepository>,
     pub events: Arc<dyn EventRepository>,
+    /// Project-level "mute by tags" rules (notification suppression).
+    pub mute_rules: Arc<dyn TagMuteRuleRepository>,
     pub invites: Arc<dyn InviteRepository>,
     pub settings: Arc<dyn SettingsRepository>,
     pub mailer: Arc<dyn Mailer>,

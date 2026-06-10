@@ -269,6 +269,29 @@ export interface SoikaEvent {
   received_at: Timestamp;
 }
 
+/** A single `key=value` tag condition within a tag-mute rule. */
+export interface TagMatch {
+  key: string;
+  value: string;
+}
+
+/**
+ * A project-level "mute by tags" rule. An event matches when ALL of `tags` are
+ * present with the same value (AND); a match suppresses the project's
+ * notification for that event (the event is still ingested and counted).
+ */
+export interface TagMuteRule {
+  id: Id;
+  name: string | null;
+  tags: TagMatch[];
+  created_at: Timestamp;
+}
+
+export interface CreateTagMuteRuleRequest {
+  name?: string;
+  tags: TagMatch[];
+}
+
 /** `IssueDetail`: an `Issue` flattened with its latest event (GET /issues/{id}). */
 export type IssueDetail = Issue & {
   latest_event: SoikaEvent | null;

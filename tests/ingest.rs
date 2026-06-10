@@ -23,9 +23,9 @@ use axum::http::{Request, StatusCode};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Value, json};
-use soika::domain::{Issue, IssueStatus, Project};
+use soika::domain::{Issue, IssueStatus, Project, TagMatch};
 use soika::ingest::RateLimiter;
-use soika::ports::{IssueFilter, NewProject};
+use soika::ports::{IssueFilter, NewProject, NewTagMuteRule};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use tower::ServiceExt; // for `oneshot`
 
@@ -51,6 +51,17 @@ impl TestApp {
     /// `429` path is reachable in a handful of requests. `None` keeps the
     /// default budget wired by `build_state`.
     async fn spawn_with_rate_limit(limit: Option<u32>) -> TestApp {
+        Self::spawn_with(limit, None).await
+    }
+
+    /// Like [`spawn`], but seeds the project with a `webhook_url` so tests can
+    /// observe (or assert the absence of) notification delivery.
+    async fn spawn_with_webhook(webhook_url: String) -> TestApp {
+        Self::spawn_with(None, Some(webhook_url)).await
+    }
+
+    /// Shared builder: optional rate-limit override and optional project webhook.
+    async fn spawn_with(limit: Option<u32>, webhook_url: Option<String>) -> TestApp {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:")
             .await
             .expect("connect in-memory sqlite");
@@ -77,7 +88,7 @@ impl TestApp {
                 dsn_public_key: DSN_KEY.into(),
                 retention_events: 1000,
                 retention_days: 0,
-                webhook_url: None,
+                webhook_url,
             })
             .await
             .expect("create project");
@@ -273,6 +284,54 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(bytes).expect("gzip write");
     encoder.finish().expect("gzip finish")
+}
+
+/// Spawn a webhook capture server that counts every POST it receives and always
+/// replies `200`. Returns its base URL and the shared request counter.
+///
+/// Notification delivery is awaited inside the ingest handler (the webhook POST
+/// completes before the envelope response returns), so the counter is settled by
+/// the time a `post(...)` call resolves — no sleeps needed.
+async fn spawn_counting_webhook() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let count = Arc::new(AtomicUsize::new(0));
+    let server_count = count.clone();
+
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 8192];
+            let _ = socket.read(&mut buf).await;
+            server_count.fetch_add(1, Ordering::SeqCst);
+            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let _ = socket.write_all(resp.as_bytes()).await;
+            let _ = socket.flush().await;
+        }
+    });
+
+    (format!("http://{addr}"), count)
+}
+
+/// An error event payload carrying a `tags` map. The exception `type` is
+/// caller-supplied so distinct types fingerprint into distinct (new) issues —
+/// each triggering its own new-issue notification check.
+fn tagged_event(exception_type: &str, tags: &[(&str, &str)]) -> Value {
+    let map: serde_json::Map<String, Value> = tags
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), json!(v)))
+        .collect();
+    json!({
+        "level": "error",
+        "exception": { "values": [{ "type": exception_type, "value": "boom" }] },
+        "tags": Value::Object(map),
+    })
 }
 
 // --- Modern envelope endpoint ---------------------------------------------
@@ -712,4 +771,67 @@ async fn rate_limit_is_per_project() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+// --- Tag-mute rules (notification suppression) ----------------------------
+
+#[tokio::test]
+async fn tag_mute_rule_suppresses_notification_for_matching_event() {
+    let (webhook_url, count) = spawn_counting_webhook().await;
+    let app = TestApp::spawn_with_webhook(webhook_url).await;
+
+    // Mute events tagged environment=staging on this project.
+    app.state
+        .mute_rules
+        .create(NewTagMuteRule {
+            project_id: app.project.id,
+            name: Some("staging noise".into()),
+            created_by: None,
+            tags: vec![TagMatch {
+                key: "environment".into(),
+                value: "staging".into(),
+            }],
+        })
+        .await
+        .expect("create mute rule");
+
+    // A new-issue event whose tags match → ingested, but notification muted.
+    let muted_id = "aaaaaaaaaaaa4aaaaaaaaaaaaaaaaaaa";
+    let (status, _) = app
+        .post(
+            &app.envelope_uri(),
+            &[("x-sentry-auth", &sentry_auth(DSN_KEY))],
+            envelope_body(
+                muted_id,
+                &tagged_event("StagingError", &[("environment", "staging")]),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    // Event is still persisted (mute is notification-only, not an inbound drop).
+    assert_eq!(app.event_count().await, 1);
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "matching event must not fire a webhook"
+    );
+
+    // A new-issue event with a non-matching tag → notification fires.
+    let alert_id = "bbbbbbbbbbbb4bbbbbbbbbbbbbbbbbbb";
+    let (status, _) = app
+        .post(
+            &app.envelope_uri(),
+            &[("x-sentry-auth", &sentry_auth(DSN_KEY))],
+            envelope_body(
+                alert_id,
+                &tagged_event("ProductionError", &[("environment", "production")]),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "non-matching event fires exactly one webhook"
+    );
 }

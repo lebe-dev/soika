@@ -11,6 +11,7 @@ import type {
   AuthConfig,
   CreateInviteRequest,
   CreateProjectRequest,
+  CreateTagMuteRuleRequest,
   CreateTeamRequest,
   DeletedUser,
   Dsn,
@@ -31,6 +32,7 @@ import type {
   ServiceSettings,
   SetupRequest,
   SoikaEvent,
+  TagMuteRule,
   Team,
   TeamSummary,
   TestEmailRequest,
@@ -92,6 +94,13 @@ export const projects = {
     http.get<SdkSetup>(`/projects/${id}/sdk-setup`, { fetch: ctx?.fetch }),
   mute: (id: Id, muted?: boolean, ctx?: Ctx) =>
     http.post<Project>(`/projects/${id}/mute`, { body: { muted }, fetch: ctx?.fetch }),
+  /** Project-level tag-mute rules (notification suppression by matching tags). */
+  muteRules: (id: Id, ctx?: Ctx) =>
+    http.get<TagMuteRule[]>(`/projects/${id}/mute-rules`, { fetch: ctx?.fetch }),
+  createMuteRule: (id: Id, body: CreateTagMuteRuleRequest, ctx?: Ctx) =>
+    http.post<TagMuteRule>(`/projects/${id}/mute-rules`, { body, fetch: ctx?.fetch }),
+  deleteMuteRule: (id: Id, ruleId: Id, ctx?: Ctx) =>
+    http.delete<void>(`/projects/${id}/mute-rules/${ruleId}`, { fetch: ctx?.fetch }),
   favorite: (id: Id, favorited: boolean, ctx?: Ctx) =>
     http.post<{ favorited: boolean }>(`/projects/${id}/favorite`, {
       body: { favorited },

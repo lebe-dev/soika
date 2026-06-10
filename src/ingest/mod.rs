@@ -7,6 +7,7 @@
 mod enrich;
 mod envelope;
 mod ratelimit;
+mod tags;
 
 use std::io::Read;
 use std::net::SocketAddr;
@@ -197,6 +198,11 @@ async fn process_event(
     let event_id = event_id_from_payload(&payload).unwrap_or_else(new_event_id);
     let normalized = NormalizedEvent::from_value(&payload);
 
+    // Tag-mute is evaluated against the event's tags (read before `payload` is
+    // moved into the pipeline input). It only suppresses notifications — the
+    // event is still grouped, stored, and counted below.
+    let event_tags = tags::event_tags(&payload);
+
     let outcome = grouping::ingest_normalized(
         state.issues.as_ref(),
         state.events.as_ref(),
@@ -210,13 +216,35 @@ async fn process_event(
     )
     .await?;
 
-    // Notifications respect project-level mute. Issue-level mute and
-    // per-user opt-out are enforced inside the notify module.
-    if !project.muted {
+    // Notifications respect project-level mute and tag-mute rules. Issue-level
+    // mute and per-user opt-out are enforced inside the notify module.
+    if !project.muted && !tag_muted(state, project.id, &event_tags).await {
         notify_outcome(state, project, &outcome.issue, outcome.notify).await;
     }
 
     Ok(event_id)
+}
+
+/// True if any of the project's tag-mute rules matches this event's tags.
+///
+/// Fails open: a repository error logs and returns `false` (notify) rather than
+/// silently swallowing an alert. Skips the DB call entirely when the event has
+/// no tags, since an empty-tag event can never match a (non-empty) rule.
+async fn tag_muted(
+    state: &AppState,
+    project_id: crate::domain::Id,
+    event_tags: &std::collections::BTreeMap<String, String>,
+) -> bool {
+    if event_tags.is_empty() {
+        return false;
+    }
+    match state.mute_rules.list_for_project(project_id).await {
+        Ok(rules) => rules.iter().any(|rule| rule.matches(event_tags)),
+        Err(err) => {
+            tracing::warn!(error = %err, %project_id, "tag-mute lookup failed; not muting");
+            false
+        }
+    }
 }
 
 /// Fire the notification the pipeline asked for. Notification failures must

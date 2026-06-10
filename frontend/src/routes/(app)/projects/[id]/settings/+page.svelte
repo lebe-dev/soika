@@ -7,7 +7,8 @@
     type Invite,
     type Project,
     type ProjectMember,
-    type Role
+    type Role,
+    type TagMuteRule
   } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import * as Card from '$lib/components/ui/card';
@@ -17,11 +18,13 @@
   import { Badge } from '$lib/components/ui/badge';
   import { toast } from '$lib/components/ui/sonner';
   import CopyField from '$lib/components/copy-field.svelte';
+  import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
   import { formatRelative } from '$lib/format';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import UserPlus from '@lucide/svelte/icons/user-plus';
+  import Plus from '@lucide/svelte/icons/plus';
 
   // Project Settings: retention, project mute, members list, and
   // invite generation with a copyable link. Admin actions are gated; non-admins
@@ -98,6 +101,33 @@
       toast.error(errorMessage(err, 'Failed to update mute'));
     } finally {
       mutating = false;
+    }
+  }
+
+  // --- Tag-mute rules ------------------------------------------------------
+  // Project-level rules that suppress notifications for events whose tags match.
+  // Manageable by any project member (same bar as resolve/mute).
+  let muteRules = $state<TagMuteRule[]>(untrack(() => data.muteRules));
+  $effect(() => {
+    muteRules = data.muteRules;
+  });
+  let ruleDialogOpen = $state(false);
+  let deletingRule = $state<string | null>(null);
+
+  function onRuleCreated(rule: TagMuteRule) {
+    muteRules = [rule, ...muteRules];
+  }
+
+  async function deleteRule(ruleId: string) {
+    deletingRule = ruleId;
+    try {
+      await projects.deleteMuteRule(project.id, ruleId);
+      muteRules = muteRules.filter((r) => r.id !== ruleId);
+      toast.success('Rule removed');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not remove rule'));
+    } finally {
+      deletingRule = null;
     }
   }
 
@@ -291,6 +321,62 @@
     </Card.Content>
   </Card.Root>
 
+  <!-- Tag-mute rules -->
+  <Card.Root>
+    <Card.Header>
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <Card.Title>Mute by tags</Card.Title>
+          <Card.Description>
+            Suppress notifications for events whose tags match a rule. All pairs in a rule must
+            match (AND). Events are still ingested and counted.
+          </Card.Description>
+        </div>
+        <Button
+          variant="outline"
+          class="gap-2 whitespace-nowrap"
+          onclick={() => (ruleDialogOpen = true)}
+        >
+          <Plus class="size-4" />
+          Add rule
+        </Button>
+      </div>
+    </Card.Header>
+    <Card.Content>
+      {#if muteRules.length === 0}
+        <p class="text-muted-foreground text-sm">No tag-mute rules yet.</p>
+      {:else}
+        <ul class="divide-border divide-y">
+          {#each muteRules as rule (rule.id)}
+            <li class="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div class="min-w-0 space-y-1.5">
+                {#if rule.name}
+                  <div class="text-sm font-medium">{rule.name}</div>
+                {/if}
+                <div class="flex flex-wrap gap-1.5">
+                  {#each rule.tags as tag (tag.key)}
+                    <Badge variant="secondary" class="font-mono text-xs">
+                      {tag.key}={tag.value}
+                    </Badge>
+                  {/each}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Remove rule"
+                disabled={deletingRule === rule.id}
+                onclick={() => deleteRule(rule.id)}
+              >
+                <Trash2 class="size-4" />
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
   <!-- Members -->
   <Card.Root>
     <Card.Header>
@@ -436,3 +522,5 @@
     </Card.Root>
   {/if}
 </div>
+
+<TagMuteRuleDialog bind:open={ruleDialogOpen} projectId={project.id} onCreated={onRuleCreated} />

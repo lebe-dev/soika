@@ -62,6 +62,14 @@ pub fn build(state: AppState) -> Router {
         .route("/projects/:id/dsn", get(api::projects::dsn))
         .route("/projects/:id/sdk-setup", get(api::projects::sdk_setup))
         .route("/projects/:id/mute", post(api::projects::mute))
+        .route(
+            "/projects/:id/mute-rules",
+            get(api::mute_rules::list).post(api::mute_rules::create),
+        )
+        .route(
+            "/projects/:id/mute-rules/:rule_id",
+            delete(api::mute_rules::delete),
+        )
         .route("/projects/:id/favorite", post(api::projects::favorite))
         .route(
             "/projects/:id/regenerate-dsn",

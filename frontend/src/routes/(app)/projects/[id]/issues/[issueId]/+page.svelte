@@ -17,6 +17,8 @@
   import StacktraceViewer from '$lib/components/stacktrace-viewer.svelte';
   import EventContext from '$lib/components/event-context.svelte';
   import IssueTimeline from '$lib/components/issue-timeline.svelte';
+  import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
+  import { extractContext } from '$lib/event-context';
   import { parseEvent } from '$lib/stacktrace';
   import { formatCount, formatDateTime, formatRelative } from '$lib/format';
   import { severityStyle } from '$lib/severity';
@@ -34,6 +36,7 @@
   import Activity from '@lucide/svelte/icons/activity';
   import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
   import Copy from '@lucide/svelte/icons/copy';
+  import Tag from '@lucide/svelte/icons/tag';
 
   // Issue detail with stacktrace viewer, event navigation, and resolve/mute
   // actions. Members and admins may both resolve/mute.
@@ -154,6 +157,11 @@
     if (eventIndex > 0) eventIndex -= 1;
   }
 
+  // "Mute by tags" — opens a form prefilled with the current event's tags, which
+  // creates a project-level rule that suppresses notifications for matching events.
+  let muteByTagsOpen = $state(false);
+  const currentEventTags = $derived(currentEvent ? extractContext(currentEvent.payload).tags : []);
+
   // Copy the issue (with the currently shown event) to the clipboard as JSON.
   async function copyAsJson() {
     const json = JSON.stringify({ ...issue, event: currentEvent ?? null }, null, 2);
@@ -251,6 +259,11 @@
                       {opt.label}
                     </DropdownMenu.Item>
                   {/each}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item onclick={() => (muteByTagsOpen = true)} class="text-xs">
+                    <Tag class="size-4" />
+                    Mute by tags…
+                  </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
             </div>
@@ -427,6 +440,8 @@
     </Card.Root>
   {/if}
 </div>
+
+<TagMuteRuleDialog bind:open={muteByTagsOpen} {projectId} prefillTags={currentEventTags} />
 
 <style>
   /* One orchestrated page-load reveal: each top-level section fades/slides up

@@ -59,8 +59,8 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
     use adapters::sqlite::{
         SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
         SqliteIssueRepository, SqliteMembershipRepository, SqliteProjectRepository,
-        SqliteSessionRepository, SqliteSettingsRepository, SqliteTeamRepository,
-        SqliteUserRepository,
+        SqliteSessionRepository, SqliteSettingsRepository, SqliteTagMuteRuleRepository,
+        SqliteTeamRepository, SqliteUserRepository,
     };
     use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
@@ -83,6 +83,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
         issues: Arc::new(SqliteIssueRepository::new(pool.clone())),
         events: Arc::new(SqliteEventRepository::new(pool.clone())),
+        mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
         settings: Arc::new(SqliteSettingsRepository::new(pool)),
         mailer,
