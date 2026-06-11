@@ -476,7 +476,10 @@ async fn existing_account_with_wrong_password_is_unauthorized() {
         .await
         .unwrap()
         .unwrap();
-    assert!(invite.accepted_at.is_none(), "failed accept leaves invite open");
+    assert!(
+        invite.accepted_at.is_none(),
+        "failed accept leaves invite open"
+    );
 }
 
 #[tokio::test]

@@ -176,13 +176,15 @@ pub fn build(state: AppState) -> Router {
                         request_id = %Uuid::new_v4(),
                     )
                 })
-                .on_response(|res: &Response<_>, latency: Duration, _span: &tracing::Span| {
-                    tracing::info!(
-                        status = %res.status(),
-                        latency_ms = latency.as_millis(),
-                        "request completed"
-                    );
-                }),
+                .on_response(
+                    |res: &Response<_>, latency: Duration, _span: &tracing::Span| {
+                        tracing::info!(
+                            status = %res.status(),
+                            latency_ms = latency.as_millis(),
+                            "request completed"
+                        );
+                    },
+                ),
         )
         .with_state(state)
 }

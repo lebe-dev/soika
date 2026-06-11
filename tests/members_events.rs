@@ -305,8 +305,7 @@ async fn member_of_project_a_cannot_read_event_in_project_b() {
     let team_a = app.state.teams.create("team-a".into()).await.unwrap().id;
     let team_b = app.state.teams.create("team-b".into()).await.unwrap().id;
     let (_project_a_id, _project_a_short) = app.create_project(team_a, "alpha", "dsn-alpha").await;
-    let (project_b_id, _project_b_short) =
-        app.create_project(team_b, "beta", PROJECT_B_DSN).await;
+    let (project_b_id, _project_b_short) = app.create_project(team_b, "beta", PROJECT_B_DSN).await;
 
     // A user who belongs only to team-a (no access to team-b's project).
     let member_a = app.create_user("a@example.com", false).await;
@@ -315,11 +314,19 @@ async fn member_of_project_a_cannot_read_event_in_project_b() {
 
     // An event that lives in project B.
     let event_id = app
-        .ingest_event(project_b_id, PROJECT_B_DSN, "aaaaaaaaaaaa4aaaaaaaaaaaaaaaaaaa")
+        .ingest_event(
+            project_b_id,
+            PROJECT_B_DSN,
+            "aaaaaaaaaaaa4aaaaaaaaaaaaaaaaaaa",
+        )
         .await;
 
     let (status, body) = app.get(&format!("/api/events/{event_id}"), &cookie).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "foreign-project event is 403");
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "foreign-project event is 403"
+    );
     assert_eq!(body["error"], "you do not have access to this project");
 }
 

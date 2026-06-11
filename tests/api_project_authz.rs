@@ -374,7 +374,11 @@ async fn patch_rejects_bad_webhook_url_and_empty_string_clears_it() {
 
     // First set a valid webhook so we can observe it being cleared later.
     let (status, body) = app
-        .patch_json(&uri, &cookie, &json!({ "webhook_url": "https://hooks.example.com/x" }))
+        .patch_json(
+            &uri,
+            &cookie,
+            &json!({ "webhook_url": "https://hooks.example.com/x" }),
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["webhook_url"], "https://hooks.example.com/x");
@@ -383,7 +387,11 @@ async fn patch_rejects_bad_webhook_url_and_empty_string_clears_it() {
     let (status, _) = app
         .patch_json(&uri, &cookie, &json!({ "webhook_url": "not a url" }))
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "malformed webhook is rejected");
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "malformed webhook is rejected"
+    );
     let (_, body) = app.get(&uri, &cookie).await;
     assert_eq!(
         body["webhook_url"], "https://hooks.example.com/x",
