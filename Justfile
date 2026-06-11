@@ -70,6 +70,10 @@ test-backend name="":
 test-frontend name="":
     cd frontend && yarn vitest run {{ if name != "" { name } else { "" } }}
 
+# Run the frontend tests with a V8 coverage report.
+test-frontend-coverage:
+    cd frontend && yarn vitest run --coverage
+
 test: test-backend && test-frontend
 
 # Lint with clippy, denying warnings.
