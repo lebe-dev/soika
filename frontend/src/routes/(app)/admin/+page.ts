@@ -14,9 +14,10 @@ export const load: PageLoad = async ({ parent, url, fetch }) => {
     api.settings.get({ fetch }),
     api.admin.users({ fetch }),
     api.teams.list({ fetch }).catch((err) => {
-      // Teams overview is supplementary; tolerate a missing/forbidden list
-      // rather than failing the whole admin page.
-      if (err instanceof ApiError) return [];
+      // Teams overview is supplementary; tolerate a forbidden/unauthorized list
+      // rather than failing the whole admin page. Real failures (404/500) still
+      // surface — don't mask them behind an empty list.
+      if (err instanceof ApiError && (err.isForbidden || err.isUnauthorized)) return [];
       throw err;
     })
   ]);

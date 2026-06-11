@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { auth, ApiError, type User } from '$lib/api';
+  import { auth, type User } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { toast } from '$lib/components/ui/sonner';
   import { Button } from '$lib/components/ui/button';
@@ -36,11 +36,14 @@
   }
 
   async function logout() {
+    // Always drop local session state and bounce to login, regardless of the
+    // outcome of the server call. A network failure (TypeError) or an API error
+    // must not leave the user appearing signed in — clearing locally is the
+    // resilient behaviour.
     try {
       await auth.logout();
-    } catch (err) {
-      // Even if the server call fails, drop local state and bounce to login.
-      if (!(err instanceof ApiError)) throw err;
+    } catch {
+      // Ignore: server-side logout is best-effort; local clear is what matters.
     }
     authStore.clear();
     toast.success('Signed out');

@@ -142,6 +142,12 @@ pub async fn resolve_project(
 
 /// Resolve the caller's effective role on a project.
 ///
+/// This is **the** project-authorization rule for the whole codebase: it is
+/// team-aware (an owning-team member gets view access without a direct
+/// membership row). New handlers MUST gate project access through this (via
+/// [`require_member`] / [`require_admin`]) rather than checking the
+/// `memberships` table directly, so the team-membership path is never bypassed.
+///
 /// Resolution order:
 /// 1. Instance admins (built-in admin) are treated as project admins.
 /// 2. A direct `memberships` row grants its stored role (so a project admin

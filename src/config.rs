@@ -41,7 +41,10 @@ impl Default for LockoutConfig {
 
 /// Optional SMTP configuration. When `None`, email features degrade gracefully
 /// to UI-only.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written to redact [`password`](Self::password) so the secret
+/// never reaches a log line or panic message.
+#[derive(Clone)]
 pub struct SmtpConfig {
     pub host: String,
     pub port: u16,
@@ -54,12 +57,28 @@ pub struct SmtpConfig {
     pub tls: bool,
 }
 
+impl std::fmt::Debug for SmtpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("from", &self.from)
+            .field("tls", &self.tls)
+            .finish()
+    }
+}
+
 /// Optional Sentry telemetry configuration. When `None`, error reporting is
 /// disabled and the SDK is never initialized (backend) nor exposed to the SPA
 /// (frontend). A single DSN is shared by backend and frontend; the frontend DSN
 /// is served only from the authenticated `/api/client-config` endpoint so it
 /// never appears on an unauthenticated route.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written to redact the [`dsn`](Self::dsn) (it embeds a secret
+/// project key) so it never reaches a log line or panic message.
+#[derive(Clone)]
 pub struct SentryConfig {
     /// Sentry DSN both halves report to (`SENTRY_DSN`). Setting this enables
     /// error reporting.
@@ -67,6 +86,15 @@ pub struct SentryConfig {
     /// Optional environment tag attached to events (`SENTRY_ENVIRONMENT`), e.g.
     /// `production` / `staging`. `None` leaves it unset (Sentry's default).
     pub environment: Option<String>,
+}
+
+impl std::fmt::Debug for SentryConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SentryConfig")
+            .field("dsn", &"***")
+            .field("environment", &self.environment)
+            .finish()
+    }
 }
 
 /// Which OAuth provider flavour to speak.
@@ -83,7 +111,10 @@ pub enum OAuthProviderKind {
 
 /// Optional OAuth 2.0 / OpenID Connect configuration. When `None`, SSO is
 /// disabled and password login behaves exactly as before.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written to redact [`client_secret`](Self::client_secret) so
+/// the secret never reaches a log line or panic message.
+#[derive(Clone)]
 pub struct OidcConfig {
     /// Provider flavour (`OAUTH_PROVIDER`): generic `oidc` (default) or `github`.
     pub kind: OAuthProviderKind,
@@ -110,8 +141,29 @@ pub struct OidcConfig {
     pub require_approval: bool,
 }
 
+impl std::fmt::Debug for OidcConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OidcConfig")
+            .field("kind", &self.kind)
+            .field("issuer_url", &self.issuer_url)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"***")
+            .field("redirect_url", &self.redirect_url)
+            .field("scopes", &self.scopes)
+            .field("provider_name", &self.provider_name)
+            .field("allowed_email_domains", &self.allowed_email_domains)
+            .field("require_approval", &self.require_approval)
+            .finish()
+    }
+}
+
 /// Fully resolved runtime configuration.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is hand-written to redact [`secret_key`](Self::secret_key) so a stray
+/// `tracing::debug!(?config)` or panic message can never dump it. The nested
+/// `smtp` / `oidc` / `sentry` configs redact their own secrets via their own
+/// `Debug` impls.
+#[derive(Clone)]
 pub struct Config {
     /// Display name of the single organization (`ORGANIZATION_NAME`).
     pub organization_name: String,
@@ -140,6 +192,26 @@ pub struct Config {
     pub sentry: Option<SentryConfig>,
     /// Brute-force protection for password logins (`LOGIN_LOCKOUT_*`).
     pub lockout: LockoutConfig,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("organization_name", &self.organization_name)
+            .field("database_url", &self.database_url)
+            .field("bind_addr", &self.bind_addr)
+            .field("base_url", &self.base_url)
+            .field("secret_key", &"***")
+            .field("allow_signup", &self.allow_signup)
+            .field("default_events_retention", &self.default_events_retention)
+            .field("default_retention_days", &self.default_retention_days)
+            .field("retention_cron", &self.retention_cron)
+            .field("smtp", &self.smtp)
+            .field("oidc", &self.oidc)
+            .field("sentry", &self.sentry)
+            .field("lockout", &self.lockout)
+            .finish()
+    }
 }
 
 impl Config {

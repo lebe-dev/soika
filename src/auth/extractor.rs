@@ -1,20 +1,21 @@
-//! Current-user extractor & per-project role gating.
+//! Current-user extractor & the instance-admin gate.
 //!
 //! [`CurrentUser`] is an axum extractor that resolves the authenticated user
 //! from the signed session cookie + the server-side session record. Handlers
 //! that require authentication take it as an argument; missing/invalid sessions
 //! yield `401`.
 //!
-//! Authorization is per project: a user holds a [`Role`] (`admin`/`member`) in
-//! each project they belong to. The built-in instance admin bypasses
-//! per-project checks entirely.
+//! Per-*project* authorization is **not** decided here: the single source of
+//! that rule is [`crate::api::projects::effective_role`] (team-aware). This
+//! module only provides authentication ([`CurrentUser`]) and the instance-wide
+//! admin gate ([`require_instance_admin`]).
 
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 
-use crate::domain::{Id, Role, User};
+use crate::domain::{Id, User};
 use crate::error::{Error, Result};
 use crate::state::AppState;
 
@@ -87,55 +88,6 @@ impl FromRequestParts<AppState> for CurrentUser {
     }
 }
 
-/// Pure role-gate: does `held` satisfy the `required` role for an action?
-///
-/// `admin` satisfies any requirement; `member` satisfies only `member`.
-pub fn role_satisfies(held: Role, required: Role) -> bool {
-    match required {
-        Role::Member => true, // any membership (admin or member) suffices
-        Role::Admin => held == Role::Admin,
-    }
-}
-
-/// Authorize `user` for `required` role on `project_id`.
-///
-/// The instance admin is granted unconditionally. Otherwise the user's
-/// membership is loaded and its role checked. Returns the effective role on
-/// success; `Error::Forbidden` / `Error::Auth` otherwise.
-pub async fn authorize_project(
-    state: &AppState,
-    user: &User,
-    project_id: Id,
-    required: Role,
-) -> Result<Role> {
-    if user.is_admin {
-        return Ok(Role::Admin);
-    }
-
-    let membership = state
-        .memberships
-        .find(project_id, user.id)
-        .await?
-        .ok_or_else(|| Error::Forbidden("not a member of this project".into()))?;
-
-    if !role_satisfies(membership.role, required) {
-        return Err(Error::Forbidden(format!(
-            "requires {required} role on this project"
-        )));
-    }
-    Ok(membership.role)
-}
-
-/// Require that `user` can view a project (any membership or instance admin).
-pub async fn require_project_member(state: &AppState, user: &User, project_id: Id) -> Result<Role> {
-    authorize_project(state, user, project_id, Role::Member).await
-}
-
-/// Require that `user` administers a project (project admin or instance admin).
-pub async fn require_project_admin(state: &AppState, user: &User, project_id: Id) -> Result<Role> {
-    authorize_project(state, user, project_id, Role::Admin).await
-}
-
 /// Require that `user` is the instance-wide built-in admin.
 pub fn require_instance_admin(user: &User) -> Result<()> {
     if user.is_admin {
@@ -147,18 +99,6 @@ pub fn require_instance_admin(user: &User) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn admin_satisfies_every_requirement() {
-        assert!(role_satisfies(Role::Admin, Role::Admin));
-        assert!(role_satisfies(Role::Admin, Role::Member));
-    }
-
-    #[test]
-    fn member_satisfies_only_member() {
-        assert!(role_satisfies(Role::Member, Role::Member));
-        assert!(!role_satisfies(Role::Member, Role::Admin));
-    }
 
     #[test]
     fn instance_admin_gate() {

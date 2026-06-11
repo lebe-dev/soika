@@ -42,7 +42,8 @@ export interface User {
  * The first block is public (read before rendering the login page). `user` and
  * `telemetry` are the session slice: populated for a signed-in caller, `null`
  * for an anonymous one — so the layout can boot the whole app from one request
- * instead of also hitting `/profile` and `/client-config`.
+ * instead of also hitting `/profile` (and fetching the telemetry config
+ * separately).
  */
 export interface AuthConfig {
   oauth_enabled: boolean;
@@ -76,8 +77,9 @@ export interface ProjectOverview extends Project {
 }
 
 /**
- * Client telemetry config (`GET /api/client-config`). Session-authenticated:
- * the Sentry DSN is only served to a logged-in user, so the SPA initializes
+ * Client telemetry config, delivered as the `telemetry` field of the
+ * authenticated `GET /auth/config` bootstrap (not a standalone endpoint). The
+ * Sentry DSN is only served to a logged-in session, so the SPA initializes
  * error reporting after sign-in. Sentry fields are `null` when disabled.
  */
 export interface ClientConfig {

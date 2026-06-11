@@ -104,9 +104,10 @@ impl LoginGuard {
         if !self.config.enabled {
             return;
         }
+        // Recover from poisoning instead of panicking (see `record_failure_at`).
         self.entries
             .lock()
-            .expect("login guard mutex poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(key);
     }
 
@@ -115,7 +116,8 @@ impl LoginGuard {
         if !self.config.enabled {
             return LockoutDecision::Allowed;
         }
-        let entries = self.entries.lock().expect("login guard mutex poisoned");
+        // Recover from poisoning instead of panicking (see `record_failure_at`).
+        let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         match entries.get(key).and_then(|e| e.locked_until) {
             Some(until) if now < until => LockoutDecision::Locked {
                 retry_after_secs: secs_until(now, until),
@@ -131,7 +133,11 @@ impl LoginGuard {
         if !self.config.enabled {
             return;
         }
-        let mut entries = self.entries.lock().expect("login guard mutex poisoned");
+        // Recover from a poisoned lock rather than panicking: under panic=abort
+        // a panic on this hot login path would abort the process. The critical
+        // section is panic-free, so poisoning just degrades to the existing
+        // in-memory state.
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
 
         if entries.len() >= PRUNE_THRESHOLD {
             let window = self.config.window;

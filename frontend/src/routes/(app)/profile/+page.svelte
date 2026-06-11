@@ -2,6 +2,7 @@
   // Profile — change display name, notifications toggle, change password
   // Wires to GET/PATCH /profile via the shared API client.
   import { profile as profileApi, errorMessage } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -39,6 +40,7 @@
       toast.success('Profile updated');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update profile'));
+      reportUnexpected(err);
     } finally {
       savingProfile = false;
     }
@@ -57,6 +59,7 @@
       toast.success(next ? 'Email notifications enabled' : 'Email notifications disabled');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update notifications'));
+      reportUnexpected(err);
     } finally {
       togglingNotifications = false;
     }
@@ -98,6 +101,7 @@
       toast.success('Password changed');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to change password'));
+      reportUnexpected(err);
     } finally {
       changingPassword = false;
     }

@@ -124,13 +124,21 @@ pub async fn send_via_smtp(smtp: &SmtpConfig, email: OutboundEmail) -> Result<()
         .subject(email.subject)
         .header(ContentType::TEXT_PLAIN)
         .body(email.body)
-        .map_err(|e| Error::Mail(format!("building message: {e}")))?;
+        .map_err(|e| {
+            // Log the failure at the adapter so a misconfigured relay is visible
+            // even though the caller log-and-continues. NEVER log credentials or
+            // the message body — `e` carries only the lettre build error.
+            tracing::warn!(error = %e, "smtp send failed");
+            Error::Mail(format!("building message: {e}"))
+        })?;
 
     let transport = build_transport(smtp)?;
-    transport
-        .send(message)
-        .await
-        .map_err(|e| Error::Mail(format!("sending message: {e}")))?;
+    transport.send(message).await.map_err(|e| {
+        // Surface transport failures (connect/TLS/auth-rejected/timeout) here.
+        // NEVER log credentials or the message body — `e` is the transport error.
+        tracing::warn!(error = %e, "smtp send failed");
+        Error::Mail(format!("sending message: {e}"))
+    })?;
     Ok(())
 }
 

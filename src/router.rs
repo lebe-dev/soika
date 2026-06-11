@@ -7,12 +7,15 @@
 //! free for SPA client routes so a direct hit on e.g. `/teams/{id}` serves the
 //! app shell, not raw JSON.
 
+use std::time::Duration;
+
 use axum::Router;
-use axum::http::Method;
+use axum::http::{Method, Request, Response};
 use axum::routing::{delete, get, patch, post};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use uuid::Uuid;
 
 use crate::api;
 use crate::auth;
@@ -159,6 +162,27 @@ pub fn build(state: AppState) -> Router {
         // SPA + embedded static assets — fallback last.
         .fallback(web::spa_fallback)
         .layer(CompressionLayer::new())
-        .layer(TraceLayer::new_for_http())
+        // Per-request span for correlation: every log emitted while handling a
+        // request inherits `request_id` (a generated UUID), `method`, and `path`.
+        // The default `TraceLayer` emits nothing at the `info` filter, so we add
+        // an explicit `on_response` event carrying status + latency.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|req: &Request<_>| {
+                    tracing::info_span!(
+                        "http",
+                        method = %req.method(),
+                        path = %req.uri().path(),
+                        request_id = %Uuid::new_v4(),
+                    )
+                })
+                .on_response(|res: &Response<_>, latency: Duration, _span: &tracing::Span| {
+                    tracing::info!(
+                        status = %res.status(),
+                        latency_ms = latency.as_millis(),
+                        "request completed"
+                    );
+                }),
+        )
         .with_state(state)
 }

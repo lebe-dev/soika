@@ -11,6 +11,7 @@
     type TagMuteRule
   } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
   import * as Table from '$lib/components/ui/table';
   import { Button } from '$lib/components/ui/button';
@@ -33,22 +34,17 @@
   // mutations update local state and `invalidateAll()` re-runs that load.
   let { data }: { data: PageData } = $props();
 
-  // Local copy of the project (from the parent layout) so mute/retention edits
-  // reflect immediately without a reload.
-  let project = $state<Project>(untrack(() => data.project));
-  $effect(() => {
-    project = data.project;
-  });
+  // The project comes from the parent layout load; mutations call
+  // `invalidateAll()`, which re-runs that load and flows back through here.
+  const project = $derived(data.project);
 
+  // Members and invites are seeded once from the load and then edited locally on
+  // add/remove for an immediate response. They are the authoritative view after a
+  // mutation, so we seed (not mirror): `untrack` makes the one-time read explicit
+  // and avoids a re-syncing effect that would clobber the optimistic local edits.
   let members = $state<ProjectMember[]>(untrack(() => data.members));
-  $effect(() => {
-    members = data.members;
-  });
 
   let invites = $state<Invite[]>(untrack(() => data.invites));
-  $effect(() => {
-    invites = data.invites;
-  });
 
   // The current user is a project admin if they are the instance admin or hold
   // the admin role here. We infer the latter from the members list.
@@ -57,32 +53,38 @@
   );
 
   // --- General: name + retention -----------------------------------------
+  // Editable fields are seeded once from the project and re-seeded by
+  // `resetGeneral()` after a save reconciles the load. Keeping them as plain
+  // `$state` (not an effect mirror) preserves in-progress edits.
   let name = $state(untrack(() => data.project.name));
   let retention = $state<number>(untrack(() => data.project.retention_events));
   let retentionDays = $state<number>(untrack(() => data.project.retention_days));
   let savingGeneral = $state(false);
-  $effect(() => {
-    name = data.project.name;
-    retention = data.project.retention_events;
-    retentionDays = data.project.retention_days;
-  });
+
+  function resetGeneral() {
+    name = project.name;
+    retention = project.retention_events;
+    retentionDays = project.retention_days;
+  }
 
   async function saveGeneral(event: SubmitEvent) {
     event.preventDefault();
     savingGeneral = true;
     try {
-      const updated = await projects.update(project.id, {
+      await projects.update(project.id, {
         name: name.trim(),
         retention_events: retention,
         retention_days: retentionDays
       });
-      project = updated;
       // Re-run the parent layout load so the project header (name/slug) and
-      // sibling pages reflect the change without a manual reload.
+      // sibling pages reflect the change without a manual reload; `project`
+      // derives from that fresh data.
       await invalidateAll();
+      resetGeneral();
       toast.success('Project updated');
     } catch (err) {
       toast.error(errorMessage(err, 'Update failed'));
+      reportUnexpected(err);
     } finally {
       savingGeneral = false;
     }
@@ -92,13 +94,14 @@
   let mutating = $state(false);
   async function toggleMute() {
     mutating = true;
+    const nextMuted = !project.muted;
     try {
-      const updated = await projects.mute(project.id, !project.muted);
-      project = updated;
+      await projects.mute(project.id, nextMuted);
       await invalidateAll();
-      toast.success(project.muted ? 'Project muted' : 'Project unmuted');
+      toast.success(nextMuted ? 'Project muted' : 'Project unmuted');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update mute'));
+      reportUnexpected(err);
     } finally {
       mutating = false;
     }
@@ -108,9 +111,6 @@
   // Project-level rules that suppress notifications for events whose tags match.
   // Manageable by any project member (same bar as resolve/mute).
   let muteRules = $state<TagMuteRule[]>(untrack(() => data.muteRules));
-  $effect(() => {
-    muteRules = data.muteRules;
-  });
   let ruleDialogOpen = $state(false);
   let deletingRule = $state<string | null>(null);
 
@@ -126,28 +126,33 @@
       toast.success('Rule removed');
     } catch (err) {
       toast.error(errorMessage(err, 'Could not remove rule'));
+      reportUnexpected(err);
     } finally {
       deletingRule = null;
     }
   }
 
   // --- Webhook -------------------------------------------------
+  // Same pattern as the general form: a locally-edited field, re-seeded by
+  // `resetWebhook()` once a save reconciles the load.
   let webhookUrl = $state(untrack(() => data.project.webhook_url ?? ''));
   let savingWebhook = $state(false);
-  $effect(() => {
-    webhookUrl = data.project.webhook_url ?? '';
-  });
+
+  function resetWebhook() {
+    webhookUrl = project.webhook_url ?? '';
+  }
 
   async function saveWebhook(event: SubmitEvent) {
     event.preventDefault();
     savingWebhook = true;
     try {
-      const updated = await projects.update(project.id, { webhook_url: webhookUrl.trim() });
-      project = updated;
+      await projects.update(project.id, { webhook_url: webhookUrl.trim() });
       await invalidateAll();
+      resetWebhook();
       toast.success('Webhook updated');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to update webhook'));
+      reportUnexpected(err);
     } finally {
       savingWebhook = false;
     }
@@ -162,6 +167,7 @@
       toast.success(`Removed ${member.display_name}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to remove member'));
+      reportUnexpected(err);
     }
   }
 
@@ -184,6 +190,7 @@
       toast.success(invite.email_sent ? 'Invite created and emailed' : 'Invite link created');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to create invite'));
+      reportUnexpected(err);
     } finally {
       creatingInvite = false;
     }
@@ -196,6 +203,7 @@
       toast.success('Invite revoked');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to revoke invite'));
+      reportUnexpected(err);
     }
   }
 
@@ -214,6 +222,7 @@
       await goto('/');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to delete project'));
+      reportUnexpected(err);
       deleting = false;
     }
   }

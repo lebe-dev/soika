@@ -45,6 +45,12 @@ impl From<Error> for AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status = status_for(&self.0);
+        // Mirror `api::ApiError`: 5xx faults carry their cause only in the
+        // response body (which the operator never sees), so log it here to
+        // surface the real reason in tracing and Sentry.
+        if status.is_server_error() {
+            tracing::error!(error = %self.0, "auth request failed");
+        }
         (
             status,
             Json(ErrorBody {
@@ -213,6 +219,9 @@ pub async fn login(
     let ip = client_ip(&headers, connect.map(|c| c.0));
     let key = lockout_key(&ip, &email);
     if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
+        // Security event: a brute-force-locked key was used. Log the client IP
+        // only — never the email or password.
+        tracing::warn!(client_ip = %ip, retry_after_secs, "login blocked: account/IP temporarily locked");
         return Ok(locked_response(retry_after_secs));
     }
 
@@ -264,6 +273,10 @@ pub async fn login(
 
     let (_, cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
+
+    // Security event: a successful password sign-in. Log the user id (not the
+    // email or password) plus the client IP.
+    tracing::info!(user_id = %user.id, client_ip = %ip, "password login succeeded");
 
     let mut out = HeaderMap::new();
     set_cookie_header(&mut out, &cookie)?;
@@ -446,6 +459,9 @@ pub async fn accept_invite(
         let ip = client_ip(&headers, connect.map(|c| c.0));
         let key = lockout_key(&ip, &candidate_email);
         if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
+            // Security event: a brute-force-locked key was used on the invite
+            // accept path. Log the client IP only — never the email or password.
+            tracing::warn!(client_ip = %ip, retry_after_secs, "invite accept blocked: account/IP temporarily locked");
             return Ok(locked_response(retry_after_secs));
         }
 

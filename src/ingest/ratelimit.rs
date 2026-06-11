@@ -64,7 +64,11 @@ impl RateLimiter {
     ///
     /// Each call that is allowed consumes one unit of the project's budget.
     pub fn check_at(&self, project_key: &str, now: Instant) -> Decision {
-        let mut state = self.state.lock().expect("rate limiter mutex poisoned");
+        // Recover from a poisoned lock rather than panicking: under panic=abort
+        // a panic on the hot path would take the process down. The critical
+        // section is panic-free arithmetic, so poisoning just degrades to the
+        // existing in-memory state.
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let entry = state.entry(project_key.to_owned()).or_insert(Window {
             window_start: now,
             count: 0,

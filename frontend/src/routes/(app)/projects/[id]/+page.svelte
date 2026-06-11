@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { projects, errorMessage, type Issue, type IssueStatus } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
   import IssueStatusBadge from '$lib/components/issue-status-badge.svelte';
   import { cn } from '$lib/utils';
@@ -114,6 +115,7 @@
           issues = [];
           loading = false;
         }
+        reportUnexpected(err);
       });
     return () => {
       cancelled = true;

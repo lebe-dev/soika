@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
   import { projects as projectsApi, errorMessage } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import type { Project } from '$lib/api';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -42,6 +43,7 @@
     } catch (err) {
       favoritedIds = previous;
       toast.error(errorMessage(err, 'Failed to update favorite'));
+      reportUnexpected(err);
     }
   }
 
@@ -98,6 +100,7 @@
       await goto(`/projects/${project.id}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to create project'));
+      reportUnexpected(err);
     } finally {
       submitting = false;
     }

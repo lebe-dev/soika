@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import {
     issues as issuesApi,
@@ -8,6 +7,7 @@
     type MuteRequest,
     type SoikaEvent
   } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { Button } from '$lib/components/ui/button';
@@ -44,11 +44,15 @@
 
   const projectId = $derived(data.issue.project_id);
 
-  // Local, reactive copy of the issue so resolve/mute update the UI in place.
-  let issue = $state<Issue>(untrack(() => data.issue));
-  $effect(() => {
-    issue = data.issue;
-  });
+  // The issue tracks `data.issue` (refreshed by `load` after navigation or
+  // `invalidateAll`). Actions apply an optimistic patch for instant feedback;
+  // the patch is keyed to the issue id so it clears once props move on.
+  let optimistic = $state<{ id: string; patch: Partial<Issue> } | null>(null);
+  const issue = $derived<Issue>(
+    optimistic && optimistic.id === data.issue.id
+      ? { ...data.issue, ...optimistic.patch }
+      : data.issue
+  );
 
   // Events list (newest first). Seed the carousel with the latest event; fall
   // back to the issue's latest_event when the events list is empty.
@@ -56,10 +60,11 @@
     data.events.length > 0 ? data.events : data.issue.latest_event ? [data.issue.latest_event] : []
   );
 
+  // Carousel position is genuine local nav state (prev/next buttons). Reset it
+  // to the newest event whenever we navigate to a different issue.
   let eventIndex = $state(0);
   $effect(() => {
-    // Reset to the newest event when navigating between issues.
-    data.issue;
+    data.issue.id;
     eventIndex = 0;
   });
 
@@ -76,12 +81,13 @@
     acting = true;
     try {
       const updated = await issuesApi[action](issue.id);
-      issue = { ...issue, ...updated };
+      optimistic = { id: issue.id, patch: updated };
       const labels = { resolve: 'resolved', unresolve: 'reopened' } as const;
       toast.success(`Issue ${labels[action]}`);
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Action failed'));
+      reportUnexpected(err);
     } finally {
       acting = false;
     }
@@ -105,11 +111,12 @@
     acting = true;
     try {
       const updated = await issuesApi.mute(issue.id, body);
-      issue = { ...issue, ...updated };
+      optimistic = { id: issue.id, patch: updated };
       toast.success(label ? `Issue muted (${label})` : 'Issue muted');
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Could not mute issue'));
+      reportUnexpected(err);
     } finally {
       acting = false;
     }
@@ -142,9 +149,10 @@
         await goto(`/projects/${projectId}/issues/${updated.id}`);
         return;
       }
-      issue = { ...issue, ...updated };
+      optimistic = { id: issue.id, patch: updated };
     } catch (err) {
       toast.error(errorMessage(err, 'Could not update fingerprint'));
+      reportUnexpected(err);
     } finally {
       acting = false;
     }
@@ -170,6 +178,7 @@
       toast.success('Copied issue as JSON');
     } catch (err) {
       toast.error(errorMessage(err, 'Could not copy to clipboard'));
+      reportUnexpected(err);
     }
   }
 </script>

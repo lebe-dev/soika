@@ -176,13 +176,30 @@ async fn connect_and_migrate(database_url: &str) -> Result<sqlx::SqlitePool> {
         .context("opening SQLite pool")?;
 
     MIGRATOR.run(&pool).await.context("running migrations")?;
+    tracing::info!("database migrations applied");
 
     // Give pre-existing projects/issues a random short public id (migration 0007
     // adds the column but leaves old rows NULL). New rows are assigned one on
-    // insert; this is a no-op once every row is filled.
+    // insert; this is a no-op once every row is filled. Count the rows still
+    // missing one up front so the log line reports how many were backfilled
+    // (the backfill itself returns no count).
+    let pending_short_ids: i64 = sqlx::query_scalar(
+        "SELECT (SELECT COUNT(*) FROM projects WHERE short_id IS NULL) \
+         + (SELECT COUNT(*) FROM issues WHERE short_id IS NULL)",
+    )
+    .fetch_one(&pool)
+    .await
+    .context("counting rows missing a short id")?;
+
     soika::adapters::sqlite::backfill_short_ids(&pool)
         .await
         .context("backfilling short ids")?;
+
+    if pending_short_ids > 0 {
+        tracing::info!(rows = pending_short_ids, "backfilled short ids");
+    } else {
+        tracing::debug!("short id backfill: nothing to do");
+    }
 
     Ok(pool)
 }

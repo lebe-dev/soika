@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { teams as teamsApi, errorMessage, type TeamSummary } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -37,6 +38,7 @@
       await goto(`/teams/${team.id}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to create team'));
+      reportUnexpected(err);
     } finally {
       creating = false;
     }

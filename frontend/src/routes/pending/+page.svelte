@@ -1,27 +1,28 @@
 <script lang="ts">
-  import { auth, type AuthConfig } from '$lib/api';
+  import { page } from '$app/stores';
   import { Button } from '$lib/components/ui/button';
   import * as Card from '$lib/components/ui/card';
   import Clock from '@lucide/svelte/icons/clock';
+  import { toast } from '$lib/components/ui/sonner';
   import PageTitle from '$lib/components/page-title.svelte';
 
   // Awaiting-approval screen. The OIDC callback redirects here when an account
   // is provisioned under OAUTH_REQUIRE_APPROVAL: it exists but holds no session
   // until an instance admin approves it. There is nothing for the visitor to do
   // but wait and retry sign-in later.
-  let config = $state<AuthConfig | null>(null);
+  //
+  // The bootstrap `GET /auth/config` is fetched once by the root layout
+  // (`data.config`); we read it here for the provider name. The page is
+  // informational and renders fine without it.
+  const config = $derived($page.data.config);
 
+  // Surface a non-blocking toast if the layout bootstrap failed, so the
+  // anonymous-route failure isn't silent.
   $effect(() => {
-    void loadConfig();
-  });
-
-  async function loadConfig() {
-    try {
-      config = await auth.config();
-    } catch {
-      // Best-effort: the page is informational and renders fine without config.
+    if (config === null) {
+      toast.error('Could not reach the server');
     }
-  }
+  });
 </script>
 
 <PageTitle title="Awaiting approval" />

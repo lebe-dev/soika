@@ -28,8 +28,15 @@
     onCreated?: (rule: TagMuteRule) => void;
   } = $props();
 
+  // A tag row carries a stable `id` so `{#each}` can key by identity rather than
+  // array index — index keys mis-associate two-way-bound inputs when a middle
+  // row is removed. The id is local-only and stripped before submit.
+  type Row = TagMatch & { id: number };
+  let nextRowId = 0;
+  const makeRow = (tag: TagMatch = { key: '', value: '' }): Row => ({ ...tag, id: nextRowId++ });
+
   let name = $state('');
-  let rows = $state<TagMatch[]>([{ key: '', value: '' }]);
+  let rows = $state<Row[]>([makeRow()]);
   let saving = $state(false);
 
   // Reset the form to the (possibly prefilled) initial state whenever the dialog
@@ -37,7 +44,7 @@
   $effect(() => {
     if (open) {
       name = '';
-      rows = prefillTags.length > 0 ? prefillTags.map((t) => ({ ...t })) : [{ key: '', value: '' }];
+      rows = prefillTags.length > 0 ? prefillTags.map((t) => makeRow(t)) : [makeRow()];
     }
   });
 
@@ -45,12 +52,12 @@
   const canSubmit = $derived(validRows.length > 0 && !saving);
 
   function addRow() {
-    rows = [...rows, { key: '', value: '' }];
+    rows = [...rows, makeRow()];
   }
 
-  function removeRow(index: number) {
-    rows = rows.filter((_, i) => i !== index);
-    if (rows.length === 0) rows = [{ key: '', value: '' }];
+  function removeRow(id: number) {
+    rows = rows.filter((r) => r.id !== id);
+    if (rows.length === 0) rows = [makeRow()];
   }
 
   async function submit(event: SubmitEvent) {
@@ -104,7 +111,7 @@
 
       <div class="space-y-2">
         <span class="text-sm font-medium">Tags (all must match)</span>
-        {#each rows as row, i (i)}
+        {#each rows as row (row.id)}
           <div class="flex items-center gap-2">
             <Input bind:value={row.key} placeholder="key (e.g. environment)" class="flex-1" />
             <span class="text-muted-foreground">=</span>
@@ -114,7 +121,7 @@
               variant="ghost"
               size="icon"
               aria-label="Remove tag"
-              onclick={() => removeRow(i)}
+              onclick={() => removeRow(row.id)}
             >
               <X class="size-4" />
             </Button>

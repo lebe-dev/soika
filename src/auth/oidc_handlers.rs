@@ -232,6 +232,10 @@ pub async fn oidc_callback(
         // Flow failures are browser navigations: surface them on the login page
         // and always clear the transient state cookie.
         Err(err) => {
+            // Security event: the SSO callback failed (CSRF mismatch, code
+            // exchange, unverified/disallowed email, etc.). `err` carries no
+            // secret/token — only the failure reason.
+            tracing::warn!(error = %err, "oidc callback failed");
             let clearing = build_clearing_state_cookie(cookie_secure(&state.config));
             redirect_to_login(&err, Some(clearing))
         }
@@ -331,6 +335,10 @@ async fn run_callback(
 
     let (_, session_cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
+
+    // Security event: a successful SSO sign-in. Log the user id only — never the
+    // email or any OIDC token/secret.
+    tracing::info!(user_id = %user.id, "oidc sign-in succeeded");
 
     let secure = cookie_secure(&state.config);
     let target = payload.next.as_deref().unwrap_or("/");

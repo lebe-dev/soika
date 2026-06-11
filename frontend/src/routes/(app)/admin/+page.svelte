@@ -3,6 +3,7 @@
   import { version } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
   import { api, errorMessage, type UpdateSettingsRequest } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import { formatDate } from '$lib/format';
   import { authStore } from '$lib/stores/auth.svelte';
   import * as Card from '$lib/components/ui/card';
@@ -27,9 +28,11 @@
   // Visible only to the instance admin (guarded in +page.ts).
   let { data }: { data: PageData } = $props();
 
-  // Service-settings form state, seeded from the loaded settings. After a
-  // successful save we `invalidateAll()`; `reset()` then re-syncs the form to
-  // the freshly persisted values read from `data.settings`.
+  // Editable service-settings form state, seeded once from the loaded settings.
+  // These are mutated locally before save, so they stay `$state` (not a derived
+  // mirror); `untrack` makes the seed an explicit one-time read of `data` (not a
+  // reactive dependency). After a successful save we `invalidateAll()` and
+  // `reset()` re-syncs the form to the freshly persisted `data.settings` values.
   let orgName = $state(untrack(() => data.settings.org_name));
   let allowSignup = $state(untrack(() => data.settings.allow_signup));
   let saving = $state(false);
@@ -49,6 +52,7 @@
       toast.success(`Test email sent to ${result.sent_to}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to send test email'));
+      reportUnexpected(err);
     } finally {
       sendingTest = false;
     }
@@ -77,6 +81,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to save settings'));
+      reportUnexpected(err);
     } finally {
       saving = false;
     }
@@ -102,6 +107,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to approve account'));
+      reportUnexpected(err);
     } finally {
       busyUserId = null;
     }
@@ -116,6 +122,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to reject account'));
+      reportUnexpected(err);
     } finally {
       busyUserId = null;
     }

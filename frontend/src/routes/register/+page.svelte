@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { auth, ApiError, errorMessage, type AuthConfig } from '$lib/api';
+  import { page } from '$app/stores';
+  import { auth, ApiError, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -9,32 +10,29 @@
   import PageTitle from '$lib/components/page-title.svelte';
 
   // Register — only succeeds when the instance has `allow_signup` enabled
-  // and SSO is off. We read `GET /auth/config` up front to disable the form when
-  // signup is closed or OAuth replaces local accounts; a 403 from the register
-  // endpoint is also handled as a fallback.
+  // and SSO is off. The bootstrap `GET /auth/config` is fetched once by the root
+  // layout (`data.config`); we read it here to disable the form when signup is
+  // closed or OAuth replaces local accounts. A 403 from the register endpoint is
+  // also handled as a fallback.
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
   let submitting = $state(false);
   let signupDisabled = $state(false);
-  let config = $state<AuthConfig | null>(null);
+  const config = $derived($page.data.config);
 
-  // `null` config => not loaded yet; keep the form available until we know.
-  const registrationClosed = $derived(
-    signupDisabled || (config !== null && (!config.allow_signup || config.oauth_enabled))
-  );
-
+  // `null` config => the layout bootstrap failed; keep the form available until we
+  // know (the register endpoint still gates). Surface a non-blocking toast so the
+  // anonymous-route failure isn't silent.
   $effect(() => {
-    void loadConfig();
+    if (config === null) {
+      toast.error('Could not reach the server');
+    }
   });
 
-  async function loadConfig() {
-    try {
-      config = await auth.config();
-    } catch {
-      // On failure leave the form available; the register endpoint still gates.
-    }
-  }
+  const registrationClosed = $derived(
+    signupDisabled || (config != null && (!config.allow_signup || config.oauth_enabled))
+  );
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
   import { teams as teamsApi, errorMessage, type Team, type AdminUser } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -52,6 +53,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to rename team'));
+      reportUnexpected(err);
     } finally {
       renaming = false;
     }
@@ -70,6 +72,7 @@
       await goto('/teams');
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to delete team'));
+      reportUnexpected(err);
       deleting = false;
     }
   }
@@ -95,6 +98,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to add member'));
+      reportUnexpected(err);
     } finally {
       adding = false;
     }
@@ -111,6 +115,7 @@
       await invalidateAll();
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to remove member'));
+      reportUnexpected(err);
     } finally {
       removingId = null;
     }

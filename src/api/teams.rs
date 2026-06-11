@@ -121,9 +121,19 @@ impl FromRequestParts<AppState> for OptionalAuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // Any failure (no cookie, expired session, transient DB error) collapses
-        // to "anonymous" — this is a UI hint, not an authorization boundary.
-        Ok(OptionalAuthUser(authenticate(parts, state).await.ok()))
+        // Any failure collapses to "anonymous" — this is a UI hint, not an
+        // authorization boundary. But `Error::Auth` (no cookie / expired session
+        // / removed user) is the *expected* anonymous case, whereas anything else
+        // (e.g. a transient session/user store error) is a real problem we must
+        // not bury silently. Log the latter before still degrading to `None`.
+        match authenticate(parts, state).await {
+            Ok(user) => Ok(OptionalAuthUser(Some(user))),
+            Err(Error::Auth(_)) => Ok(OptionalAuthUser(None)),
+            Err(e) => {
+                tracing::warn!(error = %e, "optional auth: session lookup failed, treating as anonymous");
+                Ok(OptionalAuthUser(None))
+            }
+        }
     }
 }
 

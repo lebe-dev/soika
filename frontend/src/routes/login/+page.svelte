@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { auth, errorMessage, type AuthConfig } from '$lib/api';
+  import { auth, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -11,6 +11,24 @@
   import PageTitle from '$lib/components/page-title.svelte';
 
   const EMAIL_STORAGE_KEY = 'soika:login:email';
+
+  // localStorage can throw (private mode, quota, disabled storage); never let
+  // remembering the email abort onMount focus logic or the submit flow.
+  function readStoredEmail(): string | null {
+    try {
+      return localStorage.getItem(EMAIL_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStoredEmail(value: string): void {
+    try {
+      localStorage.setItem(EMAIL_STORAGE_KEY, value);
+    } catch {
+      // Best-effort: ignore storage failures.
+    }
+  }
 
   // Maps callback `?error=<slug>` values to user-facing messages.
   const ERROR_MESSAGES: Record<string, string> = {
@@ -23,9 +41,13 @@
   let email = $state('');
   let password = $state('');
   let submitting = $state(false);
-  let config = $state<AuthConfig | null>(null);
   let emailInput = $state<HTMLInputElement | null>(null);
   let passwordInput = $state<HTMLInputElement | null>(null);
+
+  // The root layout (`+layout.ts`) already fetches GET /auth/config once and
+  // memoizes it, exposing it as `data.config` — read that instead of issuing a
+  // duplicate request from this page.
+  const config = $derived($page.data.config);
 
   const canSubmit = $derived(email.trim() !== '' && password !== '');
 
@@ -53,12 +75,16 @@
     if (slug) toast.error(ERROR_MESSAGES[slug] ?? 'Sign-in failed.');
   });
 
+  // The layout sets `data.config` to `null` only when the bootstrap fetch
+  // failed (a healthy anonymous session still returns config). Surface that as a
+  // non-blocking toast so a hard-down backend is visible instead of the form
+  // silently rendering empty. The password form still works as a fallback.
   $effect(() => {
-    void loadConfig();
+    if (config === null) toast.error('Could not reach the server');
   });
 
   onMount(() => {
-    const savedEmail = localStorage.getItem(EMAIL_STORAGE_KEY);
+    const savedEmail = readStoredEmail();
     if (savedEmail) email = savedEmail;
 
     if (!email) {
@@ -68,20 +94,12 @@
     }
   });
 
-  async function loadConfig() {
-    try {
-      config = await auth.config();
-    } catch {
-      // On failure fall back to showing the password form (config stays null).
-    }
-  }
-
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     submitting = true;
     try {
       const user = await auth.login({ email, password });
-      localStorage.setItem(EMAIL_STORAGE_KEY, email);
+      writeStoredEmail(email);
       authStore.set(user);
       await goto(safeNext($page.url.searchParams.get('next')) ?? '/');
     } catch (err) {
@@ -148,7 +166,7 @@
             <span class="bg-border h-px flex-1"></span>
           </div>
           <Button variant="outline" href={ssoHref} class="w-full" data-sveltekit-reload>
-            Войти через {config?.oauth_provider_name || 'SSO'}
+            Sign in with {config?.oauth_provider_name || 'SSO'}
           </Button>
         {/if}
       </Card.Footer>

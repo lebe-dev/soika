@@ -52,7 +52,10 @@ pub async fn envelope(
     // --- Parse the Sentry envelope. ---
     let parsed = match envelope::parse(&decoded) {
         Ok(env) => env,
-        Err(_) => return bad_request("malformed envelope"),
+        Err(e) => {
+            tracing::debug!(error = %e, project_id = %project.id, "ingest dropped malformed envelope");
+            return bad_request("malformed envelope");
+        }
     };
 
     // Request-derived enrichment (client IP, browser/OS) applied to every event.
@@ -71,7 +74,10 @@ pub async fn envelope(
         let payload = match item.payload_json() {
             Ok(value) => value,
             // A malformed event payload is dropped (acked) so the SDK won't retry.
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!(error = %e, project_id = %project.id, "ingest dropped malformed event payload");
+                continue;
+            }
         };
 
         match process_event(&state, &project, payload, &meta, now).await {
@@ -80,7 +86,10 @@ pub async fn envelope(
                     accepted_event_id = Some(event_id);
                 }
             }
-            Err(_) => return internal_error(),
+            Err(e) => {
+                tracing::error!(error = %e, project_id = %project.id, "ingest failed to process event");
+                return internal_error();
+            }
         }
     }
 
@@ -116,7 +125,10 @@ pub async fn store(
     // Legacy bodies are a bare event object, not a newline-delimited envelope.
     let payload: Value = match serde_json::from_slice(&decoded) {
         Ok(value) => value,
-        Err(_) => return bad_request("malformed event payload"),
+        Err(e) => {
+            tracing::debug!(error = %e, project_id = %project.id, "ingest dropped malformed event payload");
+            return bad_request("malformed event payload");
+        }
     };
 
     let meta = RequestMeta::from_request(&headers, connect.map(|c| c.0));
@@ -125,7 +137,10 @@ pub async fn store(
         // `process_event` derives the id from the payload's `event_id` (or
         // synthesizes one), matching the envelope path's behavior.
         Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
-        Err(_) => internal_error(),
+        Err(e) => {
+            tracing::error!(error = %e, project_id = %project.id, "ingest failed to process event");
+            internal_error()
+        }
     }
 }
 
@@ -144,13 +159,21 @@ async fn authorize_and_decode(
 ) -> std::result::Result<(Project, Vec<u8>), Response> {
     // --- Auth: resolve project from the DSN public key. ---
     let Some(dsn_key) = extract_dsn_key(headers, query) else {
+        tracing::debug!("ingest rejected: missing sentry key");
         return Err(unauthorized("missing sentry key"));
     };
 
+    // Never log the raw DSN key.
     let project = match state.projects.find_by_dsn(&dsn_key).await {
         Ok(Some(project)) => project,
-        Ok(None) => return Err(unauthorized("unknown sentry key")),
-        Err(_) => return Err(internal_error()),
+        Ok(None) => {
+            tracing::debug!("ingest rejected: unknown sentry key");
+            return Err(unauthorized("unknown sentry key"));
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "ingest failed to resolve project from DSN");
+            return Err(internal_error());
+        }
     };
 
     // The path `{project_id}` is advisory; the DSN is authoritative. If the SDK
@@ -167,13 +190,17 @@ async fn authorize_and_decode(
     // --- Soft per-project rate limit. ---
     let project_key = project.id.to_string();
     if let Decision::Limited { retry_after_secs } = state.rate_limiter.check(&project_key) {
+        tracing::debug!(project_id = %project.id, "ingest rate-limited");
         return Err(rate_limited(retry_after_secs));
     }
 
     // --- Decode the (possibly compressed) body. ---
     match decode_body(headers, body) {
         Ok(decoded) => Ok((project, decoded)),
-        Err(_) => Err(bad_request("could not decode body")),
+        Err(e) => {
+            tracing::debug!(error = %e, project_id = %project.id, "ingest could not decode body");
+            Err(bad_request("could not decode body"))
+        }
     }
 }
 
