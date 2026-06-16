@@ -1,7 +1,11 @@
 // Small display formatting helpers shared by the project/issue pages.
 
-/** Format an ISO-8601 timestamp as a locale date-time, or '—' when absent. */
-export function formatDateTime(iso: string | null | undefined): string {
+/**
+ * Format an ISO-8601 timestamp as a locale date-time, or '—' when absent.
+ * Pass a valid IANA `timeZone` string (e.g. `Europe/Moscow`) to override the
+ * browser's local timezone. Defaults to the browser timezone when omitted.
+ */
+export function formatDateTime(iso: string | null | undefined, timeZone?: string | null): string {
   if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -10,7 +14,8 @@ export function formatDateTime(iso: string | null | undefined): string {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {})
   });
 }
 

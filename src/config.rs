@@ -192,6 +192,11 @@ pub struct Config {
     pub sentry: Option<SentryConfig>,
     /// Brute-force protection for password logins (`LOGIN_LOCKOUT_*`).
     pub lockout: LockoutConfig,
+    /// IANA timezone name used by the frontend to display timestamps
+    /// (`TIMEZONE`). Must be a valid `Intl.DateTimeFormat` zone; defaults to
+    /// `UTC`. The backend itself always works in UTC; this value is only passed
+    /// to the SPA via `ClientConfigView`.
+    pub timezone: String,
 }
 
 impl std::fmt::Debug for Config {
@@ -210,6 +215,7 @@ impl std::fmt::Debug for Config {
             .field("oidc", &self.oidc)
             .field("sentry", &self.sentry)
             .field("lockout", &self.lockout)
+            .field("timezone", &self.timezone)
             .finish()
     }
 }
@@ -247,6 +253,7 @@ impl Config {
         let oidc = Self::oidc_from_env(&base_url)?;
         let sentry = Self::sentry_from_env();
         let lockout = Self::lockout_from_env()?;
+        let timezone = env_or("TIMEZONE", "UTC");
 
         Ok(Config {
             organization_name,
@@ -262,6 +269,7 @@ impl Config {
             oidc,
             sentry,
             lockout,
+            timezone,
         })
     }
 

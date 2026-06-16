@@ -198,6 +198,7 @@ fn test_config() -> Config {
             base_lockout: StdDuration::from_secs(60),
             max_lockout: StdDuration::from_secs(3600),
         },
+        timezone: "UTC".to_string(),
     }
 }
 

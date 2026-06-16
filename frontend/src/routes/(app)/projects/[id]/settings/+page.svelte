@@ -60,6 +60,11 @@
   let retention = $state<number>(untrack(() => data.project.retention_events));
   let retentionDays = $state<number>(untrack(() => data.project.retention_days));
   let savingGeneral = $state(false);
+  const generalDirty = $derived(
+    name !== project.name ||
+      retention !== project.retention_events ||
+      retentionDays !== project.retention_days
+  );
 
   function resetGeneral() {
     name = project.name;
@@ -137,6 +142,7 @@
   // `resetWebhook()` once a save reconciles the load.
   let webhookUrl = $state(untrack(() => data.project.webhook_url ?? ''));
   let savingWebhook = $state(false);
+  const webhookDirty = $derived(webhookUrl !== (project.webhook_url ?? ''));
 
   function resetWebhook() {
     webhookUrl = project.webhook_url ?? '';
@@ -275,7 +281,7 @@
       </Card.Content>
       {#if isAdmin}
         <Card.Footer>
-          <Button type="submit" disabled={savingGeneral}>
+          <Button type="submit" disabled={savingGeneral || !generalDirty}>
             {savingGeneral ? 'Saving…' : 'Save changes'}
           </Button>
         </Card.Footer>
@@ -322,7 +328,7 @@
           POST new-issue and regression notifications as JSON to this URL. Leave empty to disable.
         </p>
         {#if isAdmin}
-          <Button type="submit" variant="outline" disabled={savingWebhook}>
+          <Button type="submit" variant="outline" disabled={savingWebhook || !webhookDirty}>
             {savingWebhook ? 'Saving…' : 'Save webhook'}
           </Button>
         {/if}

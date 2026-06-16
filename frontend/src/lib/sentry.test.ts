@@ -42,7 +42,8 @@ describe('initSentry', () => {
     const config: ClientConfig = {
       sentry_dsn: null,
       sentry_environment: null,
-      release: 'soika@0.3.0'
+      release: 'soika@0.3.0',
+      timezone: 'UTC'
     };
     initSentry(config);
     expect(init).not.toHaveBeenCalled();
@@ -53,7 +54,8 @@ describe('initSentry', () => {
     const config: ClientConfig = {
       sentry_dsn: '',
       sentry_environment: 'production',
-      release: 'soika@0.3.0'
+      release: 'soika@0.3.0',
+      timezone: 'UTC'
     };
     initSentry(config);
     expect(init).not.toHaveBeenCalled();
@@ -64,7 +66,8 @@ describe('initSentry', () => {
     const config: ClientConfig = {
       sentry_dsn: 'https://public@sentry.example/42',
       sentry_environment: 'production',
-      release: 'soika@0.3.0'
+      release: 'soika@0.3.0',
+      timezone: 'UTC'
     };
     initSentry(config);
     expect(init).toHaveBeenCalledTimes(1);
@@ -81,7 +84,8 @@ describe('initSentry', () => {
     const config: ClientConfig = {
       sentry_dsn: 'https://public@sentry.example/42',
       sentry_environment: null,
-      release: 'soika@0.3.0'
+      release: 'soika@0.3.0',
+      timezone: 'UTC'
     };
     initSentry(config);
     expect(init).toHaveBeenCalledTimes(1);
@@ -98,7 +102,8 @@ describe('initSentry', () => {
     const config: ClientConfig = {
       sentry_dsn: 'https://public@sentry.example/42',
       sentry_environment: 'production',
-      release: 'soika@0.3.0'
+      release: 'soika@0.3.0',
+      timezone: 'UTC'
     };
     initSentry(config);
     initSentry(config);

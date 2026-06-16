@@ -42,6 +42,7 @@
   // actions. Members and admins may both resolve/mute.
   let { data }: { data: PageData } = $props();
 
+  const timezone = $derived(data.telemetry?.timezone ?? null);
   const projectId = $derived(data.issue.project_id);
 
   // The issue tracks `data.issue` (refreshed by `load` after navigation or
@@ -263,13 +264,13 @@
                   {#each muteOptions as opt (opt.label)}
                     <DropdownMenu.Item
                       onclick={() => mute(opt.body, opt.label)}
-                      class="text-xs font-medium"
+                      class="font-medium"
                     >
                       {opt.label}
                     </DropdownMenu.Item>
                   {/each}
                   <DropdownMenu.Separator />
-                  <DropdownMenu.Item onclick={() => (muteByTagsOpen = true)} class="text-xs">
+                  <DropdownMenu.Item onclick={() => (muteByTagsOpen = true)}>
                     <Tag class="size-4" />
                     Mute by tags…
                   </DropdownMenu.Item>
@@ -285,7 +286,7 @@
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end" class="w-44">
-              <DropdownMenu.Item onclick={copyAsJson} class="text-xs">
+              <DropdownMenu.Item onclick={copyAsJson}>
                 <Copy class="size-4" />
                 Copy as JSON
               </DropdownMenu.Item>
@@ -374,11 +375,12 @@
         <span class="text-muted-foreground ml-2 font-mono text-xs" title={currentEvent.event_id}>
           {currentEvent.event_id.slice(0, 8)}
         </span>
-        <span
-          class="text-muted-foreground ml-2 text-xs"
-          title={formatDateTime(currentEvent.received_at)}
-        >
-          · {formatRelative(currentEvent.received_at)}
+        <span class="text-muted-foreground ml-2 text-xs">
+          · <time
+            datetime={currentEvent.received_at}
+            title={formatRelative(currentEvent.received_at)}
+            >{formatDateTime(currentEvent.received_at, timezone)}</time
+          >
         </span>
       </div>
       <div class="flex shrink-0 items-center gap-1">

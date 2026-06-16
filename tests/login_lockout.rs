@@ -157,6 +157,7 @@ fn test_config(lockout: LockoutConfig) -> Config {
         oidc: None,
         sentry: None,
         lockout,
+        timezone: "UTC".to_string(),
     }
 }
 

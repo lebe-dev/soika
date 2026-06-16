@@ -26,6 +26,9 @@ pub struct ClientConfigView {
     pub sentry_environment: Option<String>,
     /// Release identifier, matching the backend (`soika@<version>`).
     pub release: String,
+    /// IANA timezone name the SPA uses to display timestamps (`TIMEZONE`).
+    /// The backend stores everything in UTC; this is purely a display hint.
+    pub timezone: String,
 }
 
 impl ClientConfigView {
@@ -44,6 +47,7 @@ impl ClientConfigView {
             sentry_dsn,
             sentry_environment,
             release: concat!("soika@", env!("CARGO_PKG_VERSION")).to_string(),
+            timezone: state.config.timezone.clone(),
         }
     }
 }

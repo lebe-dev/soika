@@ -87,6 +87,8 @@ export interface ClientConfig {
   sentry_environment: string | null;
   /** Release identifier, matching the backend (`soika@<version>`). */
   release: string;
+  /** IANA timezone name for displaying timestamps (e.g. `Europe/Moscow`). */
+  timezone: string;
 }
 
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */

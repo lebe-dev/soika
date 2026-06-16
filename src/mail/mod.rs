@@ -232,6 +232,7 @@ mod tests {
             oidc: None,
             sentry: None,
             lockout: Default::default(),
+            timezone: "UTC".to_string(),
         }
     }
 
