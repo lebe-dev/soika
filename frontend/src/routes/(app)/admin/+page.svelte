@@ -126,6 +126,26 @@
       busyUserId = null;
     }
   }
+
+  async function deleteUser(id: string, email: string) {
+    if (
+      !confirm(
+        `Delete the account ${email}? This permanently removes the user and cannot be undone.`
+      )
+    )
+      return;
+    busyUserId = id;
+    try {
+      await api.admin.remove(id);
+      toast.success('Account deleted');
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete account'));
+      reportUnexpected(err);
+    } finally {
+      busyUserId = null;
+    }
+  }
 </script>
 
 <PageTitle title="Admin" />
@@ -342,6 +362,18 @@
                           >
                             <Trash2 class="size-4" />
                             Reject
+                          </Button>
+                        </div>
+                      {:else if !u.is_admin && !isSelf}
+                        <div class="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busyUserId === u.id}
+                            onclick={() => deleteUser(u.id, u.email)}
+                          >
+                            <Trash2 class="size-4" />
+                            Delete
                           </Button>
                         </div>
                       {:else}
