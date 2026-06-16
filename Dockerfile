@@ -39,7 +39,7 @@ RUN yarn build
 # ---------------------------------------------------------------------------
 # Stage B — backend (Rust release on musl + UPX compression)
 # ---------------------------------------------------------------------------
-FROM rust:1-alpine AS backend
+FROM rust:1.95-alpine AS backend
 WORKDIR /build
 
 # Build toolchain for the C dependencies of `ring` (rustls TLS backend) and
@@ -66,7 +66,7 @@ RUN upx -9 --lzma /build/soika
 # ---------------------------------------------------------------------------
 # Runtime — minimal Alpine, rootless
 # ---------------------------------------------------------------------------
-FROM alpine:3.23 AS runtime
+FROM alpine:3.24 AS runtime
 
 WORKDIR /app
 
