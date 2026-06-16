@@ -163,7 +163,7 @@
       <Tabs.Trigger value="users">
         Users ({data.users.length})
         {#if pendingCount > 0}
-          <Badge variant="secondary" class="ml-1.5">{pendingCount} pending</Badge>
+          <Badge variant="default" class="ml-1.5">{pendingCount} pending</Badge>
         {/if}
       </Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>

@@ -11,12 +11,13 @@
   import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
   import Users from '@lucide/svelte/icons/users';
   import Shield from '@lucide/svelte/icons/shield';
+  import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
   import UserIcon from '@lucide/svelte/icons/user';
   import LogOut from '@lucide/svelte/icons/log-out';
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
 
-  let { user }: { user: User } = $props();
+  let { user, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } = $props();
 
   type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
 
@@ -72,6 +73,12 @@
         >
           <item.icon class="size-4" />
           {item.label}
+          {#if item.href === '/admin' && pendingApprovals > 0}
+            <AlertTriangle
+              class="text-primary size-3.5"
+              aria-label={`${pendingApprovals} account${pendingApprovals === 1 ? '' : 's'} awaiting approval`}
+            />
+          {/if}
         </a>
       {/each}
     </nav>

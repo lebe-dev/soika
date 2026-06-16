@@ -7,7 +7,7 @@
 </script>
 
 <div class="flex min-h-screen flex-col">
-  <AppNav user={data.user} />
+  <AppNav user={data.user} pendingApprovals={data.pendingApprovals} />
   <main class="container flex-1 py-8">
     {@render children()}
   </main>
