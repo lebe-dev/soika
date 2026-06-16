@@ -13,6 +13,7 @@
 # Stage A — frontend (SvelteKit + Tailwind + shadcn-svelte, yarn)
 # ---------------------------------------------------------------------------
 FROM node:24-alpine AS frontend
+
 WORKDIR /build/frontend
 
 # Install deps first for layer caching (only re-runs when manifests change).
@@ -40,6 +41,7 @@ RUN yarn build
 # Stage B — backend (Rust release on musl + UPX compression)
 # ---------------------------------------------------------------------------
 FROM rust:1.95-alpine AS backend
+
 WORKDIR /build
 
 # Build toolchain for the C dependencies of `ring` (rustls TLS backend) and
