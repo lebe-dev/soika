@@ -300,7 +300,7 @@
                     <Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
                     <Table.Cell>
                       {#if u.is_admin}
-                        <span class="text-primary text-sm font-medium">Admin</span>
+                        <Badge variant="outline" class="text-primary">Admin</Badge>
                       {:else}
                         <Badge variant="outline">Member</Badge>
                       {/if}
