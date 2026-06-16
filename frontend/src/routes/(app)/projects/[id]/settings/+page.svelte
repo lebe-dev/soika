@@ -420,9 +420,11 @@
                   <div class="text-muted-foreground text-xs">{member.email}</div>
                 </Table.Cell>
                 <Table.Cell>
-                  <Badge variant={member.role === 'admin' ? 'default' : 'outline'}>
-                    {member.role}
-                  </Badge>
+                  {#if member.role === 'admin'}
+                    <span class="text-primary text-sm font-medium">admin</span>
+                  {:else}
+                    <Badge variant="outline">{member.role}</Badge>
+                  {/if}
                 </Table.Cell>
                 {#if isAdmin}
                   <Table.Cell>
@@ -489,9 +491,11 @@
               <div class="space-y-2 rounded-md border p-3">
                 <div class="flex items-center justify-between gap-2">
                   <div class="flex items-center gap-2 text-sm">
-                    <Badge variant={invite.role === 'admin' ? 'default' : 'outline'}
-                      >{invite.role}</Badge
-                    >
+                    {#if invite.role === 'admin'}
+                      <span class="text-primary text-sm font-medium">admin</span>
+                    {:else}
+                      <Badge variant="outline">{invite.role}</Badge>
+                    {/if}
                     {#if invite.email}
                       <span>{invite.email}</span>
                     {:else}

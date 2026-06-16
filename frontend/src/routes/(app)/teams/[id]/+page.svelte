@@ -166,7 +166,13 @@
         <Card.Description>Users in this team can access its projects.</Card.Description>
       </div>
       {#if isAdmin}
-        <Button size="sm" class="gap-1.5" onclick={openAdd} disabled={candidates.length === 0}>
+        <Button
+          variant="secondary"
+          size="sm"
+          class="gap-1.5"
+          onclick={openAdd}
+          disabled={candidates.length === 0}
+        >
           <UserPlus class="size-4" />
           Add member
         </Button>
@@ -182,7 +188,7 @@
               <Table.Head>Name</Table.Head>
               <Table.Head>Email</Table.Head>
               {#if isAdmin}
-                <Table.Head class="text-right">Actions</Table.Head>
+                <Table.Head class="w-12 text-center">Actions</Table.Head>
               {/if}
             </Table.Row>
           </Table.Header>
@@ -192,16 +198,16 @@
                 <Table.Cell class="font-medium">{member.display_name}</Table.Cell>
                 <Table.Cell class="text-muted-foreground">{member.email}</Table.Cell>
                 {#if isAdmin}
-                  <Table.Cell class="text-right">
+                  <Table.Cell class="w-12 text-center">
                     <Button
                       variant="ghost"
-                      size="sm"
-                      class="text-destructive hover:text-destructive gap-1.5"
+                      size="icon"
+                      class="text-destructive hover:text-destructive size-8"
+                      title="Remove member"
                       disabled={removingId === member.id}
                       onclick={() => removeMember(member.id)}
                     >
                       <UserMinus class="size-4" />
-                      {removingId === member.id ? 'Removing…' : 'Remove'}
                     </Button>
                   </Table.Cell>
                 {/if}

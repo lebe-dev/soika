@@ -169,7 +169,7 @@
           disabled={togglingNotifications}
           onclick={toggleNotifications}
           class={cn(
-            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors',
+            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors',
             'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
             'disabled:cursor-not-allowed disabled:opacity-50',
             user?.notifications_enabled ? 'bg-primary' : 'bg-input'
@@ -177,8 +177,8 @@
         >
           <span
             class={cn(
-              'bg-background pointer-events-none inline-block size-5 transform rounded-full shadow-sm ring-0 transition-transform',
-              user?.notifications_enabled ? 'translate-x-5' : 'translate-x-0.5'
+              'bg-background pointer-events-none inline-block size-4 transform rounded-full shadow-sm ring-0 transition-transform',
+              user?.notifications_enabled ? 'translate-x-4' : 'translate-x-0.5'
             )}
           ></span>
         </button>

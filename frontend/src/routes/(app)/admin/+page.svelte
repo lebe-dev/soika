@@ -13,7 +13,6 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { toast } from '$lib/components/ui/sonner';
-  import Shield from '@lucide/svelte/icons/shield';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Check from '@lucide/svelte/icons/check';
   import Clock from '@lucide/svelte/icons/clock';
@@ -140,12 +139,14 @@
   <Tabs.Root value="settings">
     <Tabs.List>
       <Tabs.Trigger value="settings">Service settings</Tabs.Trigger>
+      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="users">
         Users ({data.users.length})
         {#if pendingCount > 0}
           <Badge variant="secondary" class="ml-1.5">{pendingCount} pending</Badge>
         {/if}
       </Tabs.Trigger>
+      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="teams">Teams ({data.teams.length})</Tabs.Trigger>
     </Tabs.List>
 
@@ -299,10 +300,7 @@
                     <Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
                     <Table.Cell>
                       {#if u.is_admin}
-                        <Badge variant="default">
-                          <Shield class="size-3" />
-                          Admin
-                        </Badge>
+                        <span class="text-primary text-sm font-medium">Admin</span>
                       {:else}
                         <Badge variant="outline">Member</Badge>
                       {/if}
