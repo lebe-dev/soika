@@ -1,9 +1,16 @@
 //! Invite API handlers.
 //!
-//! A project **admin** generates an invite: a high-entropy, server-validated,
-//! expiring token plus a `{BASE_URL}/invite/{token}` link. The link is
-//! returned so it can be **emailed** (when SMTP is configured) AND/OR copied
-//! manually — invites work even on instances without email.
+//! A team **admin** (or instance manager/owner) generates an invite: a
+//! high-entropy, server-validated, expiring token plus a `{BASE_URL}/invite/{token}`
+//! link. The link is returned so it can be **emailed** (when SMTP is configured)
+//! AND/OR copied manually — invites work even on instances without email.
+//!
+//! Invites are scoped to a **team**: accepting one adds the user to the team
+//! with the invite's [`TeamRole`].
+
+// Auth/error guards return `Result<T, Response>`; axum's `Response` is large,
+// which is fine here (these are control-flow short-circuits, never hot paths).
+#![allow(clippy::result_large_err)]
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -15,10 +22,8 @@ use chrono::Duration;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::api::projects::{
-    CurrentUser, error_response, json_error, require_admin, resolve_project,
-};
-use crate::domain::{Invite, Role};
+use crate::api::projects::{CurrentUser, error_response, json_error};
+use crate::domain::{Id, Invite, TeamRole};
 use crate::ports::{NewInvite, OutboundEmail};
 use crate::state::AppState;
 
@@ -32,9 +37,9 @@ const TOKEN_BYTES: usize = 32;
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
-    /// Parent project's short public id (matches the rest of the SPA API).
-    pub project_id: String,
-    pub role: Role,
+    /// Target team id the invite grants membership of.
+    pub team_id: Id,
+    pub role: TeamRole,
     pub email: Option<String>,
     /// Copyable / emailable acceptance link: `{BASE_URL}/invite/{token}`.
     pub link: String,
@@ -47,16 +52,11 @@ pub struct InviteView {
 }
 
 impl InviteView {
-    fn from_invite(
-        invite: Invite,
-        project_short_id: String,
-        base_url: &str,
-        email_sent: bool,
-    ) -> Self {
+    fn from_invite(invite: Invite, base_url: &str, email_sent: bool) -> Self {
         let link = invite_link(base_url, &invite.token);
         InviteView {
             token: invite.token,
-            project_id: project_short_id,
+            team_id: invite.team_id,
             role: invite.role,
             email: invite.email,
             link,
@@ -73,33 +73,51 @@ fn invite_link(base_url: &str, token: &str) -> String {
     format!("{}/invite/{}", base_url.trim_end_matches('/'), token)
 }
 
-/// `GET /projects/{id}/invites` — list pending invites (admin).
+/// Parse a team-id path segment, mapping a bad UUID to a `400`.
+fn parse_team_id(raw: &str) -> std::result::Result<Id, Response> {
+    Id::parse_str(raw).map_err(|_| json_error(StatusCode::BAD_REQUEST, "invalid team id"))
+}
+
+/// Require that `user` may manage `team_id`'s invites: an instance
+/// `Owner | Manager`, or a `TeamRole::Admin` of that team.
+async fn require_team_manager(
+    state: &AppState,
+    user: &crate::domain::User,
+    team_id: Id,
+) -> std::result::Result<(), Response> {
+    if user.instance_role.can_manage_instance() {
+        return Ok(());
+    }
+    match state.teams.member_role(team_id, user.id).await {
+        Ok(Some(TeamRole::Admin)) => Ok(()),
+        Ok(_) => Err(json_error(
+            StatusCode::FORBIDDEN,
+            "requires team admin (or instance manager/owner)",
+        )),
+        Err(err) => Err(error_response(err)),
+    }
+}
+
+/// `GET /teams/{id}/invites` — list pending invites for a team (team admin).
 pub async fn list(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path(project_id): Path<String>,
+    Path(team_id): Path<String>,
 ) -> Response {
-    let project = match resolve_project(&state, &project_id).await {
-        Ok(p) => p,
+    let team_id = match parse_team_id(&team_id) {
+        Ok(id) => id,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_admin(&state, &user, project.id).await {
+    if let Err(resp) = require_team_manager(&state, &user, team_id).await {
         return resp;
     }
 
-    match state.invites.list_for_project(project.id).await {
+    match state.invites.list_for_team(team_id).await {
         Ok(invites) => {
             let views: Vec<InviteView> = invites
                 .into_iter()
-                .map(|i| {
-                    InviteView::from_invite(
-                        i,
-                        project.short_id.clone(),
-                        &state.config.base_url,
-                        false,
-                    )
-                })
+                .map(|i| InviteView::from_invite(i, &state.config.base_url, false))
                 .collect();
             Json(views).into_response()
         }
@@ -110,15 +128,15 @@ pub async fn list(
 /// Request body for creating an invite.
 #[derive(Debug, Deserialize)]
 pub struct CreateInviteRequest {
-    /// Role to grant on acceptance. Defaults to `member`.
+    /// Team role to grant on acceptance. Defaults to `contributor`.
     #[serde(default)]
-    pub role: Option<Role>,
+    pub role: Option<TeamRole>,
     /// Optional target email (link still works without it).
     #[serde(default)]
     pub email: Option<String>,
 }
 
-/// `POST /projects/{id}/invites` — create an invite (admin).
+/// `POST /teams/{id}/invites` — create a team invite (team admin).
 ///
 /// Returns the invite with its copyable link. If SMTP is configured and a
 /// target email is given, the link is also emailed (best-effort; failure to
@@ -126,16 +144,23 @@ pub struct CreateInviteRequest {
 pub async fn create(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path(project_id): Path<String>,
+    Path(team_id): Path<String>,
     body: Option<Json<CreateInviteRequest>>,
 ) -> Response {
-    let project = match resolve_project(&state, &project_id).await {
-        Ok(p) => p,
+    let team_id = match parse_team_id(&team_id) {
+        Ok(id) => id,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_admin(&state, &user, project.id).await {
+    if let Err(resp) = require_team_manager(&state, &user, team_id).await {
         return resp;
+    }
+
+    // Surface a clear 404 for an unknown team rather than an opaque FK failure.
+    match state.teams.find_by_id(team_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return json_error(StatusCode::NOT_FOUND, "team not found"),
+        Err(err) => return error_response(err),
     }
 
     let req = body.map(|Json(b)| b).unwrap_or(CreateInviteRequest {
@@ -143,7 +168,7 @@ pub async fn create(
         email: None,
     });
 
-    let role = req.role.unwrap_or(Role::Member);
+    let role = req.role.unwrap_or(TeamRole::Contributor);
     let email = req
         .email
         .map(|e| e.trim().to_string())
@@ -160,7 +185,7 @@ pub async fn create(
 
     let new = NewInvite {
         token,
-        project_id: project.id,
+        team_id,
         role,
         email: email.clone(),
         created_by: Some(user.id),
@@ -185,7 +210,7 @@ pub async fn create(
                 state.config.organization_name
             ),
             body: format!(
-                "You have been invited to join a project on soika.\n\n\
+                "You have been invited to join a team on soika.\n\n\
                  Accept your invite:\n{link}\n\n\
                  This link expires in {INVITE_TTL_DAYS} days."
             ),
@@ -194,30 +219,29 @@ pub async fn create(
         email_sent = state.mailer.send(message).await.is_ok();
     }
 
-    let view =
-        InviteView::from_invite(invite, project.short_id, &state.config.base_url, email_sent);
+    let view = InviteView::from_invite(invite, &state.config.base_url, email_sent);
     (StatusCode::CREATED, Json(view)).into_response()
 }
 
-/// `DELETE /projects/{id}/invites/{token}` — revoke a pending invite (admin).
+/// `DELETE /teams/{id}/invites/{token}` — revoke a pending invite (team admin).
 pub async fn revoke(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path((project_id, token)): Path<(String, String)>,
+    Path((team_id, token)): Path<(String, String)>,
 ) -> Response {
-    let project_id = match resolve_project(&state, &project_id).await {
-        Ok(project) => project.id,
+    let team_id = match parse_team_id(&team_id) {
+        Ok(id) => id,
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = require_admin(&state, &user, project_id).await {
+    if let Err(resp) = require_team_manager(&state, &user, team_id).await {
         return resp;
     }
 
-    // Verify the invite belongs to this project before deleting (avoid letting
-    // an admin of project A delete an invite of project B by token).
+    // Verify the invite belongs to this team before deleting (avoid letting an
+    // admin of team A delete an invite of team B by token).
     match state.invites.find_by_token(&token).await {
-        Ok(Some(invite)) if invite.project_id == project_id => {}
+        Ok(Some(invite)) if invite.team_id == team_id => {}
         Ok(_) => return json_error(StatusCode::NOT_FOUND, "invite not found"),
         Err(err) => return error_response(err),
     }

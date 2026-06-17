@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session_id_from_headers;
-use crate::domain::{Id, Team, Timestamp, User};
+use crate::domain::{Id, Team, TeamRole, Timestamp, User};
 use crate::error::Error;
 use crate::state::AppState;
 
@@ -74,8 +74,9 @@ struct ErrorBody {
 /// Extraction fails with `401` when no valid, unexpired session is present.
 pub struct AuthUser(pub User);
 
-/// An authenticated **instance admin** (built-in admin). Extraction fails
-/// with `401` when unauthenticated and `403` when the user is not an admin.
+/// An authenticated **instance manager** (`Owner | Manager`). Extraction fails
+/// with `401` when unauthenticated and `403` when the user cannot manage the
+/// instance. Owner-only operations re-check [`User::instance_role`] inline.
 pub struct AdminUser(pub User);
 
 #[async_trait]
@@ -100,8 +101,10 @@ impl FromRequestParts<AppState> for AdminUser {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let user = authenticate(parts, state).await?;
-        if !user.is_admin {
-            return Err(ApiError(Error::Forbidden("admin access required".into())));
+        if !user.instance_role.can_manage_instance() {
+            return Err(ApiError(Error::Forbidden(
+                "requires instance manager or owner".into(),
+            )));
         }
         Ok(AdminUser(user))
     }
@@ -188,20 +191,23 @@ pub struct TeamSummary {
     pub project_count: usize,
 }
 
-/// A team member, with only client-safe user fields.
+/// A team member, with client-safe user fields plus the team role.
 #[derive(Debug, Serialize)]
 pub struct MemberView {
     pub id: Id,
     pub email: String,
     pub display_name: String,
+    /// Role of this user within the team (`Admin | Contributor`).
+    pub role: TeamRole,
 }
 
-impl From<User> for MemberView {
-    fn from(u: User) -> Self {
+impl MemberView {
+    fn from_member(u: User, role: TeamRole) -> Self {
         MemberView {
             id: u.id,
             email: u.email,
             display_name: u.display_name,
+            role,
         }
     }
 }
@@ -226,10 +232,19 @@ pub struct UpdateTeam {
     pub name: String,
 }
 
-/// `POST /teams/{id}/members` body — add a member by user id.
+/// `POST /teams/{id}/members` body — add a member by user id with a team role.
 #[derive(Debug, Deserialize)]
 pub struct AddMember {
     pub user_id: Id,
+    /// Team role to grant. Defaults to `Contributor` when omitted.
+    #[serde(default)]
+    pub role: Option<TeamRole>,
+}
+
+/// `PATCH /teams/{id}/members/{user_id}` body — change a member's team role.
+#[derive(Debug, Deserialize)]
+pub struct SetMemberRole {
+    pub role: TeamRole,
 }
 
 fn validate_team_name(name: &str) -> Result<String, Error> {
@@ -248,7 +263,10 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
         name: team.name,
         created_at: team.created_at,
         updated_at: team.updated_at,
-        members: members.into_iter().map(MemberView::from).collect(),
+        members: members
+            .into_iter()
+            .map(|(u, role)| MemberView::from_member(u, role))
+            .collect(),
         projects: projects
             .into_iter()
             .map(|p| ProjectView {
@@ -266,10 +284,10 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
 
 /// Team summaries (id, name, member/project counts) visible to `user`.
 ///
-/// Instance admins see every team; other users see only the teams they belong
-/// to. Shared by `GET /teams` and the `/auth/config` dashboard bootstrap.
+/// Instance `Owner | Manager` see every team; other users see only the teams
+/// they belong to. Shared by `GET /teams` and the `/auth/config` dashboard bootstrap.
 pub async fn summaries(state: &AppState, user: &User) -> Result<Vec<TeamSummary>, ApiError> {
-    let teams = if user.is_admin {
+    let teams = if user.instance_role.can_manage_instance() {
         state.teams.list().await?
     } else {
         state.teams.list_for_user(user.id).await?
@@ -290,7 +308,7 @@ pub async fn summaries(state: &AppState, user: &User) -> Result<Vec<TeamSummary>
 
 /// `GET /teams` — list teams visible to the caller. Returns summaries.
 ///
-/// Instance admins see all teams; other users see only their own.
+/// Instance `Owner | Manager` see all teams; other users see only their own.
 pub async fn list(
     AuthUser(user): AuthUser,
     State(state): State<AppState>,
@@ -298,7 +316,7 @@ pub async fn list(
     Ok(Json(summaries(&state, &user).await?))
 }
 
-/// `POST /teams` — create a team (instance admin).
+/// `POST /teams` — create a team (instance manager/owner).
 pub async fn create(
     _admin: AdminUser,
     State(state): State<AppState>,
@@ -312,8 +330,8 @@ pub async fn create(
 
 /// `GET /teams/{id}` — team detail (members, projects).
 ///
-/// Visible to instance admins and to members of the team; other users get a
-/// `403`, consistent with the project access rules.
+/// Visible to instance `Owner | Manager` and to members of the team; other
+/// users get a `403`, consistent with the project access rules.
 pub async fn get(
     AuthUser(user): AuthUser,
     State(state): State<AppState>,
@@ -325,7 +343,7 @@ pub async fn get(
         .find_by_id(id)
         .await?
         .ok_or_else(|| Error::not_found(format!("team {id}")))?;
-    if !user.is_admin && !state.teams.is_member(id, user.id).await? {
+    if !user.instance_role.can_manage_instance() && !state.teams.is_member(id, user.id).await? {
         return Err(ApiError(Error::Forbidden(
             "you do not have access to this team".into(),
         )));
@@ -334,7 +352,7 @@ pub async fn get(
     Ok(Json(view))
 }
 
-/// `PATCH /teams/{id}` — rename a team (instance admin).
+/// `PATCH /teams/{id}` — rename a team (instance manager/owner).
 pub async fn update(
     _admin: AdminUser,
     State(state): State<AppState>,
@@ -348,7 +366,7 @@ pub async fn update(
     Ok(Json(view))
 }
 
-/// `DELETE /teams/{id}` — delete a team (instance admin).
+/// `DELETE /teams/{id}` — delete a team (instance manager/owner).
 pub async fn delete(
     _admin: AdminUser,
     State(state): State<AppState>,
@@ -359,14 +377,31 @@ pub async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `POST /teams/{id}/members` — add a member to a team (instance admin).
+/// Require that `user` may manage `team_id`'s membership: either an instance
+/// `Owner | Manager`, or a `TeamRole::Admin` of that specific team.
+async fn require_team_manager(state: &AppState, user: &User, team_id: Id) -> Result<(), ApiError> {
+    if user.instance_role.can_manage_instance() {
+        return Ok(());
+    }
+    if state.teams.member_role(team_id, user.id).await? == Some(TeamRole::Admin) {
+        return Ok(());
+    }
+    Err(ApiError(Error::Forbidden(
+        "requires team admin (or instance manager/owner)".into(),
+    )))
+}
+
+/// `POST /teams/{id}/members` — add a member to a team.
+///
+/// Gated by an instance `Owner | Manager` OR a `TeamRole::Admin` of this team.
 pub async fn add_member(
-    _admin: AdminUser,
+    AuthUser(caller): AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<AddMember>,
 ) -> Result<Json<TeamView>, ApiError> {
     let id = parse_id(&id)?;
+    require_team_manager(&state, &caller, id).await?;
     // Ensure team & user exist for clear 404s (avoids opaque FK failures).
     let team = state
         .teams
@@ -376,19 +411,83 @@ pub async fn add_member(
     if state.users.find_by_id(body.user_id).await?.is_none() {
         return Err(ApiError(Error::not_found(format!("user {}", body.user_id))));
     }
-    state.teams.add_member(id, body.user_id).await?;
+    let role = body.role.unwrap_or(TeamRole::Contributor);
+    state.teams.add_member(id, body.user_id, role).await?;
     let view = load_team_view(&state, team).await?;
     Ok(Json(view))
 }
 
-/// `DELETE /teams/{id}/members/{user_id}` — remove a team member (instance admin).
+/// `PATCH /teams/{id}/members/{user_id}` — change a member's team role.
+///
+/// Gated by an instance `Owner | Manager` OR a `TeamRole::Admin` of this team.
+/// Refuses to demote the team's last `Admin` so a team always retains one.
+pub async fn set_member_role(
+    AuthUser(caller): AuthUser,
+    State(state): State<AppState>,
+    Path((id, user_id)): Path<(String, String)>,
+    Json(body): Json<SetMemberRole>,
+) -> Result<Json<TeamView>, ApiError> {
+    let id = parse_id(&id)?;
+    let user_id = parse_id(&user_id)?;
+    require_team_manager(&state, &caller, id).await?;
+
+    let team = state
+        .teams
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("team {id}")))?;
+
+    let members = state.teams.members(id).await?;
+    let Some((_, current_role)) = members.iter().find(|(u, _)| u.id == user_id) else {
+        return Err(ApiError(Error::not_found("member not found in team")));
+    };
+
+    // Prevent orphaning the team: refuse to demote the last admin.
+    if *current_role == TeamRole::Admin && body.role != TeamRole::Admin {
+        let admin_count = members
+            .iter()
+            .filter(|(_, r)| *r == TeamRole::Admin)
+            .count();
+        if admin_count <= 1 {
+            return Err(ApiError(Error::Conflict(
+                "cannot demote the last admin of the team".into(),
+            )));
+        }
+    }
+
+    state.teams.set_member_role(id, user_id, body.role).await?;
+    let view = load_team_view(&state, team).await?;
+    Ok(Json(view))
+}
+
+/// `DELETE /teams/{id}/members/{user_id}` — remove a team member.
+///
+/// Gated by an instance `Owner | Manager` OR a `TeamRole::Admin` of this team.
+/// Refuses to remove the team's last `Admin`.
 pub async fn remove_member(
-    _admin: AdminUser,
+    AuthUser(caller): AuthUser,
     State(state): State<AppState>,
     Path((id, user_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let id = parse_id(&id)?;
     let user_id = parse_id(&user_id)?;
+    require_team_manager(&state, &caller, id).await?;
+
+    let members = state.teams.members(id).await?;
+    if let Some((_, role)) = members.iter().find(|(u, _)| u.id == user_id)
+        && *role == TeamRole::Admin
+    {
+        let admin_count = members
+            .iter()
+            .filter(|(_, r)| *r == TeamRole::Admin)
+            .count();
+        if admin_count <= 1 {
+            return Err(ApiError(Error::Conflict(
+                "cannot remove the last admin of the team".into(),
+            )));
+        }
+    }
+
     state.teams.remove_member(id, user_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

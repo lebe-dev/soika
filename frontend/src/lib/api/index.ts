@@ -26,11 +26,12 @@ import type {
   Profile,
   Project,
   ProjectDetail,
-  ProjectMember,
   RegisterRequest,
   SdkSetup,
   ServiceSettings,
   SetupRequest,
+  SetTeamMemberRoleRequest,
+  SetUserRoleRequest,
   SoikaEvent,
   TagMuteRule,
   Team,
@@ -107,19 +108,7 @@ export const projects = {
       fetch: ctx?.fetch
     }),
   regenerateDsn: (id: Id, ctx?: Ctx) =>
-    http.post<Dsn>(`/projects/${id}/regenerate-dsn`, { fetch: ctx?.fetch }),
-  members: (id: Id, ctx?: Ctx) =>
-    http.get<ProjectMember[]>(`/projects/${id}/members`, { fetch: ctx?.fetch }),
-  removeMember: (id: Id, userId: Id, ctx?: Ctx) =>
-    http.delete<void>(`/projects/${id}/members/${userId}`, { fetch: ctx?.fetch }),
-  invites: (id: Id, ctx?: Ctx) =>
-    http.get<Invite[]>(`/projects/${id}/invites`, { fetch: ctx?.fetch }),
-  createInvite: (id: Id, body: CreateInviteRequest, ctx?: Ctx) =>
-    http.post<Invite>(`/projects/${id}/invites`, { body, fetch: ctx?.fetch }),
-  revokeInvite: (id: Id, token: string, ctx?: Ctx) =>
-    http.delete<void>(`/projects/${id}/invites/${encodeURIComponent(token)}`, {
-      fetch: ctx?.fetch
-    })
+    http.post<Dsn>(`/projects/${id}/regenerate-dsn`, { fetch: ctx?.fetch })
 };
 
 export const issues = {
@@ -151,8 +140,18 @@ export const teams = {
   remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/teams/${id}`, { fetch: ctx?.fetch }),
   addMember: (id: Id, body: AddTeamMemberRequest, ctx?: Ctx) =>
     http.post<Team>(`/teams/${id}/members`, { body, fetch: ctx?.fetch }),
+  setMemberRole: (id: Id, userId: Id, body: SetTeamMemberRoleRequest, ctx?: Ctx) =>
+    http.patch<Team>(`/teams/${id}/members/${userId}`, { body, fetch: ctx?.fetch }),
   removeMember: (id: Id, userId: Id, ctx?: Ctx) =>
-    http.delete<void>(`/teams/${id}/members/${userId}`, { fetch: ctx?.fetch })
+    http.delete<void>(`/teams/${id}/members/${userId}`, { fetch: ctx?.fetch }),
+  /** Team-scoped invites: grant a {@link TeamRole} on the team. */
+  invites: (id: Id, ctx?: Ctx) => http.get<Invite[]>(`/teams/${id}/invites`, { fetch: ctx?.fetch }),
+  createInvite: (id: Id, body: CreateInviteRequest, ctx?: Ctx) =>
+    http.post<Invite>(`/teams/${id}/invites`, { body, fetch: ctx?.fetch }),
+  revokeInvite: (id: Id, token: string, ctx?: Ctx) =>
+    http.delete<void>(`/teams/${id}/invites/${encodeURIComponent(token)}`, {
+      fetch: ctx?.fetch
+    })
 };
 
 export const settings = {
@@ -169,6 +168,12 @@ export const admin = {
   /** Approve a pending account so it can sign in. Returns the updated row. */
   approve: (id: Id, ctx?: Ctx) =>
     http.post<AdminUser>(`/admin/users/${id}/approve`, { fetch: ctx?.fetch }),
+  /**
+   * Change a user's instance role. Granting/revoking `owner` is Owner-only and
+   * the last Owner cannot be demoted (the backend enforces both).
+   */
+  setRole: (id: Id, body: SetUserRoleRequest, ctx?: Ctx) =>
+    http.patch<AdminUser>(`/admin/users/${id}`, { body, fetch: ctx?.fetch }),
   /** Reject/delete an account (used for pending sign-ups). */
   remove: (id: Id, ctx?: Ctx) =>
     http.delete<DeletedUser>(`/admin/users/${id}`, { fetch: ctx?.fetch })

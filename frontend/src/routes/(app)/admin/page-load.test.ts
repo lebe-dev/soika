@@ -1,5 +1,6 @@
-// Tests for the admin-area page load: it requires the instance admin (redirects
-// otherwise), loads settings + users + a teams overview in parallel, and treats
+// Tests for the admin-area page load: it requires an instance manager
+// (Owner | Manager; redirects otherwise), loads settings + users + a teams
+// overview in parallel, and treats
 // the teams overview as supplementary — a 403/401 from teams.list yields [], but
 // any other failure (e.g. a TypeError, or a 500) surfaces instead of being
 // masked behind an empty list.
@@ -55,10 +56,10 @@ beforeEach(() => {
 });
 
 describe('(app)/admin +page load', () => {
-  it('loads settings, users and teams for an admin', async () => {
+  it('loads settings, users and teams for a manager', async () => {
     teamsList.mockResolvedValue([{ id: 't1' }] as never);
 
-    const data = (await callLoad({ id: 'u1', is_admin: true })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as {
       settings: unknown;
       users: unknown[];
       teams: unknown[];
@@ -69,8 +70,16 @@ describe('(app)/admin +page load', () => {
     expect(data.teams).toEqual([{ id: 't1' }]);
   });
 
-  it('redirects a non-admin user to the dashboard', async () => {
-    await expect(callLoad({ id: 'u1', is_admin: false })).rejects.toMatchObject({
+  it('loads for an owner too', async () => {
+    teamsList.mockResolvedValue([{ id: 't1' }] as never);
+
+    const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as { users: unknown[] };
+
+    expect(data.users).toEqual([{ id: 'u1' }]);
+  });
+
+  it('redirects a plain member to the dashboard', async () => {
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toMatchObject({
       status: 307,
       location: '/'
     });
@@ -83,7 +92,7 @@ describe('(app)/admin +page load', () => {
   it('returns [] teams on a forbidden teams.list', async () => {
     teamsList.mockRejectedValue(new ApiError(403, 'forbidden', null));
 
-    const data = (await callLoad({ id: 'u1', is_admin: true })) as { teams: unknown[] };
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as { teams: unknown[] };
 
     expect(data.teams).toEqual([]);
   });
@@ -91,7 +100,7 @@ describe('(app)/admin +page load', () => {
   it('returns [] teams on an unauthorized teams.list', async () => {
     teamsList.mockRejectedValue(new ApiError(401, 'unauthorized', null));
 
-    const data = (await callLoad({ id: 'u1', is_admin: true })) as { teams: unknown[] };
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as { teams: unknown[] };
 
     expect(data.teams).toEqual([]);
   });
@@ -100,12 +109,14 @@ describe('(app)/admin +page load', () => {
     const boom = new TypeError('network down');
     teamsList.mockRejectedValue(boom);
 
-    await expect(callLoad({ id: 'u1', is_admin: true })).rejects.toBe(boom);
+    await expect(callLoad({ id: 'u1', instance_role: 'manager' })).rejects.toBe(boom);
   });
 
   it('rethrows a non-403/401 ApiError (e.g. 500) from teams.list', async () => {
     teamsList.mockRejectedValue(new ApiError(500, 'boom', null));
 
-    await expect(callLoad({ id: 'u1', is_admin: true })).rejects.toMatchObject({ status: 500 });
+    await expect(callLoad({ id: 'u1', instance_role: 'manager' })).rejects.toMatchObject({
+      status: 500
+    });
   });
 });

@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{AdminUser, ApiError};
-use crate::domain::{Id, ServiceSettings, Timestamp, User, UserStatus};
+use crate::domain::{Id, InstanceRole, ServiceSettings, Timestamp, User, UserStatus};
 use crate::error::Error;
 use crate::ports::UserUpdate;
 use crate::state::AppState;
@@ -51,7 +51,8 @@ pub struct AdminUserRow {
     pub id: Id,
     pub email: String,
     pub display_name: String,
-    pub is_admin: bool,
+    /// Instance-wide role (`owner | manager | member`).
+    pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
     /// Activation status: `active` | `pending` (awaiting admin approval).
     pub status: UserStatus,
@@ -64,7 +65,7 @@ impl From<User> for AdminUserRow {
             id: u.id,
             email: u.email,
             display_name: u.display_name,
-            is_admin: u.is_admin,
+            instance_role: u.instance_role,
             notifications_enabled: u.notifications_enabled,
             status: u.status,
             created_at: u.created_at,
@@ -216,11 +217,12 @@ pub async fn approve_user(
     Ok(Json(AdminUserRow::from(user)))
 }
 
-/// `DELETE /admin/users/{id}` — reject/delete an account (instance admin).
+/// `DELETE /admin/users/{id}` — reject/delete an account.
 ///
-/// Used to reject a pending account, but works on any account. Guards against an
-/// admin removing themselves or another instance admin: those are refused with a
-/// `403` so the instance can never be left without an admin via this endpoint.
+/// Gated by an instance manager ([`AdminUser`]). Refuses deleting one's own
+/// account. Deleting an `Owner` requires the caller to be an `Owner` (Owner-only
+/// destructive op) and is blocked when the target is the **last** Owner, so the
+/// instance can never be left without an Owner via this endpoint.
 pub async fn delete_user(
     AdminUser(admin): AdminUser,
     State(state): State<AppState>,
@@ -238,14 +240,70 @@ pub async fn delete_user(
         .find_by_id(user_id)
         .await?
         .ok_or_else(|| Error::not_found(format!("user not found: {user_id}")))?;
-    if target.is_admin {
-        return Err(ApiError(Error::Forbidden(
-            "cannot delete an instance admin".into(),
-        )));
+
+    if target.instance_role.is_owner() {
+        // Deleting an Owner is an Owner-only, destructive operation.
+        if !admin.instance_role.is_owner() {
+            return Err(ApiError(Error::Forbidden(
+                "only an owner can delete an owner".into(),
+            )));
+        }
+        // Never orphan the instance: keep at least one Owner.
+        if state.users.count_owners().await? <= 1 {
+            return Err(ApiError(Error::Conflict(
+                "cannot delete the last owner".into(),
+            )));
+        }
     }
 
     state.users.delete(user_id).await?;
     Ok(Json(DeletedUser { id: user_id }))
+}
+
+/// `PATCH /admin/users/{id}` body — change a user's instance role.
+#[derive(Debug, Deserialize)]
+pub struct SetUserRole {
+    pub instance_role: InstanceRole,
+}
+
+/// `PATCH /admin/users/{id}` — change a user's instance role.
+///
+/// Gated by an instance manager ([`AdminUser`]). Granting **or** revoking the
+/// `Owner` role is an Owner-only operation. Revoking the last Owner is blocked
+/// (last-Owner protection) so the instance always retains at least one Owner.
+pub async fn set_user_role(
+    AdminUser(admin): AdminUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<SetUserRole>,
+) -> Result<Json<AdminUserRow>, ApiError> {
+    let user_id = parse_user_id(&id)?;
+    let target = state
+        .users
+        .find_by_id(user_id)
+        .await?
+        .ok_or_else(|| Error::not_found(format!("user not found: {user_id}")))?;
+
+    let new_role = body.instance_role;
+    let was_owner = target.instance_role.is_owner();
+    let becomes_owner = new_role.is_owner();
+
+    // Granting or revoking Owner is Owner-only.
+    if (was_owner || becomes_owner) && !admin.instance_role.is_owner() {
+        return Err(ApiError(Error::Forbidden(
+            "only an owner can grant or revoke the owner role".into(),
+        )));
+    }
+
+    // Last-Owner protection: refuse to demote the only remaining Owner.
+    if was_owner && !becomes_owner && state.users.count_owners().await? <= 1 {
+        return Err(ApiError(Error::Conflict(
+            "cannot demote the last owner".into(),
+        )));
+    }
+
+    let updated = state.users.set_instance_role(user_id, new_role).await?;
+    Ok(Json(AdminUserRow::from(updated)))
 }
 
 /// Response for a successful user deletion.
@@ -264,14 +322,14 @@ mod tests {
             id: Id::nil(),
             email: "a@b.c".into(),
             display_name: "A".into(),
-            is_admin: true,
+            instance_role: InstanceRole::Owner,
             notifications_enabled: true,
             status: UserStatus::Active,
             created_at: chrono::Utc::now(),
         };
         let json = serde_json::to_string(&row).unwrap();
         assert!(!json.contains("password"));
-        assert!(json.contains("\"is_admin\":true"));
+        assert!(json.contains("\"instance_role\":\"owner\""));
         assert!(json.contains("\"status\":\"active\""));
     }
 

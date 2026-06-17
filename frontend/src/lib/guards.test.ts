@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { User } from '$lib/api';
-import { requireAdmin, requireUser } from './guards';
+import { requireInstanceManager, requireUser } from './guards';
 
 // `redirect()` from SvelteKit throws a control-flow object to unwind the load
 // function. Mock it as a thrower carrying the status + location so tests can
@@ -26,7 +26,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     id: 'user-1',
     email: 'user@example.com',
     display_name: 'User',
-    is_admin: false,
+    instance_role: 'member',
     notifications_enabled: true,
     auth_provider: 'local',
     ...overrides
@@ -67,16 +67,21 @@ describe('requireUser', () => {
   });
 });
 
-describe('requireAdmin', () => {
-  it('returns the user when they are an admin', () => {
-    const admin = makeUser({ is_admin: true });
-    expect(requireAdmin(admin, '/admin')).toBe(admin);
+describe('requireInstanceManager', () => {
+  it('returns the user when they are an owner', () => {
+    const owner = makeUser({ instance_role: 'owner' });
+    expect(requireInstanceManager(owner, '/admin')).toBe(owner);
   });
 
-  it('redirects (307) to / for a signed-in non-admin', () => {
+  it('returns the user when they are a manager', () => {
+    const manager = makeUser({ instance_role: 'manager' });
+    expect(requireInstanceManager(manager, '/admin')).toBe(manager);
+  });
+
+  it('redirects (307) to / for a signed-in member', () => {
     let thrown: unknown;
     try {
-      requireAdmin(makeUser({ is_admin: false }), '/admin');
+      requireInstanceManager(makeUser({ instance_role: 'member' }), '/admin');
     } catch (e) {
       thrown = e;
     }
@@ -89,7 +94,7 @@ describe('requireAdmin', () => {
   it('delegates to requireUser (redirects to /login) for an anonymous caller', () => {
     let thrown: unknown;
     try {
-      requireAdmin(null, '/admin/users');
+      requireInstanceManager(null, '/admin/users');
     } catch (e) {
       thrown = e;
     }

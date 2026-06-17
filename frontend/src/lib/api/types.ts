@@ -6,12 +6,36 @@
 //                    UUID strings. Treat all as opaque.
 //   * `Timestamp` -> RFC 3339 / ISO-8601 string (chrono DateTime<Utc>)
 //   * `Role`        serializes lowercase: "admin" | "member"
+//   * `InstanceRole` serializes lowercase: "owner" | "manager" | "member"
+//   * `TeamRole`    serializes lowercase: "admin" | "contributor"
 //   * `IssueStatus` serializes lowercase: "unresolved" | "resolved" | "muted"
 
 export type Id = string;
 export type Timestamp = string;
 
+/**
+ * Computed *effective* access level to a project. Not stored: it is the result
+ * of resolving the caller's {@link InstanceRole} against their {@link TeamRole}
+ * in the project's owning team. `admin` ⇒ full project control; `member` ⇒ view
+ * + triage. See {@link TeamRole} for the per-team membership role.
+ */
 export type Role = 'admin' | 'member';
+
+/**
+ * Instance-wide role, stored on the user (replaces the former `is_admin: bool`).
+ * `owner` and `manager` can see and administer every team/project; `member`
+ * only what their team memberships grant. `owner` additionally controls
+ * granting Owner and destructive instance operations.
+ */
+export type InstanceRole = 'owner' | 'manager' | 'member';
+
+/**
+ * Role of a user **within a team**, stored on the `team_members` membership.
+ * `admin` manages team membership/roles, projects and project settings (⇒
+ * effective project `Role.admin`); `contributor` has project access only (⇒
+ * effective project `Role.member`).
+ */
+export type TeamRole = 'admin' | 'contributor';
 export type IssueStatus = 'unresolved' | 'resolved' | 'muted';
 /** Account origin (`UserView.auth_provider`); `oidc` accounts have no local password. */
 export type AuthProvider = 'local' | 'oidc';
@@ -30,7 +54,8 @@ export interface User {
   id: Id;
   email: string;
   display_name: string;
-  is_admin: boolean;
+  /** Instance-wide role (`owner | manager | member`). */
+  instance_role: InstanceRole;
   notifications_enabled: boolean;
   /** Account origin; `oidc` users sign in via SSO and have no local password. */
   auth_provider: AuthProvider;
@@ -51,7 +76,7 @@ export interface AuthConfig {
   password_login_enabled: boolean;
   allow_signup: boolean;
   /**
-   * Whether the instance admin has been provisioned. When `false` the SPA
+   * Whether the instance Owner has been provisioned. When `false` the SPA
    * routes the operator to `/setup`; when `true`, `/setup` bounces to `/login`.
    */
   initialized: boolean;
@@ -125,9 +150,12 @@ export interface UpdateProfileRequest {
 /** `InviteView` returned by `GET /invite/{token}` (the accept page). */
 export interface InvitePreview {
   token: string;
-  /** Project's short public id; the accept flow redirects to `/projects/{id}`. */
-  project_id: Id;
-  role: Role;
+  /** Target team id; the accept flow redirects to `/teams/{id}` after joining. */
+  team_id: Id;
+  /** Team name, for display on the accept page. */
+  team_name: string;
+  /** Team role the invite grants on accept. */
+  role: TeamRole;
   email: string | null;
   requires_registration: boolean;
 }
@@ -201,21 +229,15 @@ export interface SdkSetup {
   snippets: SdkSnippet[];
 }
 
-// --- Project members (src/api/members.rs) ---
-
-export interface ProjectMember {
-  user_id: Id;
-  email: string;
-  display_name: string;
-  role: Role;
-}
-
-// --- Project invites (src/api/invites.rs) ---
+// --- Team invites (src/api/invites.rs) ---
+//
+// Invites are team-scoped: they grant a {@link TeamRole} on the target team
+// (access to a project comes from team membership, not a per-project grant).
 
 export interface Invite {
   token: string;
-  project_id: Id;
-  role: Role;
+  team_id: Id;
+  role: TeamRole;
   email: string | null;
   link: string;
   created_at: Timestamp;
@@ -225,7 +247,8 @@ export interface Invite {
 }
 
 export interface CreateInviteRequest {
-  role?: Role;
+  /** Team role to grant. Defaults to `contributor` when omitted. */
+  role?: TeamRole;
   email?: string;
 }
 
@@ -329,6 +352,8 @@ export interface TeamMember {
   id: Id;
   email: string;
   display_name: string;
+  /** Role of this user within the team (`admin | contributor`). */
+  role: TeamRole;
 }
 
 export interface TeamProject {
@@ -356,6 +381,13 @@ export interface UpdateTeamRequest {
 
 export interface AddTeamMemberRequest {
   user_id: Id;
+  /** Team role to grant. Defaults to `contributor` when omitted. */
+  role?: TeamRole;
+}
+
+/** `PATCH /teams/{id}/members/{user_id}` body — change a member's team role. */
+export interface SetTeamMemberRoleRequest {
+  role: TeamRole;
 }
 
 // --- Service settings & admin (src/api/settings.rs) ---
@@ -393,11 +425,17 @@ export interface AdminUser {
   id: Id;
   email: string;
   display_name: string;
-  is_admin: boolean;
+  /** Instance-wide role (`owner | manager | member`). */
+  instance_role: InstanceRole;
   notifications_enabled: boolean;
   /** Activation status: `active` or `pending` (awaiting admin approval). */
   status: UserStatus;
   created_at: Timestamp;
+}
+
+/** `PATCH /admin/users/{id}` body — change a user's instance role. */
+export interface SetUserRoleRequest {
+  instance_role: InstanceRole;
 }
 
 /** `DELETE /admin/users/{id}` response: the id of the removed account. */

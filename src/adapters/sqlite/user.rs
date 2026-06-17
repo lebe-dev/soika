@@ -3,7 +3,7 @@
 use super::{
     Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
-use crate::domain::{AuthProvider, Id, Timestamp, User, UserStatus};
+use crate::domain::{AuthProvider, Id, InstanceRole, Timestamp, User, UserStatus};
 use crate::error::{Error, Result};
 use crate::ports::{NewUser, UserRepository, UserUpdate};
 use async_trait::async_trait;
@@ -27,7 +27,7 @@ struct UserRow {
     email: String,
     display_name: String,
     password_hash: String,
-    is_admin: i64,
+    instance_role: String,
     notifications_enabled: i64,
     auth_provider: String,
     status: String,
@@ -42,7 +42,7 @@ impl UserRow {
             email: self.email,
             display_name: self.display_name,
             password_hash: self.password_hash,
-            is_admin: bool_from_db(self.is_admin),
+            instance_role: InstanceRole::from_db(&self.instance_role),
             notifications_enabled: bool_from_db(self.notifications_enabled),
             auth_provider: AuthProvider::from_db(&self.auth_provider),
             status: UserStatus::from_db(&self.status),
@@ -52,7 +52,7 @@ impl UserRow {
     }
 }
 
-const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, is_admin, \
+const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, instance_role, \
     notifications_enabled, auth_provider, status, created_at, updated_at FROM users";
 
 #[async_trait]
@@ -62,7 +62,7 @@ impl UserRepository for SqliteUserRepository {
         let now: Timestamp = chrono::Utc::now();
 
         sqlx::query(
-            "INSERT INTO users (id, email, display_name, password_hash, is_admin, \
+            "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
              notifications_enabled, auth_provider, status, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
         )
@@ -70,7 +70,7 @@ impl UserRepository for SqliteUserRepository {
         .bind(&new.email)
         .bind(&new.display_name)
         .bind(&new.password_hash)
-        .bind(bool_to_db(new.is_admin))
+        .bind(new.instance_role.as_str())
         .bind(new.auth_provider.as_str())
         .bind(new.status.as_str())
         .bind(ts_to_db(now))
@@ -84,7 +84,7 @@ impl UserRepository for SqliteUserRepository {
             email: new.email,
             display_name: new.display_name,
             password_hash: new.password_hash,
-            is_admin: new.is_admin,
+            instance_role: new.instance_role,
             notifications_enabled: true,
             auth_provider: new.auth_provider,
             status: new.status,
@@ -153,6 +153,23 @@ impl UserRepository for SqliteUserRepository {
             .ok_or_else(|| Error::not_found(format!("user not found: {id}")))
     }
 
+    async fn set_instance_role(&self, id: Id, role: InstanceRole) -> Result<User> {
+        let now: Timestamp = chrono::Utc::now();
+        let result = sqlx::query("UPDATE users SET instance_role = ?, updated_at = ? WHERE id = ?")
+            .bind(role.as_str())
+            .bind(ts_to_db(now))
+            .bind(id_to_db(id))
+            .execute(&self.db)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(Error::not_found(format!("user not found: {id}")));
+        }
+
+        self.find_by_id(id)
+            .await?
+            .ok_or_else(|| Error::not_found(format!("user not found: {id}")))
+    }
+
     async fn list(&self) -> Result<Vec<User>> {
         let rows = sqlx::query_as::<_, UserRow>(&format!("{SELECT_USER} ORDER BY created_at"))
             .fetch_all(&self.db)
@@ -175,10 +192,11 @@ impl UserRepository for SqliteUserRepository {
         Ok(count)
     }
 
-    async fn count_admins(&self) -> Result<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_admin = 1")
-            .fetch_one(&self.db)
-            .await?;
+    async fn count_owners(&self) -> Result<i64> {
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE instance_role = 'owner'")
+                .fetch_one(&self.db)
+                .await?;
         Ok(count)
     }
 }
@@ -193,7 +211,7 @@ mod tests {
             email: email.to_string(),
             display_name: "Test User".to_string(),
             password_hash: "$argon2id$v=19$m=4096,t=3,p=1$abc$def".to_string(),
-            is_admin: false,
+            instance_role: InstanceRole::Member,
             auth_provider: AuthProvider::Local,
             status: UserStatus::Active,
         }
@@ -205,7 +223,7 @@ mod tests {
             display_name: "OIDC User".to_string(),
             // OIDC accounts carry an empty-string password sentinel.
             password_hash: String::new(),
-            is_admin: false,
+            instance_role: InstanceRole::Member,
             auth_provider: AuthProvider::Oidc,
             status: UserStatus::Active,
         }
@@ -217,7 +235,7 @@ mod tests {
         let created = repo.create(sample("a@example.com")).await.unwrap();
 
         assert_eq!(created.email, "a@example.com");
-        assert!(!created.is_admin);
+        assert_eq!(created.instance_role, InstanceRole::Member);
         assert!(created.notifications_enabled);
         assert_eq!(created.auth_provider, AuthProvider::Local);
 
@@ -343,18 +361,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn count_admins_counts_only_admins() {
+    async fn count_owners_counts_only_owners() {
         let repo = SqliteUserRepository::new(test_pool().await);
-        assert_eq!(repo.count_admins().await.unwrap(), 0);
+        assert_eq!(repo.count_owners().await.unwrap(), 0);
 
-        // A non-admin account does not count toward initialization.
+        // A non-owner account does not count toward initialization.
         repo.create(sample("member@example.com")).await.unwrap();
-        assert_eq!(repo.count_admins().await.unwrap(), 0);
+        assert_eq!(repo.count_owners().await.unwrap(), 0);
 
-        let mut admin = sample("admin@example.com");
-        admin.is_admin = true;
-        repo.create(admin).await.unwrap();
-        assert_eq!(repo.count_admins().await.unwrap(), 1);
+        // A Manager is not an Owner either.
+        let mut manager = sample("manager@example.com");
+        manager.instance_role = InstanceRole::Manager;
+        repo.create(manager).await.unwrap();
+        assert_eq!(repo.count_owners().await.unwrap(), 0);
+
+        let mut owner = sample("owner@example.com");
+        owner.instance_role = InstanceRole::Owner;
+        repo.create(owner).await.unwrap();
+        assert_eq!(repo.count_owners().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn set_instance_role_updates_and_roundtrips() {
+        let repo = SqliteUserRepository::new(test_pool().await);
+        let created = repo.create(sample("role@example.com")).await.unwrap();
+        assert_eq!(created.instance_role, InstanceRole::Member);
+
+        let promoted = repo
+            .set_instance_role(created.id, InstanceRole::Owner)
+            .await
+            .unwrap();
+        assert_eq!(promoted.instance_role, InstanceRole::Owner);
+
+        let reloaded = repo.find_by_id(created.id).await.unwrap().unwrap();
+        assert_eq!(reloaded.instance_role, InstanceRole::Owner);
+
+        let err = repo
+            .set_instance_role(Id::new_v4(), InstanceRole::Manager)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::NotFound(_)), "got {err:?}");
     }
 
     #[tokio::test]

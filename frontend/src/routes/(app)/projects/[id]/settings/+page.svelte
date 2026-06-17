@@ -1,56 +1,36 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
-  import {
-    projects,
-    errorMessage,
-    type Invite,
-    type Project,
-    type ProjectMember,
-    type Role,
-    type TagMuteRule
-  } from '$lib/api';
-  import { authStore } from '$lib/stores/auth.svelte';
+  import { projects, errorMessage, type TagMuteRule } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
-  import * as Table from '$lib/components/ui/table';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Badge } from '$lib/components/ui/badge';
   import { toast } from '$lib/components/ui/sonner';
-  import CopyField from '$lib/components/copy-field.svelte';
   import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
-  import { formatRelative } from '$lib/format';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import Trash2 from '@lucide/svelte/icons/trash-2';
-  import UserPlus from '@lucide/svelte/icons/user-plus';
   import Plus from '@lucide/svelte/icons/plus';
 
-  // Project Settings: retention, project mute, members list, and
-  // invite generation with a copyable link. Admin actions are gated; non-admins
-  // see read-only sections (the API also enforces this). Project, members and
-  // invites all come from the parent layout load (fetched once on project open);
-  // mutations update local state and `invalidateAll()` re-runs that load.
+  // Project Settings: retention, project mute, webhook, and tag-mute rules.
+  // Admin actions are gated by the caller's *effective* project role (resolved
+  // from team membership in the parent layout load); non-admins see read-only
+  // sections (the API also enforces this). Project membership and invites are
+  // managed at the team level — see the team detail page. The project comes from
+  // the parent layout load (fetched once on project open); mutations update
+  // local state and `invalidateAll()` re-runs that load.
   let { data }: { data: PageData } = $props();
 
   // The project comes from the parent layout load; mutations call
   // `invalidateAll()`, which re-runs that load and flows back through here.
   const project = $derived(data.project);
 
-  // Members and invites are seeded once from the load and then edited locally on
-  // add/remove for an immediate response. They are the authoritative view after a
-  // mutation, so we seed (not mirror): `untrack` makes the one-time read explicit
-  // and avoids a re-syncing effect that would clobber the optimistic local edits.
-  let members = $state<ProjectMember[]>(untrack(() => data.members));
-
-  let invites = $state<Invite[]>(untrack(() => data.invites));
-
-  // The current user is a project admin if they are the instance admin or hold
-  // the admin role here. We infer the latter from the members list.
-  const isAdmin = $derived(
-    authStore.isAdmin || members.some((m) => m.user_id === authStore.user?.id && m.role === 'admin')
-  );
+  // The caller administers this project when their effective role is `admin`
+  // (instance Owner/Manager, or a Team Admin of the owning team). Resolved in
+  // the layout load; the API enforces the real check on every write.
+  const isAdmin = $derived(data.effectiveRole === 'admin');
 
   // --- General: name + retention -----------------------------------------
   // Editable fields are seeded once from the project and re-seeded by
@@ -163,58 +143,6 @@
       savingWebhook = false;
     }
   }
-
-  // --- Members -------------------------------------------------------------
-  async function removeMember(member: ProjectMember) {
-    if (!confirm(`Remove ${member.display_name} from this project?`)) return;
-    try {
-      await projects.removeMember(project.id, member.user_id);
-      members = members.filter((m) => m.user_id !== member.user_id);
-      toast.success(`Removed ${member.display_name}`);
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to remove member'));
-      reportUnexpected(err);
-    }
-  }
-
-  // --- Invites -------------------------------------------------------------
-  let inviteEmail = $state('');
-  let inviteRole = $state<Role>('member');
-  let creatingInvite = $state(false);
-
-  async function createInvite(event: SubmitEvent) {
-    event.preventDefault();
-    creatingInvite = true;
-    try {
-      const email = inviteEmail.trim();
-      const invite = await projects.createInvite(project.id, {
-        role: inviteRole,
-        email: email.length > 0 ? email : undefined
-      });
-      invites = [invite, ...invites];
-      inviteEmail = '';
-      toast.success(invite.email_sent ? 'Invite created and emailed' : 'Invite link created');
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to create invite'));
-      reportUnexpected(err);
-    } finally {
-      creatingInvite = false;
-    }
-  }
-
-  async function revokeInvite(invite: Invite) {
-    try {
-      await projects.revokeInvite(project.id, invite.token);
-      invites = invites.filter((i) => i.token !== invite.token);
-      toast.success('Invite revoked');
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to revoke invite'));
-      reportUnexpected(err);
-    }
-  }
-
-  // Pending = not yet accepted. Accepted invites are kept out of the list.
-  const pendingInvites = $derived(invites.filter((i) => !i.accepted_at));
 
   // --- Danger zone ---------------------------------------------------------
   let deleting = $state(false);
@@ -392,135 +320,22 @@
     </Card.Content>
   </Card.Root>
 
-  <!-- Members -->
+  <!-- Members & invites are managed at the team level -->
   <Card.Root>
     <Card.Header>
       <Card.Title>Members</Card.Title>
-      <Card.Description>People with access to this project.</Card.Description>
+      <Card.Description>
+        Access to this project comes from membership in its owning team. Add members, set team
+        roles, and create invites from the team page.
+      </Card.Description>
     </Card.Header>
     <Card.Content>
-      {#if members.length === 0}
-        <p class="text-muted-foreground text-sm">No members to display.</p>
-      {:else}
-        <Table.Root>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>Member</Table.Head>
-              <Table.Head>Role</Table.Head>
-              {#if isAdmin}
-                <Table.Head class="w-10"></Table.Head>
-              {/if}
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each members as member (member.user_id)}
-              <Table.Row>
-                <Table.Cell>
-                  <div class="font-medium">{member.display_name}</div>
-                  <div class="text-muted-foreground text-xs">{member.email}</div>
-                </Table.Cell>
-                <Table.Cell>
-                  <Badge variant="outline" class={member.role === 'admin' ? 'text-primary' : ''}>
-                    {member.role}
-                  </Badge>
-                </Table.Cell>
-                {#if isAdmin}
-                  <Table.Cell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="size-8"
-                      onclick={() => removeMember(member)}
-                      aria-label={`Remove ${member.display_name}`}
-                    >
-                      <Trash2 class="text-destructive size-4" />
-                    </Button>
-                  </Table.Cell>
-                {/if}
-              </Table.Row>
-            {/each}
-          </Table.Body>
-        </Table.Root>
-      {/if}
+      <Button variant="outline" href={`/teams/${project.team_id}`}>Manage team</Button>
     </Card.Content>
   </Card.Root>
 
-  <!-- Invites (admin only) -->
+  <!-- Danger zone (admin only) -->
   {#if isAdmin}
-    <Card.Root>
-      <Card.Header>
-        <Card.Title>Invites</Card.Title>
-        <Card.Description>
-          Generate an invite link to add someone to this project. The link works even without email;
-          if SMTP is configured and you provide an address, it is also emailed.
-        </Card.Description>
-      </Card.Header>
-      <Card.Content class="space-y-4">
-        <form class="flex flex-wrap items-end gap-3" onsubmit={createInvite}>
-          <div class="min-w-48 flex-1 space-y-2">
-            <label for="invite-email" class="text-sm font-medium">Email (optional)</label>
-            <Input
-              id="invite-email"
-              type="email"
-              placeholder="teammate@example.com"
-              bind:value={inviteEmail}
-            />
-          </div>
-          <div class="space-y-2">
-            <label for="invite-role" class="text-sm font-medium">Role</label>
-            <select
-              id="invite-role"
-              bind:value={inviteRole}
-              class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-3"
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <Button type="submit" disabled={creatingInvite}>
-            <UserPlus class="size-4" />
-            {creatingInvite ? 'Creating…' : 'Create invite'}
-          </Button>
-        </form>
-
-        {#if pendingInvites.length > 0}
-          <div class="space-y-3">
-            {#each pendingInvites as invite (invite.token)}
-              <div class="space-y-2 rounded-md border p-3">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 text-sm">
-                    <Badge variant="outline" class={invite.role === 'admin' ? 'text-primary' : ''}>
-                      {invite.role}
-                    </Badge>
-                    {#if invite.email}
-                      <span>{invite.email}</span>
-                    {:else}
-                      <span class="text-muted-foreground">Anyone with the link</span>
-                    {/if}
-                    <span class="text-muted-foreground text-xs"
-                      >· expires {formatRelative(invite.expires_at)}</span
-                    >
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="size-8"
-                    onclick={() => revokeInvite(invite)}
-                    aria-label="Revoke invite"
-                  >
-                    <Trash2 class="text-destructive size-4" />
-                  </Button>
-                </div>
-                <CopyField value={invite.link} label="invite link" />
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="text-muted-foreground text-sm">No pending invites.</p>
-        {/if}
-      </Card.Content>
-    </Card.Root>
-
     <!-- Danger zone -->
     <Card.Root class="border-destructive/40">
       <Card.Header>

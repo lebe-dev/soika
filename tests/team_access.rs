@@ -18,7 +18,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use soika::auth::hash_password;
 use soika::config::LockoutConfig;
-use soika::domain::{AuthProvider, Id, UserStatus};
+use soika::domain::{AuthProvider, Id, InstanceRole, TeamRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use std::time::Duration;
@@ -64,7 +64,11 @@ impl Fixture {
         let project_a = self.create_project(team_a, "alpha", "dsn-alpha").await;
         let project_b = self.create_project(team_b, "beta", "dsn-beta").await;
 
-        self.state.teams.add_member(team_a, member_a).await.unwrap();
+        self.state
+            .teams
+            .add_member(team_a, member_a, TeamRole::Contributor)
+            .await
+            .unwrap();
 
         Seeded {
             member_a,
@@ -76,13 +80,18 @@ impl Fixture {
     }
 
     async fn create_user(&self, email: &str, is_admin: bool) -> Id {
+        let instance_role = if is_admin {
+            InstanceRole::Owner
+        } else {
+            InstanceRole::Member
+        };
         self.state
             .users
             .create(NewUser {
                 email: email.into(),
                 display_name: email.into(),
                 password_hash: hash_password(PASSWORD).unwrap(),
-                is_admin,
+                instance_role,
                 auth_provider: AuthProvider::Local,
                 status: UserStatus::Active,
             })

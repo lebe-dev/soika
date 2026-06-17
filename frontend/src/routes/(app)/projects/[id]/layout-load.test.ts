@@ -1,7 +1,9 @@
-// Tests for the project-area layout load: how it tolerates a forbidden
-// members/invites listing (non-admin members) while still loading the project,
-// how it maps 404/403 on the project itself to SvelteKit errors, and how it
-// rethrows non-ApiError failures untouched.
+// Tests for the project-area layout load: it loads the project and resolves the
+// caller's *effective* role (instance managers administer every project; others
+// derive it from their role in the owning team). It maps 404/403 on the project
+// to SvelteKit errors and rethrows non-ApiError failures untouched. A failed
+// owning-team fetch falls back to the `member` role (the API still enforces the
+// real check on writes).
 //
 // `@sveltejs/kit`'s `error()` throws (it never returns), so we assert on the
 // thrown value's `status`. `$lib/api` is mocked, but we keep the REAL `ApiError`
@@ -14,11 +16,8 @@ vi.mock('$lib/api', async () => {
   const actual = await vi.importActual<typeof import('$lib/api')>('$lib/api');
   return {
     ...actual,
-    projects: {
-      get: vi.fn(),
-      members: vi.fn(),
-      invites: vi.fn()
-    }
+    projects: { get: vi.fn() },
+    teams: { get: vi.fn() }
   };
 });
 
@@ -34,22 +33,23 @@ vi.mock('@sveltejs/kit', async () => {
   };
 });
 
-import { projects } from '$lib/api';
+import { projects, teams } from '$lib/api';
 import { load } from './+layout';
 
 const get = vi.mocked(projects.get);
-const members = vi.mocked(projects.members);
-const invites = vi.mocked(projects.invites);
+const teamGet = vi.mocked(teams.get);
 
 const project = {
   id: 'p1',
   name: 'Proj',
+  team_id: 't1',
   issues: [{ id: 'i1' }]
 } as unknown as Awaited<ReturnType<typeof projects.get>>;
 
-function callLoad() {
+function callLoad(user: unknown) {
   return (load as (e: unknown) => Promise<unknown>)({
     params: { id: 'p1' },
+    parent: async () => ({ user }),
     fetch: vi.fn()
   });
 }
@@ -59,74 +59,81 @@ beforeEach(() => {
 });
 
 describe('(app)/projects/[id] +layout load', () => {
-  it('returns the project plus its embedded issues, members and invites', async () => {
+  it('returns the project, its embedded issues, and admin role for a manager (no team fetch)', async () => {
     get.mockResolvedValue(project);
-    members.mockResolvedValue([{ user_id: 'u1' }] as never);
-    invites.mockResolvedValue([{ token: 't1' }] as never);
 
-    const data = await callLoad();
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as {
+      project: unknown;
+      issues: unknown[];
+      effectiveRole: string;
+    };
 
-    expect(data).toEqual({
-      project,
-      issues: project.issues,
-      members: [{ user_id: 'u1' }],
-      invites: [{ token: 't1' }]
-    });
+    expect(data.project).toBe(project);
+    expect(data.issues).toBe(project.issues);
+    expect(data.effectiveRole).toBe('admin');
+    expect(teamGet).not.toHaveBeenCalled();
+  });
+
+  it('resolves admin for a Team Admin of the owning team', async () => {
+    get.mockResolvedValue(project);
+    teamGet.mockResolvedValue({
+      id: 't1',
+      members: [{ id: 'u1', role: 'admin' }]
+    } as never);
+
+    const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as {
+      effectiveRole: string;
+    };
+
+    expect(teamGet).toHaveBeenCalledWith('t1', expect.anything());
+    expect(data.effectiveRole).toBe('admin');
+  });
+
+  it('resolves member for a Contributor of the owning team', async () => {
+    get.mockResolvedValue(project);
+    teamGet.mockResolvedValue({
+      id: 't1',
+      members: [{ id: 'u1', role: 'contributor' }]
+    } as never);
+
+    const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as {
+      effectiveRole: string;
+    };
+
+    expect(data.effectiveRole).toBe('member');
+  });
+
+  it('falls back to member when the owning-team fetch fails', async () => {
+    get.mockResolvedValue(project);
+    teamGet.mockRejectedValue(new ApiError(403, 'forbidden', null));
+
+    const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as {
+      effectiveRole: string;
+    };
+
+    expect(data.effectiveRole).toBe('member');
   });
 
   it('throws error(404) when projects.get reports a 404', async () => {
     get.mockRejectedValue(new ApiError(404, 'Project not found', null));
-    members.mockResolvedValue([] as never);
-    invites.mockResolvedValue([] as never);
 
-    await expect(callLoad()).rejects.toMatchObject({ status: 404 });
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toMatchObject({
+      status: 404
+    });
   });
 
   it('throws error(403) when projects.get reports a 403', async () => {
     get.mockRejectedValue(new ApiError(403, 'No access', null));
-    members.mockResolvedValue([] as never);
-    invites.mockResolvedValue([] as never);
 
-    await expect(callLoad()).rejects.toMatchObject({ status: 403 });
-  });
-
-  it('yields empty members/invites on a 403 while the project still loads', async () => {
-    get.mockResolvedValue(project);
-    members.mockRejectedValue(new ApiError(403, 'forbidden', null));
-    invites.mockRejectedValue(new ApiError(403, 'forbidden', null));
-
-    const data = (await callLoad()) as { project: unknown; members: unknown[]; invites: unknown[] };
-
-    expect(data.project).toBe(project);
-    expect(data.members).toEqual([]);
-    expect(data.invites).toEqual([]);
-  });
-
-  it('also tolerates a 401 on members/invites with empty lists', async () => {
-    get.mockResolvedValue(project);
-    members.mockRejectedValue(new ApiError(401, 'unauthorized', null));
-    invites.mockRejectedValue(new ApiError(401, 'unauthorized', null));
-
-    const data = (await callLoad()) as { members: unknown[]; invites: unknown[] };
-
-    expect(data.members).toEqual([]);
-    expect(data.invites).toEqual([]);
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toMatchObject({
+      status: 403
+    });
   });
 
   it('rethrows a non-ApiError failure from projects.get untouched', async () => {
     const boom = new TypeError('network down');
     get.mockRejectedValue(boom);
-    members.mockResolvedValue([] as never);
-    invites.mockResolvedValue([] as never);
 
-    await expect(callLoad()).rejects.toBe(boom);
-  });
-
-  it('rethrows a non-403/401 ApiError from members (e.g. 500) instead of swallowing it', async () => {
-    get.mockResolvedValue(project);
-    members.mockRejectedValue(new ApiError(500, 'boom', null));
-    invites.mockResolvedValue([] as never);
-
-    await expect(callLoad()).rejects.toMatchObject({ status: 500 });
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toBe(boom);
   });
 });

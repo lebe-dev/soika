@@ -1,11 +1,14 @@
 // Team detail (Teams): members and assigned projects. Viewable by instance
-// admins and by members of the team; rename/delete and member management are
-// instance-admin only (the backend enforces AdminUser on PATCH/DELETE/members
-// routes, and GET /teams/{id} returns 403 to non-members).
+// managers (Owner | Manager) and by members of the team; rename/delete is
+// instance-manager only, while managing membership/roles/invites is allowed for
+// an instance manager OR a Team Admin of this team. The backend enforces all of
+// this (AdminUser on rename/delete; require_team_manager on member/invite ops;
+// GET /teams/{id} returns 403 to non-members).
 //
-// For admins we also load the full user list so the "add member" picker can
-// resolve a user id. That endpoint (GET /admin/users) is admin-only, so we only
-// call it when the current user is an admin.
+// The "add member" picker needs the full user list to resolve a user id. That
+// endpoint (GET /admin/users) is instance-manager only, so we only call it for
+// a manager; a Team Admin who is only an instance Member can manage existing
+// members/roles but cannot add arbitrary users (the picker is hidden).
 
 import { error } from '@sveltejs/kit';
 import { admin, teams, ApiError, type AdminUser } from '$lib/api';
@@ -20,7 +23,7 @@ export const load: PageLoad = async ({ params, parent, url, fetch }) => {
     const team = await teams.get(params.id, { fetch });
 
     let users: AdminUser[] = [];
-    if (authed.is_admin) {
+    if (authed.instance_role === 'owner' || authed.instance_role === 'manager') {
       users = await admin.users({ fetch });
     }
 

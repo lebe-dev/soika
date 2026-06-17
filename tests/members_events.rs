@@ -1,14 +1,14 @@
-//! Integration tests for project-member removal and cross-project event access.
+//! Integration tests for team-member removal and cross-project event access.
 //!
 //! Drives the real application router in-process via [`tower::ServiceExt::oneshot`]
 //! (no network, no containers). A fresh `:memory:` SQLite DB is seeded with two
 //! teams — each owning one project — plus the users/memberships/sessions needed
 //! to exercise two authorization rules end-to-end:
 //!
-//! - `members::remove` (`src/api/members.rs`) — the last-admin guard: removing
-//!   the only admin is `409`; with two admins the first removal is `204` and the
-//!   second (now the last admin) is `409`; removing a user who is not a member
-//!   is `404`.
+//! - `teams::remove_member` (`src/api/teams.rs`) — the last-admin guard (Variant
+//!   A: membership is team-scoped): removing the only team Admin is `409`; with
+//!   two admins the first removal is `204` and the second (now the last admin)
+//!   is `409`; removing a user who is not a member is a `204` no-op.
 //! - `events::get` (`src/api/events.rs`) — access is scoped to the event's
 //!   project: a member of project A requesting an event that lives in project B
 //!   (a different team) gets `403`; a well-formed but unknown event UUID is
@@ -20,7 +20,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use soika::auth::hash_password;
 use soika::config::LockoutConfig;
-use soika::domain::{AuthProvider, Id, Role, UserStatus};
+use soika::domain::{AuthProvider, Id, InstanceRole, TeamRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use std::time::Duration;
@@ -50,13 +50,18 @@ impl Fixture {
     }
 
     async fn create_user(&self, email: &str, is_admin: bool) -> Id {
+        let instance_role = if is_admin {
+            InstanceRole::Owner
+        } else {
+            InstanceRole::Member
+        };
         self.state
             .users
             .create(NewUser {
                 email: email.into(),
                 display_name: email.into(),
                 password_hash: hash_password(PASSWORD).unwrap(),
-                is_admin,
+                instance_role,
                 auth_provider: AuthProvider::Local,
                 status: UserStatus::Active,
             })
@@ -178,41 +183,37 @@ impl Fixture {
     }
 }
 
-// --- members::remove last-admin guard --------------------------------------
+// --- teams::remove_member last-admin guard ----------------------------------
 
 #[tokio::test]
 async fn removing_the_only_admin_is_conflict() {
     let app = Fixture::spawn().await;
     let team = app.state.teams.create("team-a".into()).await.unwrap().id;
-    let (project_id, project_short) = app.create_project(team, "alpha", "dsn-alpha").await;
+    let _ = app.create_project(team, "alpha", "dsn-alpha").await;
 
-    // A single project admin who is also the caller.
+    // A single team Admin who is also the caller.
     let admin = app.create_user("admin@example.com", false).await;
     app.state
-        .memberships
-        .upsert(project_id, admin, Role::Admin)
+        .teams
+        .add_member(team, admin, TeamRole::Admin)
         .await
         .unwrap();
     let cookie = app.login("admin@example.com").await;
 
-    // Removing the sole admin would orphan the project → 409.
+    // Removing the sole admin would orphan the team → 409.
     let (status, body) = app
-        .delete(
-            &format!("/api/projects/{project_short}/members/{admin}"),
-            &cookie,
-        )
+        .delete(&format!("/api/teams/{team}/members/{admin}"), &cookie)
         .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"], "cannot remove the last admin of the project");
+    assert_eq!(
+        body["error"],
+        "conflict: cannot remove the last admin of the team"
+    );
 
     // The membership is untouched.
-    assert!(
-        app.state
-            .memberships
-            .find(project_id, admin)
-            .await
-            .unwrap()
-            .is_some(),
+    assert_eq!(
+        app.state.teams.member_role(team, admin).await.unwrap(),
+        Some(TeamRole::Admin),
         "the last admin must still be a member"
     );
 }
@@ -221,78 +222,73 @@ async fn removing_the_only_admin_is_conflict() {
 async fn second_admin_removable_then_last_admin_is_conflict() {
     let app = Fixture::spawn().await;
     let team = app.state.teams.create("team-a".into()).await.unwrap().id;
-    let (project_id, project_short) = app.create_project(team, "alpha", "dsn-alpha").await;
+    let _ = app.create_project(team, "alpha", "dsn-alpha").await;
 
-    // Two project admins; the first is the caller.
+    // Two team admins; the first is the caller.
     let admin_a = app.create_user("admin-a@example.com", false).await;
     let admin_b = app.create_user("admin-b@example.com", false).await;
     app.state
-        .memberships
-        .upsert(project_id, admin_a, Role::Admin)
+        .teams
+        .add_member(team, admin_a, TeamRole::Admin)
         .await
         .unwrap();
     app.state
-        .memberships
-        .upsert(project_id, admin_b, Role::Admin)
+        .teams
+        .add_member(team, admin_b, TeamRole::Admin)
         .await
         .unwrap();
     let cookie = app.login("admin-a@example.com").await;
 
     // Two admins exist, so removing the second one succeeds → 204.
     let (status, _) = app
-        .delete(
-            &format!("/api/projects/{project_short}/members/{admin_b}"),
-            &cookie,
-        )
+        .delete(&format!("/api/teams/{team}/members/{admin_b}"), &cookie)
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    assert!(
-        app.state
-            .memberships
-            .find(project_id, admin_b)
-            .await
-            .unwrap()
-            .is_none(),
+    assert_eq!(
+        app.state.teams.member_role(team, admin_b).await.unwrap(),
+        None,
         "the removed admin is gone"
     );
 
     // admin_a is now the last admin; removing them is refused → 409.
     let (status, body) = app
-        .delete(
-            &format!("/api/projects/{project_short}/members/{admin_a}"),
-            &cookie,
-        )
+        .delete(&format!("/api/teams/{team}/members/{admin_a}"), &cookie)
         .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"], "cannot remove the last admin of the project");
+    assert_eq!(
+        body["error"],
+        "conflict: cannot remove the last admin of the team"
+    );
 }
 
 #[tokio::test]
-async fn removing_a_non_member_is_not_found() {
+async fn removing_a_non_member_is_a_noop() {
     let app = Fixture::spawn().await;
     let team = app.state.teams.create("team-a".into()).await.unwrap().id;
-    let (project_id, project_short) = app.create_project(team, "alpha", "dsn-alpha").await;
+    let _ = app.create_project(team, "alpha", "dsn-alpha").await;
 
-    // An admin caller (so the admin guard passes and we reach the member lookup).
+    // An admin caller (so the team-manager guard passes).
     let admin = app.create_user("admin@example.com", false).await;
     app.state
-        .memberships
-        .upsert(project_id, admin, Role::Admin)
+        .teams
+        .add_member(team, admin, TeamRole::Admin)
         .await
         .unwrap();
     let cookie = app.login("admin@example.com").await;
 
-    // A real, active user who simply isn't a member of this project.
+    // A real, active user who simply isn't a member of this team. Removing a
+    // non-member is an idempotent no-op → 204, and the admin is undisturbed.
     let stranger = app.create_user("stranger@example.com", false).await;
 
-    let (status, body) = app
-        .delete(
-            &format!("/api/projects/{project_short}/members/{stranger}"),
-            &cookie,
-        )
+    let (status, _) = app
+        .delete(&format!("/api/teams/{team}/members/{stranger}"), &cookie)
         .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["error"], "member not found in project");
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        app.state.teams.member_role(team, admin).await.unwrap(),
+        Some(TeamRole::Admin),
+        "the team admin is untouched"
+    );
 }
 
 // --- events::get cross-project authorization -------------------------------
@@ -309,7 +305,11 @@ async fn member_of_project_a_cannot_read_event_in_project_b() {
 
     // A user who belongs only to team-a (no access to team-b's project).
     let member_a = app.create_user("a@example.com", false).await;
-    app.state.teams.add_member(team_a, member_a).await.unwrap();
+    app.state
+        .teams
+        .add_member(team_a, member_a, TeamRole::Contributor)
+        .await
+        .unwrap();
     let cookie = app.login("a@example.com").await;
 
     // An event that lives in project B.
@@ -337,7 +337,11 @@ async fn unknown_event_uuid_is_not_found() {
     let _ = app.create_project(team, "alpha", "dsn-alpha").await;
 
     let member = app.create_user("a@example.com", false).await;
-    app.state.teams.add_member(team, member).await.unwrap();
+    app.state
+        .teams
+        .add_member(team, member, TeamRole::Contributor)
+        .await
+        .unwrap();
     let cookie = app.login("a@example.com").await;
 
     // A well-formed UUID that matches no stored event.
@@ -354,7 +358,11 @@ async fn non_uuid_event_id_is_bad_request() {
     let _ = app.create_project(team, "alpha", "dsn-alpha").await;
 
     let member = app.create_user("a@example.com", false).await;
-    app.state.teams.add_member(team, member).await.unwrap();
+    app.state
+        .teams
+        .add_member(team, member, TeamRole::Contributor)
+        .await
+        .unwrap();
     let cookie = app.login("a@example.com").await;
 
     // A path id that is not a UUID is rejected before any lookup → 400.

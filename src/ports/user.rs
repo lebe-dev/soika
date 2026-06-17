@@ -1,6 +1,6 @@
 //! User repository port.
 
-use crate::domain::{AuthProvider, Id, User, UserStatus};
+use crate::domain::{AuthProvider, Id, InstanceRole, User, UserStatus};
 use crate::error::Result;
 use async_trait::async_trait;
 
@@ -11,7 +11,8 @@ pub struct NewUser {
     pub display_name: String,
     /// Pre-hashed argon2 PHC string. Empty-string sentinel for OIDC accounts.
     pub password_hash: String,
-    pub is_admin: bool,
+    /// Instance-wide role (`Owner | Manager | Member`).
+    pub instance_role: InstanceRole,
     /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
     /// Activation status. Local flows pass `Active`; the OIDC admin-approval
@@ -36,11 +37,14 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: Id) -> Result<Option<User>>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>>;
     async fn update(&self, id: Id, update: UserUpdate) -> Result<User>;
+    /// Set the instance-wide role of a user.
+    async fn set_instance_role(&self, id: Id, role: InstanceRole) -> Result<User>;
     async fn list(&self) -> Result<Vec<User>>;
     async fn delete(&self, id: Id) -> Result<()>;
     /// Count of all users (used to gate first-run / bootstrap).
     async fn count(&self) -> Result<i64>;
-    /// Count of instance admins (`is_admin = true`). Drives first-run detection:
-    /// the service is considered initialized once at least one admin exists.
-    async fn count_admins(&self) -> Result<i64>;
+    /// Count of instance owners (`instance_role = 'owner'`). Drives first-run
+    /// detection (the service is considered initialized once at least one Owner
+    /// exists) and the last-Owner protection.
+    async fn count_owners(&self) -> Result<i64>;
 }

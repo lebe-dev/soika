@@ -164,7 +164,7 @@ async fn connect_and_migrate(database_url: &str) -> Result<sqlx::SqlitePool> {
         .context("parsing DATABASE_URL")?
         .create_if_missing(true)
         // Enforce FK constraints per connection so ON DELETE CASCADE fires for
-        // sessions / memberships / team_members / invites (SQLite defaults off).
+        // sessions / team_members / invites (SQLite defaults off).
         .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
         .disable_statement_logging();

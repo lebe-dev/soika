@@ -78,18 +78,6 @@ pub fn build(state: AppState) -> Router {
             "/projects/:id/regenerate-dsn",
             post(api::projects::regenerate_dsn),
         )
-        // --- Project members ---
-        .route("/projects/:id/members", get(api::members::list))
-        .route(
-            "/projects/:id/members/:user_id",
-            delete(api::members::remove),
-        )
-        // --- Project invites ---
-        .route(
-            "/projects/:id/invites",
-            get(api::invites::list).post(api::invites::create),
-        )
-        .route("/projects/:id/invites/:token", delete(api::invites::revoke))
         // --- Issues ---
         .route("/issues/:id", get(api::issues::get))
         .route("/issues/:id/events", get(api::issues::list_events))
@@ -113,8 +101,14 @@ pub fn build(state: AppState) -> Router {
         .route("/teams/:id/members", post(api::teams::add_member))
         .route(
             "/teams/:id/members/:user_id",
-            delete(api::teams::remove_member),
+            delete(api::teams::remove_member).patch(api::teams::set_member_role),
         )
+        // --- Team invites ---
+        .route(
+            "/teams/:id/invites",
+            get(api::invites::list).post(api::invites::create),
+        )
+        .route("/teams/:id/invites/:token", delete(api::invites::revoke))
         // --- Profile ---
         // Read goes through the bootstrap `/auth/config` (which embeds the
         // current user); only the update verb lives here.
@@ -136,7 +130,10 @@ pub fn build(state: AppState) -> Router {
             "/admin/users/:id/approve",
             post(api::settings::approve_user),
         )
-        .route("/admin/users/:id", delete(api::settings::delete_user));
+        .route(
+            "/admin/users/:id",
+            patch(api::settings::set_user_role).delete(api::settings::delete_user),
+        );
 
     let auth_routes = Router::new()
         .route("/auth/login", post(auth::login))

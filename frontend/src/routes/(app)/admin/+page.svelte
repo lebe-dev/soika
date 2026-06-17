@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import { version } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
-  import { api, errorMessage, type UpdateSettingsRequest } from '$lib/api';
+  import { api, errorMessage, type InstanceRole, type UpdateSettingsRequest } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
   import { formatDate } from '$lib/format';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -21,11 +21,21 @@
   import Mail from '@lucide/svelte/icons/mail';
   import MailX from '@lucide/svelte/icons/mail-x';
   import PageTitle from '$lib/components/page-title.svelte';
+  import RoleHint from '$lib/components/role-hint.svelte';
   import type { PageData } from './$types';
 
   // Admin — service settings, users, and teams overview.
-  // Visible only to the instance admin (guarded in +page.ts).
+  // Visible to instance managers (Owner | Manager); guarded in +page.ts.
   let { data }: { data: PageData } = $props();
+
+  // Whether the current user is the instance Owner. Only an Owner may grant or
+  // revoke the Owner role (the backend enforces this; the UI mirrors it).
+  const isOwner = $derived(authStore.isOwner);
+
+  // Number of Owners on the instance — used for last-Owner protection: the only
+  // remaining Owner cannot be demoted (which would lock everyone out of
+  // Owner-only operations).
+  const ownerCount = $derived(data.users.filter((u) => u.instance_role === 'owner').length);
 
   // Editable service-settings form state, seeded once from the loaded settings.
   // These are mutated locally before save, so they stay `$state` (not a derived
@@ -112,6 +122,41 @@
     }
   }
 
+  // Whether the current user may change `role` for the user `u`. An Owner may
+  // change anyone; a Manager may not touch an Owner nor grant Owner. The last
+  // remaining Owner cannot be demoted away from Owner.
+  function canEditRole(u: { id: string; instance_role: InstanceRole }): boolean {
+    if (!isOwner && u.instance_role === 'owner') return false;
+    return true;
+  }
+
+  // Whether `target` may be assigned `role` given the current actor and the
+  // last-Owner rule. Disables individual <option>s in the selector.
+  function roleOptionDisabled(u: { instance_role: InstanceRole }, role: InstanceRole): boolean {
+    // Only an Owner can grant the Owner role.
+    if (role === 'owner' && !isOwner) return true;
+    // The last Owner cannot be demoted away from Owner.
+    if (u.instance_role === 'owner' && role !== 'owner' && ownerCount <= 1) return true;
+    return false;
+  }
+
+  async function changeRole(id: string, role: InstanceRole) {
+    busyUserId = id;
+    try {
+      await api.admin.setRole(id, { instance_role: role });
+      toast.success('Role updated');
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update role'));
+      reportUnexpected(err);
+      // Re-run the load so the (optimistically-changed) <select> snaps back to
+      // the server's authoritative value on failure.
+      await invalidateAll();
+    } finally {
+      busyUserId = null;
+    }
+  }
+
   async function rejectUser(id: string, email: string) {
     if (!confirm(`Reject and delete the pending account ${email}? This cannot be undone.`)) return;
     busyUserId = id;
@@ -125,6 +170,15 @@
     } finally {
       busyUserId = null;
     }
+  }
+
+  // Whether the current manager may delete `u`. Deleting an Owner is Owner-only
+  // and the last Owner can never be deleted (matches the backend rules). Never
+  // offer deletion of one's own account.
+  function canDelete(u: { id: string; instance_role: InstanceRole }, isSelf: boolean): boolean {
+    if (isSelf) return false;
+    if (u.instance_role === 'owner') return isOwner && ownerCount > 1;
+    return true;
   }
 
   async function deleteUser(id: string, email: string) {
@@ -291,7 +345,10 @@
           <Card.Title>Users</Card.Title>
           <Card.Description>All accounts on this instance.</Card.Description>
         </Card.Header>
-        <Card.Content>
+        <Card.Content class="space-y-4">
+          <div class="bg-muted/40 rounded-lg border p-3">
+            <RoleHint scope="instance" />
+          </div>
           {#if data.users.length === 0}
             <p class="text-muted-foreground text-sm">No users yet.</p>
           {:else}
@@ -319,10 +376,33 @@
                     </Table.Cell>
                     <Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
                     <Table.Cell>
-                      {#if u.is_admin}
-                        <Badge variant="outline" class="text-primary">Admin</Badge>
+                      {#if canEditRole(u)}
+                        <select
+                          aria-label={`Instance role for ${u.display_name}`}
+                          value={u.instance_role}
+                          disabled={busyUserId === u.id}
+                          onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
+                          class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border bg-transparent px-2.5 text-sm capitalize transition-colors outline-none focus-visible:ring-3 disabled:opacity-50"
+                        >
+                          <option value="owner" disabled={roleOptionDisabled(u, 'owner')}
+                            >Owner</option
+                          >
+                          <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
+                            >Manager</option
+                          >
+                          <option value="member" disabled={roleOptionDisabled(u, 'member')}
+                            >Member</option
+                          >
+                        </select>
                       {:else}
-                        <Badge variant="outline">Member</Badge>
+                        <Badge
+                          variant="outline"
+                          class={u.instance_role === 'owner'
+                            ? 'text-primary capitalize'
+                            : 'capitalize'}
+                        >
+                          {u.instance_role}
+                        </Badge>
                       {/if}
                     </Table.Cell>
                     <Table.Cell>
@@ -364,7 +444,7 @@
                             Reject
                           </Button>
                         </div>
-                      {:else if !u.is_admin && !isSelf}
+                      {:else if canDelete(u, isSelf)}
                         <div class="flex items-center justify-end gap-2">
                           <Button
                             variant="outline"

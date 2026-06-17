@@ -1,37 +1,49 @@
-// Project area loader. Loads everything the project area needs in
-// one shot when the project page is opened: the project (with its embedded
-// default issue list) plus members and invites. Child tabs (Issues, SDK Setup,
-// Settings) then render from this shared data without firing their own requests
-// on tab switch. Membership/access is enforced server-side; a 403/404 surfaces
-// as a SvelteKit error.
+// Project area loader. Loads everything the project area needs in one shot when
+// the project page is opened: the project (with its embedded default issue
+// list) plus the caller's *effective* role for the project. Child tabs (Issues,
+// SDK Setup, Settings) then render from this shared data without firing their
+// own requests on tab switch. Access is enforced server-side; a 403/404
+// surfaces as a SvelteKit error.
 //
-// Members/invites listing is admin-only; non-admin members get an empty list
-// (the API returns 403, which we treat as "not visible"). This load re-runs on
-// `invalidateAll()` after a mutation, keeping every tab fresh.
+// Under the team-only access model there is no per-project membership: a
+// project's access (and admin rights) come from membership in its owning team.
+// We resolve the caller's effective role here — `admin` when they are an
+// instance manager or a Team Admin of the owning team, otherwise `member` — so
+// the settings page can gate its admin actions without a separate request. This
+// load re-runs on `invalidateAll()` after a mutation, keeping every tab fresh.
 
 import { error } from '@sveltejs/kit';
-import { projects, ApiError } from '$lib/api';
-import type { Invite, ProjectMember } from '$lib/api';
+import { projects, teams, ApiError, type Role } from '$lib/api';
 import type { LayoutLoad } from './$types';
 
-export const load: LayoutLoad = async ({ params, fetch }) => {
+export const load: LayoutLoad = async ({ params, parent, fetch }) => {
+  const { user } = await parent();
+
   try {
     // Project detail embeds the default (unresolved) issue list, so the issues
-    // page can render its initial view without a separate request. Members and
-    // invites load in parallel so the project area is fully populated up front.
-    const [project, members, invites] = await Promise.all([
-      projects.get(params.id, { fetch }),
-      projects.members(params.id, { fetch }).catch((err): ProjectMember[] => {
-        if (err instanceof ApiError && (err.isForbidden || err.isUnauthorized)) return [];
-        throw err;
-      }),
-      projects.invites(params.id, { fetch }).catch((err): Invite[] => {
-        // Invite listing is admin-only; members simply don't see the section.
-        if (err instanceof ApiError && (err.isForbidden || err.isUnauthorized)) return [];
-        throw err;
-      })
-    ]);
-    return { project, issues: project.issues, members, invites };
+    // page can render its initial view without a separate request.
+    const project = await projects.get(params.id, { fetch });
+
+    // Resolve the caller's effective role for this project. Instance managers
+    // (Owner | Manager) administer every project. Otherwise it derives from the
+    // caller's role in the owning team: Team Admin ⇒ admin, Contributor ⇒
+    // member. We fetch the owning team (the caller is a member, so this
+    // succeeds) and read their team role; a forbidden/failed team fetch falls
+    // back to `member` (the backend still enforces the real check on writes).
+    let effectiveRole: Role = 'member';
+    if (user?.instance_role === 'owner' || user?.instance_role === 'manager') {
+      effectiveRole = 'admin';
+    } else {
+      try {
+        const team = await teams.get(project.team_id, { fetch });
+        const mine = team.members.find((m) => m.id === user?.id);
+        if (mine?.role === 'admin') effectiveRole = 'admin';
+      } catch {
+        // Team not visible / fetch failed: keep the safe `member` default.
+      }
+    }
+
+    return { project, issues: project.issues, effectiveRole };
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.isNotFound) error(404, 'Project not found');

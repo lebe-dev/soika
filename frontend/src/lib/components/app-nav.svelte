@@ -28,7 +28,11 @@
     { href: '/admin', label: 'Admin', icon: Shield, adminOnly: true }
   ];
 
-  const visibleItems = $derived(items.filter((item) => !item.adminOnly || user.is_admin));
+  // Admin-only nav items are visible to instance managers (Owner | Manager).
+  const canManageInstance = $derived(
+    user.instance_role === 'owner' || user.instance_role === 'manager'
+  );
+  const visibleItems = $derived(items.filter((item) => !item.adminOnly || canManageInstance));
 
   function isActive(href: string): boolean {
     const path = $page.url.pathname;

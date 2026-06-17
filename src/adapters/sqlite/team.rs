@@ -1,7 +1,9 @@
 //! SQLite [`TeamRepository`] adapter.
 
 use super::{Db, bool_from_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
-use crate::domain::{AuthProvider, Id, Team, TeamMember, Timestamp, User, UserStatus};
+use crate::domain::{
+    AuthProvider, Id, InstanceRole, Team, TeamMember, TeamRole, Timestamp, User, UserStatus,
+};
 use crate::error::{Error, Result};
 use crate::ports::TeamRepository;
 use async_trait::async_trait;
@@ -38,34 +40,37 @@ impl TeamRow {
 }
 
 /// Row used when joining `team_members` with `users` for [`TeamRepository::members`].
+/// Carries both the user columns and the membership's `team_members.role`.
 #[derive(FromRow)]
 struct MemberUserRow {
     id: String,
     email: String,
     display_name: String,
     password_hash: String,
-    is_admin: i64,
+    instance_role: String,
     notifications_enabled: i64,
     auth_provider: String,
     status: String,
     created_at: String,
     updated_at: String,
+    role: String,
 }
 
 impl MemberUserRow {
-    fn into_domain(self) -> Result<User> {
-        Ok(User {
+    fn into_domain(self) -> Result<(User, TeamRole)> {
+        let user = User {
             id: id_from_db(&self.id)?,
             email: self.email,
             display_name: self.display_name,
             password_hash: self.password_hash,
-            is_admin: bool_from_db(self.is_admin),
+            instance_role: InstanceRole::from_db(&self.instance_role),
             notifications_enabled: bool_from_db(self.notifications_enabled),
             auth_provider: AuthProvider::from_db(&self.auth_provider),
             status: UserStatus::from_db(&self.status),
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
-        })
+        };
+        Ok((user, TeamRole::from_db(&self.role)))
     }
 }
 
@@ -159,15 +164,17 @@ impl TeamRepository for SqliteTeamRepository {
         Ok(row.is_some())
     }
 
-    async fn add_member(&self, team_id: Id, user_id: Id) -> Result<TeamMember> {
+    async fn add_member(&self, team_id: Id, user_id: Id, role: TeamRole) -> Result<TeamMember> {
         let now: Timestamp = chrono::Utc::now();
-        // Idempotent join: ignore a duplicate (team_id, user_id) pair.
+        // Idempotent join: on a duplicate (team_id, user_id) update the role so a
+        // re-add can also re-assign the team role.
         sqlx::query(
-            "INSERT INTO team_members (team_id, user_id, created_at) VALUES (?, ?, ?) \
-             ON CONFLICT (team_id, user_id) DO NOTHING",
+            "INSERT INTO team_members (team_id, user_id, role, created_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT (team_id, user_id) DO UPDATE SET role = excluded.role",
         )
         .bind(id_to_db(team_id))
         .bind(id_to_db(user_id))
+        .bind(role.as_str())
         .bind(ts_to_db(now))
         .execute(&self.db)
         .await?;
@@ -175,7 +182,43 @@ impl TeamRepository for SqliteTeamRepository {
         Ok(TeamMember {
             team_id,
             user_id,
+            role,
             created_at: now,
+        })
+    }
+
+    async fn set_member_role(
+        &self,
+        team_id: Id,
+        user_id: Id,
+        role: TeamRole,
+    ) -> Result<TeamMember> {
+        let result =
+            sqlx::query("UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?")
+                .bind(role.as_str())
+                .bind(id_to_db(team_id))
+                .bind(id_to_db(user_id))
+                .execute(&self.db)
+                .await?;
+        if result.rows_affected() == 0 {
+            return Err(Error::not_found(format!(
+                "team membership not found: team {team_id}, user {user_id}"
+            )));
+        }
+
+        // Re-read so the returned value carries the authoritative created_at.
+        let row = sqlx::query_as::<_, (String,)>(
+            "SELECT created_at FROM team_members WHERE team_id = ? AND user_id = ?",
+        )
+        .bind(id_to_db(team_id))
+        .bind(id_to_db(user_id))
+        .fetch_one(&self.db)
+        .await?;
+        Ok(TeamMember {
+            team_id,
+            user_id,
+            role,
+            created_at: ts_from_db(&row.0)?,
         })
     }
 
@@ -188,10 +231,22 @@ impl TeamRepository for SqliteTeamRepository {
         Ok(())
     }
 
-    async fn members(&self, team_id: Id) -> Result<Vec<User>> {
+    async fn member_role(&self, team_id: Id, user_id: Id) -> Result<Option<TeamRole>> {
+        let row = sqlx::query_as::<_, (String,)>(
+            "SELECT role FROM team_members WHERE team_id = ? AND user_id = ?",
+        )
+        .bind(id_to_db(team_id))
+        .bind(id_to_db(user_id))
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.map(|(role,)| TeamRole::from_db(&role)))
+    }
+
+    async fn members(&self, team_id: Id) -> Result<Vec<(User, TeamRole)>> {
         let rows = sqlx::query_as::<_, MemberUserRow>(
-            "SELECT u.id, u.email, u.display_name, u.password_hash, u.is_admin, \
-             u.notifications_enabled, u.auth_provider, u.status, u.created_at, u.updated_at \
+            "SELECT u.id, u.email, u.display_name, u.password_hash, u.instance_role, \
+             u.notifications_enabled, u.auth_provider, u.status, u.created_at, u.updated_at, \
+             m.role \
              FROM users u JOIN team_members m ON m.user_id = u.id \
              WHERE m.team_id = ? ORDER BY u.display_name",
         )
@@ -241,13 +296,48 @@ mod tests {
         let u1 = insert_user(&pool, "m1@example.com").await;
         let u2 = insert_user(&pool, "m2@example.com").await;
 
-        repo.add_member(team.id, u1).await.unwrap();
-        repo.add_member(team.id, u2).await.unwrap();
-        // Idempotent re-add does not error or duplicate.
-        repo.add_member(team.id, u1).await.unwrap();
+        let m1 = repo.add_member(team.id, u1, TeamRole::Admin).await.unwrap();
+        assert_eq!(m1.role, TeamRole::Admin);
+        repo.add_member(team.id, u2, TeamRole::Contributor)
+            .await
+            .unwrap();
+        // Idempotent re-add does not error or duplicate; it re-assigns the role.
+        let re = repo
+            .add_member(team.id, u1, TeamRole::Contributor)
+            .await
+            .unwrap();
+        assert_eq!(re.role, TeamRole::Contributor);
 
         let members = repo.members(team.id).await.unwrap();
         assert_eq!(members.len(), 2);
+
+        // member_role reflects the (re-)assigned role.
+        assert_eq!(
+            repo.member_role(team.id, u1).await.unwrap(),
+            Some(TeamRole::Contributor)
+        );
+        assert_eq!(
+            repo.member_role(team.id, u2).await.unwrap(),
+            Some(TeamRole::Contributor)
+        );
+        assert_eq!(repo.member_role(team.id, Id::new_v4()).await.unwrap(), None);
+
+        // Promote u1 back to Admin via set_member_role.
+        let promoted = repo
+            .set_member_role(team.id, u1, TeamRole::Admin)
+            .await
+            .unwrap();
+        assert_eq!(promoted.role, TeamRole::Admin);
+        assert_eq!(
+            repo.member_role(team.id, u1).await.unwrap(),
+            Some(TeamRole::Admin)
+        );
+        // Setting the role of a non-member is a not-found error.
+        let err = repo
+            .set_member_role(team.id, Id::new_v4(), TeamRole::Admin)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::NotFound(_)), "got {err:?}");
 
         let teams_for_u1 = repo.list_for_user(u1).await.unwrap();
         assert_eq!(teams_for_u1.len(), 1);
@@ -261,5 +351,6 @@ mod tests {
         assert_eq!(repo.members(team.id).await.unwrap().len(), 1);
         assert!(repo.list_for_user(u1).await.unwrap().is_empty());
         assert!(!repo.is_member(team.id, u1).await.unwrap());
+        assert_eq!(repo.member_role(team.id, u1).await.unwrap(), None);
     }
 }

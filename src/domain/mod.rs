@@ -17,13 +17,13 @@ mod user;
 pub use event::Event;
 pub use invite::Invite;
 pub use issue::{Issue, IssueStatus, MuteSpec};
-pub use membership::{Membership, Role};
+pub use membership::{Role, TeamRole};
 pub use mute_rule::{TagMatch, TagMuteRule};
 pub use project::Project;
 pub use settings::ServiceSettings;
 pub use stacktrace::{ExceptionValue, Frame, NormalizedEvent, Stacktrace};
 pub use team::{Team, TeamMember};
-pub use user::{AuthProvider, Session, User, UserStatus};
+pub use user::{AuthProvider, InstanceRole, Session, User, UserStatus};
 
 /// Common timestamp type used across the domain (UTC).
 pub type Timestamp = chrono::DateTime<chrono::Utc>;

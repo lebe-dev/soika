@@ -9,6 +9,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { toast } from '$lib/components/ui/sonner';
   import PageTitle from '$lib/components/page-title.svelte';
+  import { teamRoleDescription } from '$lib/components/role-hint.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -35,7 +36,7 @@
       });
       authStore.set(user);
       toast.success('Invite accepted');
-      await goto(`/projects/${data.preview.project_id}`);
+      await goto(`/teams/${data.preview.team_id}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Could not accept invite'));
     } finally {
@@ -60,9 +61,10 @@
       <Card.Header>
         <Card.Title>You're invited</Card.Title>
         <Card.Description>
-          Join with the role
-          <Badge variant="secondary">{data.preview.role}</Badge>
+          Join <span class="font-medium">{data.preview.team_name}</span> as
+          <Badge variant="secondary" class="capitalize">{data.preview.role}</Badge>
         </Card.Description>
+        <p class="text-muted-foreground text-xs">{teamRoleDescription(data.preview.role)}</p>
       </Card.Header>
       <form onsubmit={accept} class="contents">
         <Card.Content class="space-y-4">

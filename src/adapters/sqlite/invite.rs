@@ -1,12 +1,11 @@
 //! SQLite [`InviteRepository`] adapter.
 
 use super::{Db, id_from_db, id_to_db, ts_from_db, ts_to_db};
-use crate::domain::{Id, Invite, Role, Timestamp};
+use crate::domain::{Id, Invite, TeamRole, Timestamp};
 use crate::error::Result;
 use crate::ports::{InviteRepository, NewInvite};
 use async_trait::async_trait;
 use sqlx::FromRow;
-use std::str::FromStr;
 
 #[derive(Clone)]
 pub struct SqliteInviteRepository {
@@ -22,7 +21,7 @@ impl SqliteInviteRepository {
 #[derive(FromRow)]
 struct InviteRow {
     token: String,
-    project_id: String,
+    team_id: String,
     role: String,
     email: Option<String>,
     created_by: Option<String>,
@@ -43,8 +42,8 @@ impl InviteRow {
         };
         Ok(Invite {
             token: self.token,
-            project_id: id_from_db(&self.project_id)?,
-            role: Role::from_str(&self.role)?,
+            team_id: id_from_db(&self.team_id)?,
+            role: TeamRole::from_db(&self.role),
             email: self.email,
             created_by,
             created_at: ts_from_db(&self.created_at)?,
@@ -54,7 +53,7 @@ impl InviteRow {
     }
 }
 
-const SELECT_INVITE: &str = "SELECT token, project_id, role, email, created_by, created_at, \
+const SELECT_INVITE: &str = "SELECT token, team_id, role, email, created_by, created_at, \
     expires_at, accepted_at FROM invites";
 
 #[async_trait]
@@ -63,11 +62,11 @@ impl InviteRepository for SqliteInviteRepository {
         let now: Timestamp = chrono::Utc::now();
 
         sqlx::query(
-            "INSERT INTO invites (token, project_id, role, email, created_by, created_at, \
+            "INSERT INTO invites (token, team_id, role, email, created_by, created_at, \
              expires_at, accepted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
         )
         .bind(&new.token)
-        .bind(id_to_db(new.project_id))
+        .bind(id_to_db(new.team_id))
         .bind(new.role.as_str())
         .bind(new.email.as_deref())
         .bind(new.created_by.map(id_to_db))
@@ -78,7 +77,7 @@ impl InviteRepository for SqliteInviteRepository {
 
         Ok(Invite {
             token: new.token,
-            project_id: new.project_id,
+            team_id: new.team_id,
             role: new.role,
             email: new.email,
             created_by: new.created_by,
@@ -96,11 +95,11 @@ impl InviteRepository for SqliteInviteRepository {
         row.map(InviteRow::into_domain).transpose()
     }
 
-    async fn list_for_project(&self, project_id: Id) -> Result<Vec<Invite>> {
+    async fn list_for_team(&self, team_id: Id) -> Result<Vec<Invite>> {
         let rows = sqlx::query_as::<_, InviteRow>(&format!(
-            "{SELECT_INVITE} WHERE project_id = ? ORDER BY created_at"
+            "{SELECT_INVITE} WHERE team_id = ? ORDER BY created_at"
         ))
-        .bind(id_to_db(project_id))
+        .bind(id_to_db(team_id))
         .fetch_all(&self.db)
         .await?;
         rows.into_iter().map(InviteRow::into_domain).collect()
@@ -127,21 +126,20 @@ impl InviteRepository for SqliteInviteRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::sqlite::tests::{insert_project, insert_team, insert_user, test_pool};
+    use crate::adapters::sqlite::tests::{insert_team, insert_user, test_pool};
     use chrono::Duration;
 
     async fn fixtures(pool: &Db) -> (Id, Id) {
         let team_id = insert_team(pool, "T").await;
-        let project_id = insert_project(pool, team_id, "p", "dsn").await;
         let user_id = insert_user(pool, "admin@example.com").await;
-        (project_id, user_id)
+        (team_id, user_id)
     }
 
-    fn new_invite(project_id: Id, created_by: Id, token: &str) -> NewInvite {
+    fn new_invite(team_id: Id, created_by: Id, token: &str) -> NewInvite {
         NewInvite {
             token: token.to_string(),
-            project_id,
-            role: Role::Member,
+            team_id,
+            role: TeamRole::Contributor,
             email: Some("invitee@example.com".to_string()),
             created_by: Some(created_by),
             expires_at: chrono::Utc::now() + Duration::days(7),
@@ -151,21 +149,21 @@ mod tests {
     #[tokio::test]
     async fn create_find_roundtrip() {
         let pool = test_pool().await;
-        let (project_id, user_id) = fixtures(&pool).await;
+        let (team_id, user_id) = fixtures(&pool).await;
         let repo = SqliteInviteRepository::new(pool.clone());
 
         let created = repo
-            .create(new_invite(project_id, user_id, "tok"))
+            .create(new_invite(team_id, user_id, "tok"))
             .await
             .unwrap();
-        assert_eq!(created.role, Role::Member);
+        assert_eq!(created.role, TeamRole::Contributor);
         assert_eq!(created.email.as_deref(), Some("invitee@example.com"));
         assert_eq!(created.created_by, Some(user_id));
         assert!(created.accepted_at.is_none());
 
         let found = repo.find_by_token("tok").await.unwrap().unwrap();
         assert_eq!(found.token, "tok");
-        assert_eq!(found.project_id, project_id);
+        assert_eq!(found.team_id, team_id);
 
         assert!(repo.find_by_token("missing").await.unwrap().is_none());
     }
@@ -173,13 +171,13 @@ mod tests {
     #[tokio::test]
     async fn create_without_email_or_creator() {
         let pool = test_pool().await;
-        let (project_id, _user_id) = fixtures(&pool).await;
+        let (team_id, _user_id) = fixtures(&pool).await;
         let repo = SqliteInviteRepository::new(pool.clone());
 
         let invite = NewInvite {
             token: "anon".to_string(),
-            project_id,
-            role: Role::Admin,
+            team_id,
+            role: TeamRole::Admin,
             email: None,
             created_by: None,
             expires_at: chrono::Utc::now() + Duration::days(1),
@@ -187,7 +185,7 @@ mod tests {
         repo.create(invite).await.unwrap();
 
         let found = repo.find_by_token("anon").await.unwrap().unwrap();
-        assert_eq!(found.role, Role::Admin);
+        assert_eq!(found.role, TeamRole::Admin);
         assert!(found.email.is_none());
         assert!(found.created_by.is_none());
     }
@@ -195,10 +193,10 @@ mod tests {
     #[tokio::test]
     async fn mark_accepted_and_delete() {
         let pool = test_pool().await;
-        let (project_id, user_id) = fixtures(&pool).await;
+        let (team_id, user_id) = fixtures(&pool).await;
         let repo = SqliteInviteRepository::new(pool.clone());
 
-        repo.create(new_invite(project_id, user_id, "tok"))
+        repo.create(new_invite(team_id, user_id, "tok"))
             .await
             .unwrap();
 
@@ -207,7 +205,7 @@ mod tests {
         let found = repo.find_by_token("tok").await.unwrap().unwrap();
         assert!(found.accepted_at.is_some());
 
-        assert_eq!(repo.list_for_project(project_id).await.unwrap().len(), 1);
+        assert_eq!(repo.list_for_team(team_id).await.unwrap().len(), 1);
 
         repo.delete("tok").await.unwrap();
         assert!(repo.find_by_token("tok").await.unwrap().is_none());

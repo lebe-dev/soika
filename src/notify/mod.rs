@@ -3,7 +3,7 @@
 //! Decides who to notify on new-issue / regression events and dispatches over
 //! two channels under the SAME suppression rules:
 //!
-//! - **email** — one message per opted-in project member;
+//! - **email** — one message per opted-in member of the project's owning team;
 //! - **webhook** ([`Project::webhook_url`]) — a single HTTP POST JSON payload to
 //!   a per-project URL, generalizing the email-only path so channels like
 //!   Telegram can be added later through the same seam.
@@ -67,13 +67,13 @@ pub fn user_opted_in(user: &User) -> bool {
     user.notifications_enabled
 }
 
-/// The email addresses to notify for a project's members, after applying the
-/// per-user opt-out. Project/issue mute is handled separately by
+/// The email addresses to notify for the owning team's members, after applying
+/// the per-user opt-out. Project/issue mute is handled separately by
 /// [`is_suppressed`]; this only filters the member list.
 ///
-/// `members` is the project membership joined with each user's profile. The role
-/// is irrelevant for notifications (both admins and members are notified), so it
-/// is ignored here.
+/// `members` is the team membership joined with each user's profile. The role
+/// is irrelevant for notifications (admins and contributors are notified alike),
+/// so it is ignored here.
 pub fn recipients<R>(members: &[(User, R)]) -> Vec<String> {
     members
         .iter()
@@ -196,7 +196,10 @@ async fn dispatch(
         return Ok(());
     }
 
-    let members = state.memberships.members(project.id).await?;
+    // Recipients are the members of the team that owns the project (Variant A:
+    // project access derives from team membership). The team role is irrelevant
+    // for notifications, so it is ignored by `recipients`.
+    let members = state.teams.members(project.team_id).await?;
     let recipients = recipients(&members);
     if recipients.is_empty() {
         return Ok(());
@@ -252,7 +255,7 @@ async fn send_webhook(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{IssueStatus, Role};
+    use crate::domain::{IssueStatus, TeamRole};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -314,7 +317,7 @@ mod tests {
             email: email.to_string(),
             display_name: email.to_string(),
             password_hash: "hash".to_string(),
-            is_admin: false,
+            instance_role: crate::domain::InstanceRole::Member,
             notifications_enabled,
             auth_provider: crate::domain::AuthProvider::Local,
             status: crate::domain::UserStatus::Active,
@@ -367,10 +370,10 @@ mod tests {
 
     #[test]
     fn recipients_exclude_opted_out_users() {
-        let members: Vec<(User, Role)> = vec![
-            (user("a@example.com", true), Role::Admin),
-            (user("b@example.com", false), Role::Member),
-            (user("c@example.com", true), Role::Member),
+        let members: Vec<(User, TeamRole)> = vec![
+            (user("a@example.com", true), TeamRole::Admin),
+            (user("b@example.com", false), TeamRole::Contributor),
+            (user("c@example.com", true), TeamRole::Contributor),
         ];
         let to = recipients(&members);
         assert_eq!(to, vec!["a@example.com", "c@example.com"]);
@@ -378,18 +381,18 @@ mod tests {
 
     #[test]
     fn recipients_empty_when_all_opted_out() {
-        let members: Vec<(User, Role)> = vec![
-            (user("a@example.com", false), Role::Admin),
-            (user("b@example.com", false), Role::Member),
+        let members: Vec<(User, TeamRole)> = vec![
+            (user("a@example.com", false), TeamRole::Admin),
+            (user("b@example.com", false), TeamRole::Contributor),
         ];
         assert!(recipients(&members).is_empty());
     }
 
     #[test]
     fn recipients_notify_admins_and_members_alike() {
-        let members: Vec<(User, Role)> = vec![
-            (user("admin@example.com", true), Role::Admin),
-            (user("member@example.com", true), Role::Member),
+        let members: Vec<(User, TeamRole)> = vec![
+            (user("admin@example.com", true), TeamRole::Admin),
+            (user("member@example.com", true), TeamRole::Contributor),
         ];
         let to = recipients(&members);
         assert_eq!(to.len(), 2);

@@ -10,10 +10,11 @@ export const load: LayoutLoad = async ({ parent, url, fetch }) => {
   const authed = requireUser(user, url.pathname + url.search);
 
   // Surface the count of accounts awaiting approval on the Admin nav item.
-  // Only the instance admin can see (and act on) it, so skip the call entirely
-  // for everyone else; a failure here must not break the app shell.
+  // Only instance managers (Owner | Manager) can see (and act on) it, so skip
+  // the call entirely for everyone else; a failure here must not break the app
+  // shell.
   let pendingApprovals = 0;
-  if (authed.is_admin) {
+  if (authed.instance_role === 'owner' || authed.instance_role === 'manager') {
     try {
       const users = await api.admin.users({ fetch });
       pendingApprovals = users.filter((u) => u.status === 'pending').length;

@@ -16,10 +16,14 @@ export function requireUser(user: User | null | undefined, currentPath: string):
   return user;
 }
 
-/** Require the instance admin; redirect to the dashboard otherwise. */
-export function requireAdmin(user: User | null | undefined, currentPath: string): User {
+/**
+ * Require a user who can manage the instance (`Owner | Manager`); redirect to
+ * the dashboard otherwise. Gates the admin area, consistent with the backend
+ * `AdminUser` extractor (which accepts `Owner | Manager`).
+ */
+export function requireInstanceManager(user: User | null | undefined, currentPath: string): User {
   const authed = requireUser(user, currentPath);
-  if (!authed.is_admin) {
+  if (authed.instance_role !== 'owner' && authed.instance_role !== 'manager') {
     redirect(307, '/');
   }
   return authed;

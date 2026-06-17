@@ -1,15 +1,15 @@
 //! Invite domain type.
 
-use super::{Id, Role, Timestamp};
+use super::{Id, TeamRole, Timestamp};
 use serde::{Deserialize, Serialize};
 
-/// A pending invitation to a project (signed, expiring token).
+/// A pending invitation to a team (signed, expiring token).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invite {
     /// Signed, opaque token; also the lookup key and the `/invite/{token}` path.
     pub token: String,
-    pub project_id: Id,
-    pub role: Role,
+    pub team_id: Id,
+    pub role: TeamRole,
     /// Optional target email (link still works without email).
     pub email: Option<String>,
     /// User id of the inviting admin.

@@ -38,8 +38,8 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 /// migrations via [`MIGRATOR`].
 ///
 /// `foreign_keys` is enabled per connection so `ON DELETE CASCADE` fires for
-/// sessions / memberships / team_members / invites (SQLite leaves FKs off by
-/// default). SQLite-specific connection setup is isolated here / in `main`.
+/// sessions / team_members / invites (SQLite leaves FKs off by default).
+/// SQLite-specific connection setup is isolated here / in `main`.
 pub async fn connect_pool(database_url: &str) -> Result<SqlitePool> {
     let options = SqliteConnectOptions::from_str(database_url)
         .map_err(crate::error::Error::Db)?
@@ -58,9 +58,9 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
     use adapters::mailer::{NoopMailer, SmtpMailer};
     use adapters::sqlite::{
         SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
-        SqliteIssueRepository, SqliteMembershipRepository, SqliteProjectRepository,
-        SqliteSessionRepository, SqliteSettingsRepository, SqliteTagMuteRuleRepository,
-        SqliteTeamRepository, SqliteUserRepository,
+        SqliteIssueRepository, SqliteProjectRepository, SqliteSessionRepository,
+        SqliteSettingsRepository, SqliteTagMuteRuleRepository, SqliteTeamRepository,
+        SqliteUserRepository,
     };
     use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
@@ -78,7 +78,6 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         users: Arc::new(SqliteUserRepository::new(pool.clone())),
         sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
         teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
-        memberships: Arc::new(SqliteMembershipRepository::new(pool.clone())),
         projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
         favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
         issues: Arc::new(SqliteIssueRepository::new(pool.clone())),

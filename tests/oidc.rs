@@ -14,7 +14,7 @@ use openidconnect::url::Url;
 use openidconnect::{CsrfToken, Nonce, PkceCodeChallenge, PkceCodeVerifier};
 use serde_json::Value;
 use soika::auth::{AuthorizeRequest, OidcClaims, OidcProvider, hash_password};
-use soika::domain::{AuthProvider, UserStatus};
+use soika::domain::{AuthProvider, InstanceRole, UserStatus};
 use soika::ports::NewUser;
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use tower::ServiceExt;
@@ -180,13 +180,18 @@ async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode
 
 /// Seed a user directly through the repository (bypassing HTTP).
 async fn seed_user(state: &AppState, email: &str, password: &str, is_admin: bool) {
+    let instance_role = if is_admin {
+        InstanceRole::Owner
+    } else {
+        InstanceRole::Member
+    };
     state
         .users
         .create(NewUser {
             email: email.into(),
             display_name: "Seed".into(),
             password_hash: hash_password(password).expect("hash"),
-            is_admin,
+            instance_role,
             auth_provider: AuthProvider::Local,
             status: UserStatus::Active,
         })
@@ -373,7 +378,7 @@ async fn auth_config_embeds_user_and_telemetry_for_session() {
     // layout no longer needs separate /profile and /client-config calls.
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["user"]["email"], "boot@example.com");
-    assert_eq!(json["user"]["is_admin"], false);
+    assert_eq!(json["user"]["instance_role"], "member");
     // Telemetry is present once authenticated; `release` is always set even when
     // Sentry is disabled (no DSN configured in the test).
     assert!(json["telemetry"]["release"].is_string());
@@ -425,7 +430,7 @@ async fn callback_happy_path_provisions_user_and_sets_session() {
         .expect("query user")
         .expect("user provisioned");
     assert_eq!(user.auth_provider, soika::domain::AuthProvider::Oidc);
-    assert!(!user.is_admin);
+    assert!(!user.instance_role.is_owner());
     assert!(user.password_hash.is_empty());
 }
 
@@ -778,7 +783,7 @@ async fn admin_can_reject_pending_account() {
 }
 
 #[tokio::test]
-async fn admin_cannot_delete_self_or_other_admin() {
+async fn owner_cannot_delete_self_but_can_delete_a_second_owner() {
     let (router, state) = build_app(Some(enabled_provider())).await;
     seed_user(&state, "admin@example.com", "supersecret", true).await;
     seed_user(&state, "boss@example.com", "supersecret", true).await;
@@ -789,16 +794,16 @@ async fn admin_cannot_delete_self_or_other_admin() {
         .await
         .expect("query")
         .expect("admin");
-    let other_admin = state
+    let other_owner = state
         .users
         .find_by_email("boss@example.com")
         .await
         .expect("query")
-        .expect("other admin");
+        .expect("other owner");
 
     let cookie = login_session_cookie(&router, "admin@example.com", "supersecret").await;
 
-    // Deleting yourself is refused.
+    // Deleting yourself is always refused.
     let (status, _json) = send_with_cookie(
         &router,
         "DELETE",
@@ -808,15 +813,105 @@ async fn admin_cannot_delete_self_or_other_admin() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Deleting another instance admin is refused.
+    // Two Owners exist, so an Owner may delete another Owner (not the last one).
     let (status, _json) = send_with_cookie(
         &router,
         "DELETE",
-        &format!("/api/admin/users/{}", other_admin.id),
+        &format!("/api/admin/users/{}", other_owner.id),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        state
+            .users
+            .find_by_email("boss@example.com")
+            .await
+            .expect("query")
+            .is_none(),
+        "the second owner is removed"
+    );
+}
+
+#[tokio::test]
+async fn deleting_the_last_owner_is_conflict() {
+    let (router, state) = build_app(Some(enabled_provider())).await;
+    // A single Owner who is the caller; a member to be deleted normally.
+    seed_user(&state, "owner@example.com", "supersecret", true).await;
+    seed_user(&state, "member@example.com", "supersecret", false).await;
+
+    let member = state
+        .users
+        .find_by_email("member@example.com")
+        .await
+        .expect("query")
+        .expect("member");
+
+    let cookie = login_session_cookie(&router, "owner@example.com", "supersecret").await;
+
+    // Deleting a non-owner member succeeds.
+    let (status, _json) = send_with_cookie(
+        &router,
+        "DELETE",
+        &format!("/api/admin/users/{}", member.id),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        state.users.count_owners().await.expect("count"),
+        1,
+        "exactly one owner remains"
+    );
+}
+
+#[tokio::test]
+async fn manager_cannot_delete_an_owner() {
+    // No OIDC: password login is available to the Manager account.
+    let (router, state) = build_app(None).await;
+    seed_user(&state, "owner@example.com", "supersecret", true).await;
+    seed_user(&state, "manager@example.com", "supersecret", false).await;
+
+    let manager = state
+        .users
+        .find_by_email("manager@example.com")
+        .await
+        .expect("query")
+        .expect("manager");
+    let owner = state
+        .users
+        .find_by_email("owner@example.com")
+        .await
+        .expect("query")
+        .expect("owner");
+
+    // Promote the manager account to instance Manager.
+    state
+        .users
+        .set_instance_role(manager.id, InstanceRole::Manager)
+        .await
+        .expect("promote to manager");
+
+    let cookie = login_session_cookie(&router, "manager@example.com", "supersecret").await;
+
+    // A Manager may manage the instance, but deleting an Owner is Owner-only → 403.
+    let (status, _json) = send_with_cookie(
+        &router,
+        "DELETE",
+        &format!("/api/admin/users/{}", owner.id),
         &cookie,
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        state
+            .users
+            .find_by_email("owner@example.com")
+            .await
+            .expect("query")
+            .is_some(),
+        "the owner is untouched"
+    );
 }
 
 // --- /auth/setup (first-run admin provisioning) -----------------------
@@ -859,7 +954,7 @@ async fn setup_provisions_admin_sets_org_and_logs_in() {
 
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(json["email"], "admin@example.com");
-    assert_eq!(json["is_admin"], true);
+    assert_eq!(json["instance_role"], "owner");
     // Password hash is never echoed to clients.
     assert!(json.get("password_hash").is_none());
 
@@ -870,7 +965,7 @@ async fn setup_provisions_admin_sets_org_and_logs_in() {
         .await
         .expect("query")
         .expect("admin created");
-    assert!(user.is_admin);
+    assert!(user.instance_role.is_owner());
     assert_eq!(user.auth_provider, soika::domain::AuthProvider::Local);
 
     // Organization name persisted to settings.

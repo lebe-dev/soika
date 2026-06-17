@@ -213,7 +213,7 @@ fn truncate_subject(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Role;
+    use crate::domain::TeamRole;
     use chrono::{TimeZone, Utc};
     use uuid::Uuid;
 
@@ -239,8 +239,8 @@ mod tests {
     fn test_invite() -> Invite {
         Invite {
             token: "tok-123".to_string(),
-            project_id: Uuid::nil(),
-            role: Role::Member,
+            team_id: Uuid::nil(),
+            role: TeamRole::Contributor,
             email: Some("dev@example.com".to_string()),
             created_by: None,
             created_at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),

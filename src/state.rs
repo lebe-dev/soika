@@ -11,8 +11,8 @@ use crate::config::Config;
 use crate::ingest::RateLimiter;
 use crate::ports::{
     Clock, EventRepository, FavoriteRepository, InviteRepository, IssueRepository, Mailer,
-    MembershipRepository, ProjectRepository, SessionRepository, SettingsRepository,
-    TagMuteRuleRepository, TeamRepository, UserRepository,
+    ProjectRepository, SessionRepository, SettingsRepository, TagMuteRuleRepository,
+    TeamRepository, UserRepository,
 };
 
 /// Application state shared across all handlers (cheaply cloneable).
@@ -22,7 +22,6 @@ pub struct AppState {
     pub users: Arc<dyn UserRepository>,
     pub sessions: Arc<dyn SessionRepository>,
     pub teams: Arc<dyn TeamRepository>,
-    pub memberships: Arc<dyn MembershipRepository>,
     pub projects: Arc<dyn ProjectRepository>,
     pub favorites: Arc<dyn FavoriteRepository>,
     pub issues: Arc<dyn IssueRepository>,

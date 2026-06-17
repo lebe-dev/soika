@@ -145,23 +145,17 @@ impl ProjectRepository for SqliteProjectRepository {
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Project>> {
-        // Projects the user can see, by either path:
-        //   1. a direct project `memberships` row (also carries the project role), or
-        //   2. membership in the team that owns the project (`team_members`).
-        // The two arms are UNION-ed so a project reachable both ways appears once.
-        // Select `p.*` rather than the bare `PROJECT_COLS` list: the joined tables
-        // also have `created_at`, so an unqualified projection would be ambiguous.
+        // Variant A (closed membership): a user can see a project iff they are a
+        // member of the team that owns it. There is no direct project membership
+        // any more (the `memberships` table was dropped by migration 0013).
+        // Select `p.*` rather than the bare `PROJECT_COLS` list: the joined table
+        // also has `created_at`, so an unqualified projection would be ambiguous.
         // `row_to_project` reads columns by name, so `p.*` maps cleanly.
         let sql = "SELECT p.* FROM projects p \
-             JOIN memberships m ON m.project_id = p.id \
-             WHERE m.user_id = ? \
-             UNION \
-             SELECT p.* FROM projects p \
              JOIN team_members tm ON tm.team_id = p.team_id \
              WHERE tm.user_id = ? \
              ORDER BY name";
         let rows = sqlx::query(sql)
-            .bind(user_id.to_string())
             .bind(user_id.to_string())
             .fetch_all(&self.db)
             .await?;
@@ -303,10 +297,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_for_user_returns_member_projects() {
-        // Regression: `memberships` also has a `created_at`, so projecting the
-        // bare column list over the join was ambiguous and errored for every
-        // non-admin caller. The join must qualify its projection.
+    async fn list_for_user_returns_team_projects() {
+        // Variant A (closed membership): a user sees a project iff they belong to
+        // the owning team. Regression: the join must qualify its projection, since
+        // `team_members` also has a `created_at` (an unqualified `*` was ambiguous).
         let pool = pool().await;
         let team_id = seed_team(&pool).await;
         let repo = SqliteProjectRepository::new(pool.clone());
@@ -329,10 +323,10 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO memberships (project_id, user_id, role, created_at) \
-             VALUES (?, ?, 'member', ?)",
+            "INSERT INTO team_members (team_id, user_id, role, created_at) \
+             VALUES (?, ?, 'contributor', ?)",
         )
-        .bind(project.id.to_string())
+        .bind(team_id.to_string())
         .bind(user_id.to_string())
         .bind(&now)
         .execute(&pool)
@@ -343,22 +337,24 @@ mod tests {
         assert_eq!(mine.len(), 1);
         assert_eq!(mine[0].id, project.id);
 
-        // A user with no memberships sees nothing.
+        // A user in no team sees nothing.
         let stranger = repo.list_for_user(Id::new_v4()).await.unwrap();
         assert!(stranger.is_empty());
     }
 
     #[tokio::test]
-    async fn list_for_user_returns_team_projects_without_membership() {
-        // Access via team membership alone (no direct `memberships` row) is
-        // enough to list the team's projects, and a project reachable both ways
-        // appears exactly once.
+    async fn list_for_user_dedups_multiple_projects_in_one_team() {
+        // A team member sees every project the team owns, each exactly once.
         let pool = pool().await;
         let team_id = seed_team(&pool).await;
         let repo = SqliteProjectRepository::new(pool.clone());
 
-        let project = repo
+        let p1 = repo
             .create(new_project(team_id, "alpha", "dsn-team-alpha"))
+            .await
+            .unwrap();
+        let p2 = repo
+            .create(new_project(team_id, "beta", "dsn-team-beta"))
             .await
             .unwrap();
 
@@ -374,28 +370,21 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::query("INSERT INTO team_members (team_id, user_id, created_at) VALUES (?, ?, ?)")
-            .bind(team_id.to_string())
-            .bind(user_id.to_string())
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .unwrap();
-        // Also grant a direct membership to prove UNION dedups.
         sqlx::query(
-            "INSERT INTO memberships (project_id, user_id, role, created_at) \
-             VALUES (?, ?, 'admin', ?)",
+            "INSERT INTO team_members (team_id, user_id, role, created_at) VALUES (?, ?, 'admin', ?)",
         )
-        .bind(project.id.to_string())
+        .bind(team_id.to_string())
         .bind(user_id.to_string())
         .bind(&now)
         .execute(&pool)
         .await
         .unwrap();
 
-        let mine = repo.list_for_user(user_id).await.unwrap();
-        assert_eq!(mine.len(), 1, "project reachable both ways appears once");
-        assert_eq!(mine[0].id, project.id);
+        let mut mine = repo.list_for_user(user_id).await.unwrap();
+        mine.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(mine.len(), 2);
+        assert_eq!(mine[0].id, p1.id);
+        assert_eq!(mine[1].id, p2.id);
     }
 
     #[tokio::test]

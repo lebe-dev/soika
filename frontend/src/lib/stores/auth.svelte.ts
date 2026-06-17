@@ -16,9 +16,22 @@ class AuthStore {
     return !!this.user;
   }
 
-  /** Whether the current user is the instance-wide built-in admin. */
-  get isAdmin(): boolean {
-    return !!this.user?.is_admin;
+  /**
+   * Whether the current user can manage the instance (`Owner | Manager`):
+   * create/delete teams, manage any team's membership, invites, pending
+   * approvals, and instance roles. Gates the Admin nav item and admin routes.
+   */
+  get canManageInstance(): boolean {
+    const role = this.user?.instance_role;
+    return role === 'owner' || role === 'manager';
+  }
+
+  /**
+   * Whether the current user is the instance `Owner`. Owner-only operations
+   * (granting/revoking Owner, destructive instance actions) gate on this.
+   */
+  get isOwner(): boolean {
+    return this.user?.instance_role === 'owner';
   }
 
   /** Replace the cached user (e.g. after login, profile update, or layout load). */

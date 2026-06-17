@@ -20,7 +20,6 @@ mod event;
 mod favorite;
 mod invite;
 mod issue;
-mod membership;
 mod mute_rule;
 mod project;
 mod session;
@@ -32,7 +31,6 @@ pub use event::SqliteEventRepository;
 pub use favorite::SqliteFavoriteRepository;
 pub use invite::SqliteInviteRepository;
 pub use issue::SqliteIssueRepository;
-pub use membership::SqliteMembershipRepository;
 pub use mute_rule::SqliteTagMuteRuleRepository;
 pub use project::SqliteProjectRepository;
 pub use session::SqliteSessionRepository;
@@ -281,12 +279,14 @@ pub(crate) mod tests {
     }
 
     /// Insert a user row directly and return its id.
+    ///
+    /// Leaves `instance_role` at its column default (`'member'`).
     pub(crate) async fn insert_user(pool: &Db, email: &str) -> crate::domain::Id {
         let id = crate::domain::Id::new_v4();
         let now = super::ts_to_db(chrono::Utc::now());
         sqlx::query(
-            "INSERT INTO users (id, email, display_name, password_hash, is_admin, \
-             notifications_enabled, created_at, updated_at) VALUES (?, ?, ?, 'hash', 0, 1, ?, ?)",
+            "INSERT INTO users (id, email, display_name, password_hash, \
+             notifications_enabled, created_at, updated_at) VALUES (?, ?, ?, 'hash', 1, ?, ?)",
         )
         .bind(super::id_to_db(id))
         .bind(email)

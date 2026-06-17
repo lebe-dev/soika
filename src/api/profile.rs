@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{ApiError, AuthUser};
 use crate::auth::{hash_password, verify_password};
-use crate::domain::{Id, User};
+use crate::domain::{Id, InstanceRole, User};
 use crate::error::Error;
 use crate::ports::UserUpdate;
 use crate::state::AppState;
@@ -21,7 +21,8 @@ pub struct ProfileView {
     pub id: Id,
     pub email: String,
     pub display_name: String,
-    pub is_admin: bool,
+    /// Instance-wide role (`owner | manager | member`).
+    pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
 }
 
@@ -31,7 +32,7 @@ impl From<User> for ProfileView {
             id: u.id,
             email: u.email,
             display_name: u.display_name,
-            is_admin: u.is_admin,
+            instance_role: u.instance_role,
             notifications_enabled: u.notifications_enabled,
         }
     }
@@ -157,11 +158,12 @@ mod tests {
             id: Id::nil(),
             email: "a@b.c".into(),
             display_name: "A".into(),
-            is_admin: false,
+            instance_role: InstanceRole::Member,
             notifications_enabled: true,
         };
         let json = serde_json::to_string(&view).unwrap();
         assert!(!json.contains("password"));
         assert!(json.contains("notifications_enabled"));
+        assert!(json.contains("\"instance_role\":\"member\""));
     }
 }

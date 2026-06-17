@@ -113,13 +113,13 @@ pub async fn auth_config(
         .map(|s| s.allow_signup)
         .unwrap_or(state.config.allow_signup);
 
-    // First-run detection: the instance is "initialized" once an admin
+    // First-run detection: the instance is "initialized" once an Owner
     // exists. On a DB error default to `true` so we never expose `/setup` (and a
     // fresh admin creation) when the real state is unknown — `/auth/setup` itself
     // re-checks before creating, so this is purely a UI-routing hint.
     let initialized = state
         .users
-        .count_admins()
+        .count_owners()
         .await
         .map(|count| count > 0)
         .unwrap_or(true);
@@ -290,8 +290,8 @@ async fn run_callback(
     }
 
     // Find-or-create: an existing local account with the same email can also sign
-    // in via SSO — except the built-in admin, which keeps password
-    // login. Refusing the admin here closes an account-takeover
+    // in via SSO — except the instance Owner, which keeps password
+    // login. Refusing the Owner here closes an account-takeover
     // vector where the public IdP could assume the highest-privilege account by
     // email match.
     //
@@ -303,9 +303,9 @@ async fn run_callback(
         UserStatus::Active
     };
     let user = match state.users.find_by_email(&claims.email).await? {
-        Some(existing) if existing.is_admin => {
+        Some(existing) if existing.instance_role.is_owner() => {
             return Err(Error::Forbidden(
-                "admin account uses password login, not SSO".into(),
+                "owner account uses password login, not SSO".into(),
             ));
         }
         Some(existing) => existing,
@@ -316,7 +316,7 @@ async fn run_callback(
                     email: claims.email,
                     display_name: claims.display_name,
                     password_hash: String::new(),
-                    is_admin: false,
+                    instance_role: crate::domain::InstanceRole::Member,
                     auth_provider: AuthProvider::Oidc,
                     status: initial_status,
                 })

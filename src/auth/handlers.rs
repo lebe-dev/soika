@@ -18,7 +18,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Id, Invite, Role, User};
+use crate::domain::{Id, InstanceRole, Invite, TeamRole, User};
 use crate::error::Error;
 use crate::state::AppState;
 
@@ -102,7 +102,8 @@ pub struct UserView {
     pub id: Id,
     pub email: String,
     pub display_name: String,
-    pub is_admin: bool,
+    /// Instance-wide role (`owner | manager | member`).
+    pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
     /// Account origin: `"local"` or `"oidc"` (lets the UI hide "change password").
     pub auth_provider: crate::domain::AuthProvider,
@@ -114,7 +115,7 @@ impl From<User> for UserView {
             id: u.id,
             email: u.email,
             display_name: u.display_name,
-            is_admin: u.is_admin,
+            instance_role: u.instance_role,
             notifications_enabled: u.notifications_enabled,
             auth_provider: u.auth_provider,
         }
@@ -149,10 +150,11 @@ pub struct SetupRequest {
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
-    /// Parent project's short public id, so the accept flow can redirect to
-    /// `/projects/{short_id}` after joining.
-    pub project_id: String,
-    pub role: Role,
+    /// Target team id, so the accept flow can route to the team after joining.
+    pub team_id: Id,
+    /// Team name, for display on the accept page.
+    pub team_name: String,
+    pub role: TeamRole,
     pub email: Option<String>,
     /// True when no account exists for the invite's target email, so the UI
     /// should prompt for registration rather than just "join".
@@ -226,10 +228,10 @@ pub async fn login(
     }
 
     // Coexistence with SSO: when OAuth is enabled, password login is
-    // reserved for the built-in admin (`is_admin`). Everyone else — including any
-    // OIDC-provisioned account whose `password_hash` is the empty sentinel — must
-    // use SSO. We still spend the same hashing effort on the rejected path so the
-    // anti-enumeration timing profile is unchanged.
+    // reserved for the built-in owner (`InstanceRole::Owner`). Everyone else —
+    // including any OIDC-provisioned account whose `password_hash` is the empty
+    // sentinel — must use SSO. We still spend the same hashing effort on the
+    // rejected path so the anti-enumeration timing profile is unchanged.
     let oauth_enabled = state.oidc.is_some();
 
     // Constant-ish work whether or not the user exists, to avoid user enumeration.
@@ -237,9 +239,9 @@ pub async fn login(
     let ok = match &user {
         Some(u) => {
             let verified = verify_password(&body.password, &u.password_hash)?;
-            // Under OAuth, non-admin accounts cannot log in with a password even
+            // Under OAuth, non-owner accounts cannot log in with a password even
             // if their hash matched; reject after spending the verify effort.
-            verified && (!oauth_enabled || u.is_admin)
+            verified && (!oauth_enabled || u.instance_role.is_owner())
         }
         None => {
             // Spend roughly the same effort on a dummy verify to reduce timing signal.
@@ -249,14 +251,14 @@ pub async fn login(
     };
 
     if !ok {
-        // Distinguish the "password login disabled" case for a known non-admin
+        // Distinguish the "password login disabled" case for a known non-owner
         // account so the UI can point users at SSO, while keeping unknown emails
         // and bad passwords on the generic anti-enumeration path. This branch is
         // deterministic (independent of the password) so it does not count toward
         // the brute-force budget.
         if oauth_enabled
             && let Some(u) = &user
-            && !u.is_admin
+            && !u.instance_role.is_owner()
         {
             return Err(AuthError(Error::Forbidden(
                 "password login is disabled; use SSO".into(),
@@ -283,14 +285,14 @@ pub async fn login(
     Ok((out, Json(UserView::from(user))).into_response())
 }
 
-/// `POST /auth/setup` — first-run provisioning of the built-in admin.
+/// `POST /auth/setup` — first-run provisioning of the instance owner.
 ///
 /// Replaces the old `ADMIN_EMAIL`/`ADMIN_PASSWORD` env bootstrap: the instance
-/// admin now lives in the database and is created here on first run. Allowed
-/// only while the service is uninitialized (no admin exists); once an admin is
+/// owner now lives in the database and is created here on first run. Allowed
+/// only while the service is uninitialized (no Owner exists); once an Owner is
 /// present this returns `409 Conflict` so the route can never be used to mint a
-/// second privileged account. On success it creates the admin, persists the
-/// organization name, starts a session and returns the admin — logging the
+/// second privileged account. On success it creates the Owner, persists the
+/// organization name, starts a session and returns the user — logging the
 /// operator straight in.
 pub async fn setup(
     State(state): State<AppState>,
@@ -299,7 +301,7 @@ pub async fn setup(
     // Gate on current state: refuse once any admin exists. This is the same
     // check the SPA uses via `/auth/config`, re-enforced server-side so the
     // endpoint is safe even if called directly.
-    if state.users.count_admins().await? > 0 {
+    if state.users.count_owners().await? > 0 {
         return Err(AuthError(Error::Conflict(
             "the service is already initialized".into(),
         )));
@@ -320,7 +322,7 @@ pub async fn setup(
         email,
         display_name,
         password_hash,
-        is_admin: true,
+        instance_role: InstanceRole::Owner,
         auth_provider: crate::domain::AuthProvider::Local,
         status: crate::domain::UserStatus::Active,
     };
@@ -404,18 +406,17 @@ pub async fn get_invite(
         None => false,
     };
 
-    // The accept page redirects to the project by its short public id, so resolve
-    // the internal UUID to that code here.
-    let project_short_id = state
-        .projects
-        .find_by_id(invite.project_id)
+    // The accept page shows the team being joined; resolve its name here.
+    let team = state
+        .teams
+        .find_by_id(invite.team_id)
         .await?
-        .map(|p| p.short_id)
-        .ok_or_else(|| Error::not_found("project"))?;
+        .ok_or_else(|| Error::not_found("team"))?;
 
     Ok(Json(InviteView {
         token: invite.token,
-        project_id: project_short_id,
+        team_id: team.id,
+        team_name: team.name,
         role: invite.role,
         email: invite.email,
         requires_registration,
@@ -425,7 +426,7 @@ pub async fn get_invite(
 /// `POST /invite/{token}` — accept an invite.
 ///
 /// Three cases:
-///   1. A logged-in user → joins the project with the invite's role.
+///   1. A logged-in user → joins the team with the invite's team role.
 ///   2. An existing account (by email + password) → authenticates, then joins.
 ///   3. A new email → registers (independent of `allow_signup`), then joins.
 ///
@@ -480,10 +481,10 @@ pub async fn accept_invite(
         }
     };
 
-    // Join the project with the invited role (idempotent upsert).
+    // Join the team with the invited team role (idempotent add).
     state
-        .memberships
-        .upsert(invite.project_id, user.id, invite.role)
+        .teams
+        .add_member(invite.team_id, user.id, invite.role)
         .await?;
     state
         .invites
@@ -528,7 +529,7 @@ async fn create_user(
         email,
         display_name,
         password_hash,
-        is_admin: false,
+        instance_role: InstanceRole::Member,
         auth_provider: crate::domain::AuthProvider::Local,
         status: crate::domain::UserStatus::Active,
     };

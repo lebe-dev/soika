@@ -2,7 +2,7 @@
 //!
 //! An invite token is a high-entropy, URL-safe random string that doubles as
 //! the DB primary key of the [`crate::domain::Invite`] record. Expiry and the
-//! bound project/role are authoritative in the DB row, so a token is only valid
+//! bound team/role are authoritative in the DB row, so a token is only valid
 //! while a matching, unexpired, unaccepted invite exists. Tokens are generated
 //! with a CSPRNG, making them practically unguessable.
 
@@ -45,7 +45,7 @@ pub fn check_invite_usable(invite: &Invite, now: Timestamp) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Role;
+    use crate::domain::TeamRole;
     use chrono::{Duration, Utc};
     use uuid::Uuid;
 
@@ -53,8 +53,8 @@ mod tests {
         let now = Utc::now();
         Invite {
             token: generate_invite_token(),
-            project_id: Uuid::new_v4(),
-            role: Role::Member,
+            team_id: Uuid::new_v4(),
+            role: TeamRole::Contributor,
             email: None,
             created_by: None,
             created_at: now,

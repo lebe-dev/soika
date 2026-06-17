@@ -24,7 +24,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use soika::auth::hash_password;
 use soika::config::LockoutConfig;
-use soika::domain::{AuthProvider, Id, Role, UserStatus};
+use soika::domain::{AuthProvider, Id, InstanceRole, Role, TeamRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use std::time::Duration;
@@ -58,13 +58,18 @@ impl Fixture {
     }
 
     async fn create_user(&self, email: &str, is_admin: bool) -> Id {
+        let instance_role = if is_admin {
+            InstanceRole::Owner
+        } else {
+            InstanceRole::Member
+        };
         self.state
             .users
             .create(NewUser {
                 email: email.into(),
                 display_name: email.into(),
                 password_hash: hash_password(PASSWORD).unwrap(),
-                is_admin,
+                instance_role,
                 auth_provider: AuthProvider::Local,
                 status: UserStatus::Active,
             })
@@ -98,23 +103,48 @@ impl Fixture {
         }
     }
 
-    /// Seed a direct `memberships` row granting `role` on `project_id`.
+    /// Grant `role` on a project under Variant A: project access is derived
+    /// from membership in the owning team, so this resolves the project's team
+    /// and writes the equivalent team role (`Role::Admin` → `TeamRole::Admin`,
+    /// `Role::Member` → `TeamRole::Contributor`).
     async fn add_membership(&self, project_id: Id, user_id: Id, role: Role) {
+        let team_id = self.team_of_project(project_id).await;
+        let team_role = match role {
+            Role::Admin => TeamRole::Admin,
+            Role::Member => TeamRole::Contributor,
+        };
         self.state
-            .memberships
-            .upsert(project_id, user_id, role)
+            .teams
+            .add_member(team_id, user_id, team_role)
             .await
             .unwrap();
     }
 
-    /// The membership role stored for a user on a project, if any.
+    /// The effective project `Role` for a user, derived from the team role on
+    /// the project's owning team (`TeamRole::Admin` → `Role::Admin`,
+    /// `TeamRole::Contributor` → `Role::Member`).
     async fn membership_role(&self, project_id: Id, user_id: Id) -> Option<Role> {
+        let team_id = self.team_of_project(project_id).await;
         self.state
-            .memberships
-            .find(project_id, user_id)
+            .teams
+            .member_role(team_id, user_id)
             .await
             .unwrap()
-            .map(|m| m.role)
+            .map(|r| match r {
+                TeamRole::Admin => Role::Admin,
+                TeamRole::Contributor => Role::Member,
+            })
+    }
+
+    /// Resolve the owning team id for an internal project id.
+    async fn team_of_project(&self, project_id: Id) -> Id {
+        self.state
+            .projects
+            .find_by_id(project_id)
+            .await
+            .unwrap()
+            .expect("project exists")
+            .team_id
     }
 
     /// Log in via `/auth/login` and return the session cookie pair
@@ -245,25 +275,25 @@ async fn direct_member_can_get_but_not_patch_project() {
 }
 
 // ---------------------------------------------------------------------------
-// effective_role resolution order: a direct Admin row wins over the team
-// fallback (which would otherwise grant only Member).
+// effective_role resolution (Variant A): a `TeamRole::Admin` of the owning team
+// resolves to `Role::Admin`, granting admin-only project actions, whereas a
+// plain `TeamRole::Contributor` would resolve only to `Role::Member`.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn direct_admin_row_wins_over_team_member_fallback() {
+async fn team_admin_grants_project_admin_access() {
     let app = Fixture::spawn().await;
     let user = app.create_user("admin-row@example.com", false).await;
     let team = app.create_team("team-a").await;
     let project = app.create_project(team, "alpha", "dsn-alpha").await;
 
-    // The user is a team member (which alone resolves to Role::Member) AND has a
-    // direct Admin membership row. The direct row must win.
-    app.state.teams.add_member(team, user).await.unwrap();
+    // The user is a Team Admin of the owning team; under Variant A this resolves
+    // to Role::Admin on every project of that team.
     app.add_membership(project.id, user, Role::Admin).await;
     let cookie = app.login("admin-row@example.com").await;
 
-    // An admin-only action (PATCH) succeeds, proving the Admin row took priority
-    // over the team-Member fallback.
+    // An admin-only action (PATCH) succeeds, proving the Team Admin role
+    // resolves to project-admin access.
     let (status, body) = app
         .patch_json(
             &format!("/api/projects/{}", project.short_id),
@@ -274,15 +304,15 @@ async fn direct_admin_row_wins_over_team_member_fallback() {
     assert_eq!(
         status,
         StatusCode::OK,
-        "direct admin row grants admin actions despite team-only Member"
+        "a Team Admin resolves to project-admin access"
     );
     assert_eq!(body["name"], "renamed by admin");
 
-    // The direct membership row is still Admin (not downgraded by the fallback).
+    // The user remains a Team Admin → effective project Role::Admin.
     assert_eq!(
         app.membership_role(project.id, user).await,
         Some(Role::Admin),
-        "the direct membership row remains Admin"
+        "the user remains a Team Admin"
     );
 }
 
@@ -297,7 +327,11 @@ async fn create_project_in_foreign_team_is_forbidden() {
     // The caller is a member of team-a, but tries to create in team-b.
     let team_a = app.create_team("team-a").await;
     let team_b = app.create_team("team-b").await;
-    app.state.teams.add_member(team_a, user).await.unwrap();
+    app.state
+        .teams
+        .add_member(team_a, user, TeamRole::Contributor)
+        .await
+        .unwrap();
     let cookie = app.login("outsider@example.com").await;
 
     let (status, _) = app
@@ -319,7 +353,13 @@ async fn create_project_makes_creator_admin() {
     let app = Fixture::spawn().await;
     let user = app.create_user("creator@example.com", false).await;
     let team = app.create_team("team-a").await;
-    app.state.teams.add_member(team, user).await.unwrap();
+    // Under Variant A, creating a project requires being a Team Admin of the
+    // target team (project rights derive from the owning team).
+    app.state
+        .teams
+        .add_member(team, user, TeamRole::Admin)
+        .await
+        .unwrap();
     let cookie = app.login("creator@example.com").await;
 
     let (status, body) = app
@@ -329,10 +369,10 @@ async fn create_project_makes_creator_admin() {
             &json!({ "name": "Fresh Project", "team_id": team.to_string() }),
         )
         .await;
-    assert_eq!(status, StatusCode::CREATED, "team member may create");
+    assert_eq!(status, StatusCode::CREATED, "team admin may create");
 
     // The newly-created project's short id is returned; resolve the internal id
-    // through the port to inspect the membership row that was written.
+    // through the port to confirm the creator's effective role.
     let short_id = body["id"].as_str().expect("created project id");
     let created = app
         .state
@@ -344,7 +384,7 @@ async fn create_project_makes_creator_admin() {
     assert_eq!(
         app.membership_role(created.id, user).await,
         Some(Role::Admin),
-        "creator is granted a direct Admin membership"
+        "creator has project-admin access via Team Admin role"
     );
 
     // End-to-end: the creator can now perform an admin-only action.

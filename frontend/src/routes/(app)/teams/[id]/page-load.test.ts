@@ -1,7 +1,8 @@
 // Tests for the team-detail page load: it always loads the team, but only
-// fetches the instance-wide user list (admin-only endpoint) when the current
-// user is an admin. Non-admins get an empty `users` array and admin.users is
-// never called. 404/403 on the team map to SvelteKit errors.
+// fetches the instance-wide user list (manager-only endpoint) when the current
+// user is an instance manager (Owner | Manager). Plain members get an empty
+// `users` array and admin.users is never called. 404/403 on the team map to
+// SvelteKit errors.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/client';
@@ -50,10 +51,10 @@ beforeEach(() => {
 });
 
 describe('(app)/teams/[id] +page load', () => {
-  it('skips admin.users for a non-admin member and returns an empty users list', async () => {
+  it('skips admin.users for a plain member and returns an empty users list', async () => {
     teamGet.mockResolvedValue(team);
 
-    const data = (await callLoad({ id: 'u1', is_admin: false })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as {
       team: unknown;
       users: unknown[];
     };
@@ -63,17 +64,27 @@ describe('(app)/teams/[id] +page load', () => {
     expect(adminUsers).not.toHaveBeenCalled();
   });
 
-  it('calls admin.users for an admin and returns the resolved list', async () => {
+  it('calls admin.users for a manager and returns the resolved list', async () => {
     teamGet.mockResolvedValue(team);
     adminUsers.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }] as never);
 
-    const data = (await callLoad({ id: 'u1', is_admin: true })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as {
       team: unknown;
       users: unknown[];
     };
 
     expect(adminUsers).toHaveBeenCalledTimes(1);
     expect(data.users).toEqual([{ id: 'u1' }, { id: 'u2' }]);
+  });
+
+  it('calls admin.users for an owner too', async () => {
+    teamGet.mockResolvedValue(team);
+    adminUsers.mockResolvedValue([{ id: 'u1' }] as never);
+
+    const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as { users: unknown[] };
+
+    expect(adminUsers).toHaveBeenCalledTimes(1);
+    expect(data.users).toEqual([{ id: 'u1' }]);
   });
 
   it('redirects to /login when there is no authenticated user', async () => {
@@ -84,19 +95,23 @@ describe('(app)/teams/[id] +page load', () => {
   it('maps a 404 from teams.get to error(404)', async () => {
     teamGet.mockRejectedValue(new ApiError(404, 'Team not found', null));
 
-    await expect(callLoad({ id: 'u1', is_admin: false })).rejects.toMatchObject({ status: 404 });
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toMatchObject({
+      status: 404
+    });
   });
 
   it('maps a 403 from teams.get to error(403)', async () => {
     teamGet.mockRejectedValue(new ApiError(403, 'No access', null));
 
-    await expect(callLoad({ id: 'u1', is_admin: false })).rejects.toMatchObject({ status: 403 });
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toMatchObject({
+      status: 403
+    });
   });
 
   it('rethrows a non-ApiError failure untouched', async () => {
     const boom = new TypeError('network down');
     teamGet.mockRejectedValue(boom);
 
-    await expect(callLoad({ id: 'u1', is_admin: false })).rejects.toBe(boom);
+    await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toBe(boom);
   });
 });

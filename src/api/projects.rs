@@ -2,8 +2,8 @@
 //!
 //! Session-cookie auth (see [`CurrentUser`]); per-project role checks.
 //! This module also hosts the shared API helpers (`CurrentUser`, JSON error
-//! mapping, role/membership guards) re-used by the sibling API modules
-//! (`issues`, `events`, `members`, `invites`).
+//! mapping, role guards, instance gates) re-used by the sibling API modules
+//! (`issues`, `events`, `invites`).
 
 // Auth/error guards return `Result<T, Response>`; axum's `Response` is large,
 // which is fine here (these are control-flow short-circuits, never hot paths).
@@ -16,7 +16,7 @@ use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Id, Membership, Project, Role, User};
+use crate::domain::{Id, Project, Role, TeamRole, User};
 use crate::error::Error;
 use crate::state::AppState;
 
@@ -140,40 +140,29 @@ pub async fn resolve_project(
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "project not found"))
 }
 
-/// Resolve the caller's effective role on a project.
+/// Resolve the caller's effective role on a project (Variant A, closed membership).
 ///
-/// This is **the** project-authorization rule for the whole codebase: it is
-/// team-aware (an owning-team member gets view access without a direct
-/// membership row). New handlers MUST gate project access through this (via
-/// [`require_member`] / [`require_admin`]) rather than checking the
-/// `memberships` table directly, so the team-membership path is never bypassed.
+/// This is **the** project-authorization rule for the whole codebase: project
+/// access derives solely from instance role and team membership of the owning
+/// team — there is no direct project membership. New handlers MUST gate project
+/// access through this (via [`require_member`] / [`require_admin`]).
 ///
 /// Resolution order:
-/// 1. Instance admins (built-in admin) are treated as project admins.
-/// 2. A direct `memberships` row grants its stored role (so a project admin
-///    keeps `Admin` even when the team grants only `Member`).
-/// 3. Membership in the team that owns the project grants `Member`.
-///
-/// Returns `None` if none of the above apply (no access).
+/// 1. Instance `Owner | Manager` ⇒ `Some(Role::Admin)` for every project.
+/// 2. Otherwise the caller's team role on the project's owning team:
+///    - `TeamRole::Admin`       ⇒ `Some(Role::Admin)`,
+///    - `TeamRole::Contributor` ⇒ `Some(Role::Member)`.
+/// 3. Otherwise `None` (no access — closed membership).
 pub async fn effective_role(
     state: &AppState,
     user: &User,
     project_id: Id,
 ) -> std::result::Result<Option<Role>, Response> {
-    if user.is_admin {
+    if user.instance_role.can_manage_instance() {
         return Ok(Some(Role::Admin));
     }
-    let membership: Option<Membership> = state
-        .memberships
-        .find(project_id, user.id)
-        .await
-        .map_err(error_response)?;
-    if let Some(membership) = membership {
-        return Ok(Some(membership.role));
-    }
 
-    // Fall back to team membership: belonging to the project's owning team
-    // grants view-level (`Member`) access even without a direct membership row.
+    // Access is granted only by membership in the project's owning team.
     let Some(project) = state
         .projects
         .find_by_id(project_id)
@@ -182,15 +171,33 @@ pub async fn effective_role(
     else {
         return Ok(None);
     };
-    if state
+
+    let team_role = state
         .teams
-        .is_member(project.team_id, user.id)
+        .member_role(project.team_id, user.id)
         .await
-        .map_err(error_response)?
-    {
-        return Ok(Some(Role::Member));
+        .map_err(error_response)?;
+
+    Ok(resolve_role(user.instance_role, team_role))
+}
+
+/// Pure resolver implementing the Variant-A effective-role truth table:
+/// instance `Owner | Manager` ⇒ `Admin`; otherwise the team role maps
+/// `Admin ⇒ Admin`, `Contributor ⇒ Member`; no team membership ⇒ `None`.
+///
+/// Split out so the matrix can be unit-tested without DB/`AppState` wiring;
+/// [`effective_role`] is the async wrapper that resolves the team role.
+fn resolve_role(
+    instance_role: crate::domain::InstanceRole,
+    team_role: Option<TeamRole>,
+) -> Option<Role> {
+    if instance_role.can_manage_instance() {
+        return Some(Role::Admin);
     }
-    Ok(None)
+    team_role.map(|role| match role {
+        TeamRole::Admin => Role::Admin,
+        TeamRole::Contributor => Role::Member,
+    })
 }
 
 /// Require that the caller can view the project (any role). Returns the role.
@@ -221,6 +228,31 @@ pub async fn require_admin(
             "admin role required for this action",
         )),
     }
+}
+
+/// Require that the caller can manage the instance (`Owner | Manager`).
+///
+/// Instance gate (not project-scoped): used by team CRUD, user management and
+/// invite endpoints. Returns a `403` JSON response otherwise.
+pub fn require_manager(user: &User) -> std::result::Result<(), Response> {
+    if user.instance_role.can_manage_instance() {
+        return Ok(());
+    }
+    Err(json_error(
+        StatusCode::FORBIDDEN,
+        "requires instance manager or owner",
+    ))
+}
+
+/// Require that the caller is an instance `Owner`.
+///
+/// Instance gate for destructive/critical operations (granting/revoking `Owner`,
+/// deleting an `Owner`). Returns a `403` JSON response otherwise.
+pub fn require_owner(user: &User) -> std::result::Result<(), Response> {
+    if user.instance_role.is_owner() {
+        return Ok(());
+    }
+    Err(json_error(StatusCode::FORBIDDEN, "requires instance owner"))
 }
 
 /// Build the full DSN string for a project from its public key.
@@ -319,8 +351,8 @@ pub struct ProjectOverviewView {
 
 /// Projects visible to `user`, each with its unresolved-issue count and favorite flag.
 ///
-/// Mirrors [`list`]'s visibility rule (admins see all projects; others only
-/// their memberships), then fetches every project's open-issue count in a
+/// Mirrors [`list`]'s visibility rule (instance `Owner | Manager` see all
+/// projects; others only their team's), then fetches every project's open-issue count in a
 /// single batched query. Used by the `/auth/config` bootstrap so the dashboard
 /// renders from one request instead of fanning out to `/projects`, `/teams`
 /// and one `/issues` call per project. Results are sorted: favorited projects
@@ -329,7 +361,7 @@ pub async fn overviews(
     state: &AppState,
     user: &User,
 ) -> crate::error::Result<Vec<ProjectOverviewView>> {
-    let projects = if user.is_admin {
+    let projects = if user.instance_role.can_manage_instance() {
         state.projects.list().await?
     } else {
         state.projects.list_for_user(user.id).await?
@@ -368,10 +400,10 @@ pub async fn overviews(
 
 /// `GET /projects` — list projects visible to the current user.
 ///
-/// Instance admins see all projects; other users see only projects they are a
-/// member of.
+/// Instance `Owner | Manager` see all projects; other users see only projects
+/// owned by a team they belong to.
 pub async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
-    let projects = if user.is_admin {
+    let projects = if user.instance_role.can_manage_instance() {
         state.projects.list().await
     } else {
         state.projects.list_for_user(user.id).await
@@ -410,9 +442,8 @@ pub struct CreateProjectRequest {
 
 /// `POST /projects` — create a project.
 ///
-/// The caller must be an instance admin or an admin in any existing project of
-/// the target team. (Team-scoped authorization is refined once team membership
-/// semantics are finalized — see followups.)
+/// The caller must be an instance `Owner | Manager`, or a `TeamRole::Admin` of
+/// the target team (Variant A: project rights derive from the owning team).
 pub async fn create(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -423,16 +454,16 @@ pub async fn create(
         return json_error(StatusCode::BAD_REQUEST, "name must not be empty");
     }
 
-    // Only instance admins or members of the target team may create projects.
-    if !user.is_admin {
-        match state.teams.list_for_user(user.id).await {
-            Ok(teams) => {
-                if !teams.iter().any(|t| t.id == req.team_id) {
-                    return json_error(
-                        StatusCode::FORBIDDEN,
-                        "you are not a member of the target team",
-                    );
-                }
+    // Instance managers/owners may create in any team; otherwise the caller must
+    // be a Team Admin of the target team.
+    if !user.instance_role.can_manage_instance() {
+        match state.teams.member_role(req.team_id, user.id).await {
+            Ok(Some(TeamRole::Admin)) => {}
+            Ok(_) => {
+                return json_error(
+                    StatusCode::FORBIDDEN,
+                    "you must be an admin of the target team to create a project",
+                );
             }
             Err(err) => return error_response(err),
         }
@@ -476,14 +507,8 @@ pub async fn create(
 
     match state.projects.create(new).await {
         Ok(project) => {
-            // The creator becomes a project admin.
-            if let Err(err) = state
-                .memberships
-                .upsert(project.id, user.id, Role::Admin)
-                .await
-            {
-                return error_response(err);
-            }
+            // No project-level membership under Variant A: the creator already
+            // has access (and Admin role) via their team membership / instance role.
             let view = ProjectView::from_project(project, &state.config.base_url);
             (StatusCode::CREATED, Json(view)).into_response()
         }
@@ -946,7 +971,64 @@ fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::InstanceRole;
     use uuid::Uuid;
+
+    #[test]
+    fn effective_role_truth_table() {
+        use InstanceRole::*;
+        // Instance Owner|Manager => Admin on every project, regardless of team role.
+        assert_eq!(resolve_role(Owner, None), Some(Role::Admin));
+        assert_eq!(
+            resolve_role(Owner, Some(TeamRole::Contributor)),
+            Some(Role::Admin)
+        );
+        assert_eq!(resolve_role(Manager, None), Some(Role::Admin));
+        assert_eq!(
+            resolve_role(Manager, Some(TeamRole::Contributor)),
+            Some(Role::Admin)
+        );
+        // Plain Member: access derives purely from the team role.
+        assert_eq!(
+            resolve_role(Member, Some(TeamRole::Admin)),
+            Some(Role::Admin)
+        );
+        assert_eq!(
+            resolve_role(Member, Some(TeamRole::Contributor)),
+            Some(Role::Member)
+        );
+        // No team membership and no instance privilege => no access (closed membership).
+        assert_eq!(resolve_role(Member, None), None);
+    }
+
+    #[test]
+    fn instance_gates_follow_role_hierarchy() {
+        let owner = user(InstanceRole::Owner);
+        let manager = user(InstanceRole::Manager);
+        let member = user(InstanceRole::Member);
+        assert!(require_manager(&owner).is_ok());
+        assert!(require_manager(&manager).is_ok());
+        assert!(require_manager(&member).is_err());
+        assert!(require_owner(&owner).is_ok());
+        assert!(require_owner(&manager).is_err());
+        assert!(require_owner(&member).is_err());
+    }
+
+    fn user(instance_role: InstanceRole) -> User {
+        let now = chrono::Utc::now();
+        User {
+            id: Uuid::new_v4(),
+            email: "u@example.com".into(),
+            display_name: "U".into(),
+            password_hash: String::new(),
+            instance_role,
+            notifications_enabled: true,
+            auth_provider: crate::domain::AuthProvider::Local,
+            status: crate::domain::UserStatus::Active,
+            created_at: now,
+            updated_at: now,
+        }
+    }
 
     #[test]
     fn project_detail_view_flattens_project_alongside_issues() {

@@ -4,9 +4,9 @@
 //!   * [`password`] — argon2id hashing/verification.
 //!   * [`signing`] — HMAC-SHA256 signing for tamper-evident cookies/tokens.
 //!   * [`session`] — server-side session lifecycle + the signed session cookie.
-//!   * [`extractor`] — the [`CurrentUser`] axum extractor and the instance-admin
-//!     gate ([`require_instance_admin`]). Per-project authorization lives in
-//!     [`crate::api::projects::effective_role`] (team-aware), not here.
+//!   * [`extractor`] — the [`CurrentUser`] axum extractor and the instance-role
+//!     gates ([`require_manager`], [`require_owner`]). Per-project authorization
+//!     lives in [`crate::api::projects::effective_role`] (team-aware), not here.
 //!   * [`invite_token`] — invite token generation, links, and usability checks.
 //!   * [`handlers`] — the `/auth/*` and `/invite/{token}` route bodies.
 //!
@@ -37,8 +37,8 @@ pub use password::{hash_password, verify_password};
 //
 // Per-project authorization is NOT re-exported here: the single source of that
 // rule is `crate::api::projects::effective_role` (team-aware). This module
-// exposes only authentication (`CurrentUser`) and the instance-admin gate.
-pub use extractor::{AuthRejection, CurrentUser, require_instance_admin};
+// exposes only authentication (`CurrentUser`) and the instance-role gates.
+pub use extractor::{AuthRejection, CurrentUser, require_manager, require_owner};
 
 // --- Session surface (used by handlers; also by other agents if needed) ------
 pub use session::{

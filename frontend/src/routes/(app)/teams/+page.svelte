@@ -15,11 +15,11 @@
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
 
-  // Teams — team list. Any authenticated user can browse teams;
-  // creating a team is restricted to the instance admin.
+  // Teams — team list. Any authenticated user can browse their teams;
+  // creating a team is restricted to instance managers (Owner | Manager).
   let { data }: { data: PageData } = $props();
 
-  const isAdmin = $derived(authStore.isAdmin);
+  const canManageInstance = $derived(authStore.canManageInstance);
 
   let createOpen = $state(false);
   let newName = $state('');
@@ -62,7 +62,7 @@
         Groups of users that grant access to assigned projects.
       </p>
     </div>
-    {#if isAdmin}
+    {#if canManageInstance}
       <Button onclick={openCreate} class="gap-2">
         <Plus class="size-4" />
         New team
@@ -76,7 +76,7 @@
         <div class="flex flex-col items-center gap-3 py-10 text-center">
           <Users class="text-muted-foreground size-8" />
           <p class="text-muted-foreground text-sm">No teams yet.</p>
-          {#if isAdmin}
+          {#if canManageInstance}
             <Button variant="outline" onclick={openCreate} class="gap-2">
               <Plus class="size-4" />
               Create your first team

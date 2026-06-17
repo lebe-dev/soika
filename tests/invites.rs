@@ -33,7 +33,7 @@ use soika::auth::{
     AuthorizeRequest, OidcClaims, OidcProvider, generate_invite_token, hash_password,
 };
 use soika::config::LockoutConfig;
-use soika::domain::{AuthProvider, Id, Role, UserStatus};
+use soika::domain::{AuthProvider, Id, InstanceRole, Role, TeamRole, UserStatus};
 use soika::ports::{NewInvite, NewProject, NewUser};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use tower::ServiceExt;
@@ -67,8 +67,10 @@ impl Fixture {
         }
     }
 
-    /// Seed a team with one project and return the project's internal id.
-    async fn seed_project(&self) -> Id {
+    /// Seed a team with one project and return the team's internal id. Under
+    /// Variant A, invites and membership are team-scoped, so tests operate on
+    /// the team id; the project is created to keep the fixture realistic.
+    async fn seed_team(&self) -> Id {
         let team = self
             .state
             .teams
@@ -87,8 +89,8 @@ impl Fixture {
                 webhook_url: None,
             })
             .await
-            .expect("create project")
-            .id
+            .expect("create project");
+        team.id
     }
 
     /// Create an active local user with the shared test password.
@@ -99,7 +101,7 @@ impl Fixture {
                 email: email.into(),
                 display_name: email.into(),
                 password_hash: hash_password(PASSWORD).unwrap(),
-                is_admin: false,
+                instance_role: InstanceRole::Member,
                 auth_provider: AuthProvider::Local,
                 status: UserStatus::Active,
             })
@@ -113,18 +115,22 @@ impl Fixture {
     /// produces an already-expired invite. Returns the token.
     async fn mint_invite(
         &self,
-        project_id: Id,
+        team_id: Id,
         role: Role,
         email: Option<&str>,
         expires_in: Duration,
     ) -> String {
         let token = generate_invite_token();
+        let team_role = match role {
+            Role::Admin => TeamRole::Admin,
+            Role::Member => TeamRole::Contributor,
+        };
         self.state
             .invites
             .create(NewInvite {
                 token: token.clone(),
-                project_id,
-                role,
+                team_id,
+                role: team_role,
                 email: email.map(str::to_owned),
                 created_by: None,
                 expires_at: self.state.clock.now() + expires_in,
@@ -164,14 +170,19 @@ impl Fixture {
         (status, json)
     }
 
-    /// The persisted membership of `user_id` in `project_id`, if any.
-    async fn membership_role(&self, project_id: Id, user_id: Id) -> Option<Role> {
+    /// The effective project `Role` of `user_id` in `team_id`, derived from the
+    /// stored team role (`TeamRole::Admin` → `Role::Admin`,
+    /// `TeamRole::Contributor` → `Role::Member`), if any.
+    async fn membership_role(&self, team_id: Id, user_id: Id) -> Option<Role> {
         self.state
-            .memberships
-            .find(project_id, user_id)
+            .teams
+            .member_role(team_id, user_id)
             .await
             .expect("find membership")
-            .map(|m| m.role)
+            .map(|r| match r {
+                TeamRole::Admin => Role::Admin,
+                TeamRole::Contributor => Role::Member,
+            })
     }
 }
 
@@ -252,10 +263,10 @@ impl OidcProvider for FakeProvider {
 #[tokio::test]
 async fn new_email_accepts_invite_and_becomes_member_at_invited_role() {
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("invitee@example.com"),
             Duration::days(7),
@@ -288,11 +299,11 @@ async fn new_email_accepts_invite_and_becomes_member_at_invited_role() {
         .expect("query user")
         .expect("user provisioned from invite");
     assert_eq!(user.auth_provider, AuthProvider::Local);
-    assert!(!user.is_admin);
+    assert_eq!(user.instance_role, InstanceRole::Member);
 
     // Membership row created at the invited role.
     assert_eq!(
-        app.membership_role(project_id, user.id).await,
+        app.membership_role(team_id, user.id).await,
         Some(Role::Member),
         "invitee joins the project as a Member"
     );
@@ -313,10 +324,10 @@ async fn new_email_accepts_invite_at_admin_role() {
     // The invited role is authoritative: an Admin invite yields an Admin
     // membership, not the default Member.
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Admin,
             Some("boss@example.com"),
             Duration::days(7),
@@ -343,7 +354,7 @@ async fn new_email_accepts_invite_at_admin_role() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        app.membership_role(project_id, user.id).await,
+        app.membership_role(team_id, user.id).await,
         Some(Role::Admin),
     );
 }
@@ -353,11 +364,11 @@ async fn new_email_accepts_invite_at_admin_role() {
 #[tokio::test]
 async fn expired_invite_is_unauthorized() {
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     // expires_at one second in the past → unusable at the handler's clock.now().
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("late@example.com"),
             Duration::seconds(-1),
@@ -393,10 +404,10 @@ async fn expired_invite_is_unauthorized() {
 #[tokio::test]
 async fn already_accepted_invite_is_rejected() {
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("twice@example.com"),
             Duration::days(7),
@@ -439,11 +450,11 @@ async fn already_accepted_invite_is_rejected() {
 #[tokio::test]
 async fn existing_account_with_wrong_password_is_unauthorized() {
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let user_id = app.create_user("member@example.com").await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("member@example.com"),
             Duration::days(7),
@@ -465,7 +476,7 @@ async fn existing_account_with_wrong_password_is_unauthorized() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     // No membership created on a failed credential check.
     assert_eq!(
-        app.membership_role(project_id, user_id).await,
+        app.membership_role(team_id, user_id).await,
         None,
         "a wrong password does not grant membership"
     );
@@ -488,11 +499,11 @@ async fn existing_account_with_correct_password_joins() {
     // The positive counterpart: the right password authenticates the existing
     // account and joins it at the invited role.
     let app = Fixture::spawn().await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let user_id = app.create_user("member@example.com").await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("member@example.com"),
             Duration::days(7),
@@ -512,7 +523,7 @@ async fn existing_account_with_correct_password_joins() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["email"], "member@example.com");
     assert_eq!(
-        app.membership_role(project_id, user_id).await,
+        app.membership_role(team_id, user_id).await,
         Some(Role::Member),
     );
 }
@@ -525,10 +536,10 @@ async fn password_accept_for_new_email_is_forbidden_when_oidc_only() {
     // password-backed account from an invite for an unknown email — the invitee
     // must sign in via SSO first. Surfaced as 403 Forbidden.
     let app = Fixture::spawn_with_oidc(Some(Arc::new(FakeProvider))).await;
-    let project_id = app.seed_project().await;
+    let team_id = app.seed_team().await;
     let token = app
         .mint_invite(
-            project_id,
+            team_id,
             Role::Member,
             Some("sso-only@example.com"),
             Duration::days(7),

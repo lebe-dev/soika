@@ -1,14 +1,14 @@
-// Admin area guard + data load: requires the instance admin.
-// Non-admins are redirected to the dashboard. Loads service settings, the
+// Admin area guard + data load: requires an instance manager (Owner | Manager).
+// Other users are redirected to the dashboard. Loads service settings, the
 // instance-wide user list, and a teams overview.
 
 import { api, ApiError } from '$lib/api';
-import { requireAdmin } from '$lib/guards';
+import { requireInstanceManager } from '$lib/guards';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ parent, url, fetch }) => {
   const { user } = await parent();
-  requireAdmin(user, url.pathname + url.search);
+  requireInstanceManager(user, url.pathname + url.search);
 
   const [settings, users, teams] = await Promise.all([
     api.settings.get({ fetch }),

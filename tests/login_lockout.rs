@@ -20,7 +20,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use soika::auth::hash_password;
 use soika::config::LockoutConfig;
-use soika::domain::{AuthProvider, UserStatus};
+use soika::domain::{AuthProvider, InstanceRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
 use soika::{AppState, Config, MIGRATOR, build_state, router};
 use tower::ServiceExt; // for `oneshot`
@@ -100,7 +100,7 @@ async fn seed_account(state: &AppState) {
             email: EMAIL.into(),
             display_name: "Alice".into(),
             password_hash: hash_password(PASSWORD).expect("hash password"),
-            is_admin: false,
+            instance_role: InstanceRole::Member,
             auth_provider: AuthProvider::Local,
             status: UserStatus::Active,
         })

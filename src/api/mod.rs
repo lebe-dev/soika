@@ -7,7 +7,6 @@ pub mod client_config;
 pub mod events;
 pub mod invites;
 pub mod issues;
-pub mod members;
 pub mod mute_rules;
 pub mod profile;
 pub mod projects;

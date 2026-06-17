@@ -8,7 +8,7 @@
 //! Per-*project* authorization is **not** decided here: the single source of
 //! that rule is [`crate::api::projects::effective_role`] (team-aware). This
 //! module only provides authentication ([`CurrentUser`]) and the instance-wide
-//! admin gate ([`require_instance_admin`]).
+//! role gates ([`require_manager`], [`require_owner`]).
 
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
@@ -24,7 +24,7 @@ use super::session::session_id_from_headers;
 /// The authenticated user for the current request.
 ///
 /// Resolved from the session cookie; wraps the full [`User`] record so handlers
-/// can read `is_admin`, `id`, etc. without a second lookup.
+/// can read `instance_role`, `id`, etc. without a second lookup.
 #[derive(Debug, Clone)]
 pub struct CurrentUser(pub User);
 
@@ -34,9 +34,9 @@ impl CurrentUser {
         self.0.id
     }
 
-    /// Whether this user is the instance-wide built-in admin.
-    pub fn is_instance_admin(&self) -> bool {
-        self.0.is_admin
+    /// Whether this user has instance-management capabilities (`Owner | Manager`).
+    pub fn can_manage_instance(&self) -> bool {
+        self.0.instance_role.can_manage_instance()
     }
 }
 
@@ -88,30 +88,53 @@ impl FromRequestParts<AppState> for CurrentUser {
     }
 }
 
-/// Require that `user` is the instance-wide built-in admin.
-pub fn require_instance_admin(user: &User) -> Result<()> {
-    if user.is_admin {
+/// Require that `user` can manage the instance (`Owner | Manager`).
+pub fn require_manager(user: &User) -> Result<()> {
+    if user.instance_role.can_manage_instance() {
         return Ok(());
     }
-    Err(Error::Forbidden("requires instance admin".into()))
+    Err(Error::Forbidden(
+        "requires instance manager or owner".into(),
+    ))
+}
+
+/// Require that `user` is an instance `Owner`.
+pub fn require_owner(user: &User) -> Result<()> {
+    if user.instance_role.is_owner() {
+        return Ok(());
+    }
+    Err(Error::Forbidden("requires instance owner".into()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::InstanceRole;
 
     #[test]
-    fn instance_admin_gate() {
-        let admin = user(true);
-        let plain = user(false);
-        assert!(require_instance_admin(&admin).is_ok());
+    fn manager_gate_allows_owner_and_manager() {
+        assert!(require_manager(&user(InstanceRole::Owner)).is_ok());
+        assert!(require_manager(&user(InstanceRole::Manager)).is_ok());
         assert!(matches!(
-            require_instance_admin(&plain).unwrap_err(),
+            require_manager(&user(InstanceRole::Member)).unwrap_err(),
             Error::Forbidden(_)
         ));
     }
 
-    fn user(is_admin: bool) -> User {
+    #[test]
+    fn owner_gate_allows_only_owner() {
+        assert!(require_owner(&user(InstanceRole::Owner)).is_ok());
+        assert!(matches!(
+            require_owner(&user(InstanceRole::Manager)).unwrap_err(),
+            Error::Forbidden(_)
+        ));
+        assert!(matches!(
+            require_owner(&user(InstanceRole::Member)).unwrap_err(),
+            Error::Forbidden(_)
+        ));
+    }
+
+    fn user(instance_role: InstanceRole) -> User {
         use chrono::Utc;
         use uuid::Uuid;
         User {
@@ -119,7 +142,7 @@ mod tests {
             email: "u@example.com".into(),
             display_name: "U".into(),
             password_hash: String::new(),
-            is_admin,
+            instance_role,
             notifications_enabled: true,
             auth_provider: crate::domain::AuthProvider::Local,
             status: crate::domain::UserStatus::Active,
