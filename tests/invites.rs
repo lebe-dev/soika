@@ -60,7 +60,7 @@ impl Fixture {
             .await
             .expect("connect in-memory sqlite");
         MIGRATOR.run(&pool).await.expect("run migrations");
-        let state = build_state(pool, test_config()).with_oidc(oidc);
+        let state = build_state(pool, test_config()).unwrap().with_oidc(oidc);
         Fixture {
             router: router::build(state.clone()),
             state,

@@ -137,18 +137,22 @@ pub(crate) struct WebhookPayload {
 
 /// Build the webhook payload for an issue notification (pure; unit-tested).
 ///
-/// `issue_url` is `{base_url}/projects/{project_id}/issues/{issue_id}` with any
-/// trailing slash on `base_url` trimmed (mirroring `mail.rs` link building and
-/// the frontend route `/projects/[id]/issues/[issueId]`). The project id is
-/// taken from the issue itself so the link is always self-consistent.
+/// `issue_url` is `{base_url}/projects/{project_short_id}/issues/{issue_short_id}`
+/// with any trailing slash on `base_url` trimmed (mirroring `mail.rs` link
+/// building and the frontend route `/projects/[id]/issues/[issueId]`, both of
+/// which use the short public ids — not the UUIDs — so the link resolves in the
+/// SPA).
 pub(crate) fn build_webhook_payload(
     base_url: &str,
-    _project: &Project,
+    project: &Project,
     issue: &Issue,
     trigger: Trigger,
 ) -> WebhookPayload {
     let base = base_url.trim_end_matches('/');
-    let issue_url = format!("{base}/projects/{}/issues/{}", issue.project_id, issue.id);
+    let issue_url = format!(
+        "{base}/projects/{}/issues/{}",
+        project.short_id, issue.short_id
+    );
     WebhookPayload {
         trigger: trigger.as_str(),
         issue_id: issue.id,
@@ -207,8 +211,21 @@ async fn dispatch(
 
     for to in recipients {
         let email = match trigger {
-            Trigger::NewIssue => mail::new_issue_email(&state.config, &to, &issue.title),
-            Trigger::Regression => mail::regression_email(&state.config, &to, &issue.title),
+            Trigger::NewIssue => {
+                mail::new_issue_email(&state.templates, &state.config, &to, project, issue)
+            }
+            Trigger::Regression => {
+                mail::regression_email(&state.templates, &state.config, &to, project, issue)
+            }
+        };
+        // A template error affects every recipient identically — log once and
+        // stop rather than re-rendering (and re-logging) for each address.
+        let email = match email {
+            Ok(email) => email,
+            Err(err) => {
+                tracing::error!(error = %err, issue_id = %issue.id, "rendering notification email failed");
+                return Ok(());
+            }
         };
         // A failure to one recipient must not block the others or fail ingestion.
         if let Err(err) = state.mailer.send(email).await {
@@ -430,7 +447,7 @@ mod tests {
             payload.issue_url,
             format!(
                 "https://errors.example.com/projects/{}/issues/{}",
-                issue.project_id, issue.id
+                project.short_id, issue.short_id
             )
         );
         assert!(!payload.issue_url.contains("com//projects"));
@@ -452,7 +469,7 @@ mod tests {
             payload.issue_url,
             format!(
                 "https://errors.example.com/projects/{}/issues/{}",
-                issue.project_id, issue.id
+                project.short_id, issue.short_id
             )
         );
     }
@@ -571,7 +588,7 @@ mod tests {
     async fn test_state(base_url: String) -> AppState {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::MIGRATOR.run(&pool).await.unwrap();
-        let state = crate::build_state(pool, test_config(base_url));
+        let state = crate::build_state(pool, test_config(base_url)).unwrap();
         assert!(
             !state.mailer.is_enabled(),
             "test state must use the disabled mailer to prove SMTP-independent webhook delivery"
@@ -613,7 +630,10 @@ mod tests {
         assert_eq!(json["event_count"], issue.event_count);
         assert_eq!(
             json["issue_url"],
-            format!("{url}/projects/{}/issues/{}", issue.project_id, issue.id)
+            format!(
+                "{url}/projects/{}/issues/{}",
+                project.short_id, issue.short_id
+            )
         );
     }
 

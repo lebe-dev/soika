@@ -3,8 +3,9 @@
 //! Two responsibilities:
 //!
 //! 1. **Composition** ([`invite_email`], [`new_issue_email`], [`regression_email`]):
-//!    pure functions that render an [`OutboundEmail`] from domain data. They have
-//!    no I/O, so they are trivially unit-testable.
+//!    functions that render an [`OutboundEmail`] from domain data. The issue
+//!    notifications render their HTML + text bodies from Tera templates loaded
+//!    via [`Templates`]; the rest are short inline plain-text messages.
 //! 2. **Delivery** ([`send_via_smtp`]): a `lettre`-backed helper that the SMTP
 //!    [`Mailer`](crate::ports::Mailer) adapter delegates to. Kept here (rather than
 //!    inlined in the adapter) so the lettre wiring lives next to the message
@@ -13,16 +14,67 @@
 //! When SMTP is unset the app degrades gracefully — the no-op mailer simply drops
 //! messages, and invite **links** still work.
 
-use lettre::message::Mailbox;
 use lettre::message::header::ContentType;
+use lettre::message::{Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::{AsyncSmtpTransport, AsyncSmtpTransportBuilder};
 use lettre::{AsyncTransport, Message, Tokio1Executor};
+use tera::{Context, Tera};
 
 use crate::config::{Config, SmtpConfig};
-use crate::domain::Invite;
+use crate::domain::{Invite, Issue, Project};
 use crate::error::{Error, Result};
 use crate::ports::OutboundEmail;
+
+/// Tera templates for outbound email, loaded once at startup and held in
+/// [`AppState`](crate::state::AppState).
+///
+/// Templates live as files under a directory (default `templates/`, see
+/// [`templates_dir`]) so operators can tweak the email look without rebuilding;
+/// the directory is shipped alongside the binary (see the Dockerfile).
+pub struct Templates {
+    tera: Tera,
+}
+
+/// Template names that must be present after loading. Missing templates fail
+/// startup (via [`Templates::load`]) rather than the first notification.
+const REQUIRED_TEMPLATES: [&str; 2] = ["email/notification.html", "email/notification.txt"];
+
+impl Templates {
+    /// Load every template under `dir` (recursively). Fails fast if the glob
+    /// can't be compiled or a [`REQUIRED_TEMPLATES`] entry is absent, so a
+    /// misconfigured deployment is caught at boot, not at send time.
+    pub fn load(dir: &str) -> Result<Self> {
+        let glob = format!("{}/**/*", dir.trim_end_matches('/'));
+        let tera =
+            Tera::new(&glob).map_err(|e| Error::Template(format!("loading {glob:?}: {e}")))?;
+
+        let names: std::collections::HashSet<&str> = tera.get_template_names().collect();
+        for required in REQUIRED_TEMPLATES {
+            if !names.contains(required) {
+                return Err(Error::Template(format!(
+                    "template {required:?} not found under {dir:?}"
+                )));
+            }
+        }
+        Ok(Self { tera })
+    }
+
+    /// Render a template to a `String`, mapping any Tera error to
+    /// [`Error::Template`].
+    fn render(&self, name: &str, ctx: &Context) -> Result<String> {
+        self.tera
+            .render(name, ctx)
+            .map_err(|e| Error::Template(format!("rendering {name:?}: {e}")))
+    }
+}
+
+/// The directory email templates are loaded from: `TEMPLATES_DIR` if set,
+/// otherwise `templates` (relative to the working directory). The Dockerfile
+/// copies `templates/` next to the binary and runs from that directory.
+pub fn templates_dir() -> String {
+    std::env::var("TEMPLATES_DIR").unwrap_or_else(|_| "templates".to_string())
+}
 
 /// Build the invite email for a generated invite link.
 ///
@@ -45,46 +97,101 @@ pub fn invite_email(config: &Config, to: &str, invite: &Invite) -> OutboundEmail
         to: to.to_string(),
         subject,
         body,
+        html_body: None,
     }
 }
 
 /// Build the "new issue" notification email (trigger 1).
-pub fn new_issue_email(config: &Config, to: &str, issue_title: &str) -> OutboundEmail {
-    let org = &config.organization_name;
-    let subject = format!("[{org}] New issue: {}", truncate_subject(issue_title));
-    let body = format!(
-        "A new issue was detected on {org}:\n\n\
-         {issue_title}\n\n\
-         View it in the dashboard:\n\
-         {base}\n\n\
-         — {org}",
-        base = config.base_url.trim_end_matches('/'),
-    );
-    OutboundEmail {
-        to: to.to_string(),
-        subject,
-        body,
-    }
+///
+/// Leads with the project and the error itself — the recipient cares what broke
+/// and where, not the instance/organization name (which is demoted to a small
+/// brand line in the footer). HTML + plain-text bodies are rendered from
+/// `email/notification.*`.
+pub fn new_issue_email(
+    templates: &Templates,
+    config: &Config,
+    to: &str,
+    project: &Project,
+    issue: &Issue,
+) -> Result<OutboundEmail> {
+    notification_email(
+        templates,
+        config,
+        to,
+        project,
+        issue,
+        "new_issue",
+        "New issue",
+    )
 }
 
 /// Build the "regression" notification email (trigger 2).
-pub fn regression_email(config: &Config, to: &str, issue_title: &str) -> OutboundEmail {
-    let org = &config.organization_name;
-    let subject = format!("[{org}] Regression: {}", truncate_subject(issue_title));
-    let body = format!(
-        "A resolved issue has regressed on {org}:\n\n\
-         {issue_title}\n\n\
-         It received a new event and is unresolved again.\n\n\
-         View it in the dashboard:\n\
-         {base}\n\n\
-         — {org}",
-        base = config.base_url.trim_end_matches('/'),
+pub fn regression_email(
+    templates: &Templates,
+    config: &Config,
+    to: &str,
+    project: &Project,
+    issue: &Issue,
+) -> Result<OutboundEmail> {
+    notification_email(
+        templates,
+        config,
+        to,
+        project,
+        issue,
+        "regression",
+        "Regression",
+    )
+}
+
+/// Render a new-issue/regression notification into an [`OutboundEmail`] with an
+/// HTML part and a plain-text fallback, both from Tera templates. The template
+/// owns all chrome and copy; this only assembles the data context and the
+/// (truncation-constrained) subject line.
+///
+/// `kind` selects the template branch (`"new_issue"` | `"regression"`);
+/// `subject_kind` is the word used in the subject (`[project] <kind>: <title>`).
+fn notification_email(
+    templates: &Templates,
+    config: &Config,
+    to: &str,
+    project: &Project,
+    issue: &Issue,
+    kind: &str,
+    subject_kind: &str,
+) -> Result<OutboundEmail> {
+    let subject = format!(
+        "[{}] {}: {}",
+        project.name,
+        subject_kind,
+        truncate_subject(&issue.title),
     );
-    OutboundEmail {
+
+    let mut ctx = Context::new();
+    ctx.insert("kind", kind);
+    ctx.insert("project_name", &project.name);
+    ctx.insert("title", &issue.title);
+    ctx.insert("culprit", issue.culprit.as_deref().unwrap_or(""));
+    ctx.insert("level", issue.level.as_deref().unwrap_or(""));
+    ctx.insert("environment", issue.environment.as_deref().unwrap_or(""));
+    ctx.insert("event_count", &issue.event_count);
+    ctx.insert(
+        "first_seen",
+        &issue.first_seen.format("%Y-%m-%d %H:%M UTC").to_string(),
+    );
+    ctx.insert("issue_url", &issue_link(config, project, issue));
+    ctx.insert("settings_url", &settings_link(config));
+    ctx.insert("org_name", &config.organization_name);
+
+    let html = templates.render("email/notification.html", &ctx)?;
+    let body = templates.render("email/notification.txt", &ctx)?;
+
+    Ok(OutboundEmail {
         to: to.to_string(),
         subject,
         body,
-    }
+        html_body: Some(html),
+    })
 }
 
 /// Build the "test email" used by the admin UI to verify SMTP delivery.
@@ -103,7 +210,26 @@ pub fn test_email(config: &Config, to: &str) -> OutboundEmail {
         to: to.to_string(),
         subject,
         body,
+        html_body: None,
     }
+}
+
+// --- Links for issue notifications --------------------------------------------
+
+/// Deep link to the issue, mirroring the webhook payload's `issue_url` and the
+/// SPA route `/projects/[id]/issues/[issueId]`.
+fn issue_link(config: &Config, project: &Project, issue: &Issue) -> String {
+    format!(
+        "{}/projects/{}/issues/{}",
+        config.base_url.trim_end_matches('/'),
+        project.short_id,
+        issue.short_id,
+    )
+}
+
+/// Link to the profile page, where the per-user notification toggle lives.
+fn settings_link(config: &Config) -> String {
+    format!("{}/profile", config.base_url.trim_end_matches('/'))
 }
 
 /// Deliver an [`OutboundEmail`] over SMTP using `lettre`.
@@ -113,24 +239,7 @@ pub fn test_email(config: &Config, to: &str) -> OutboundEmail {
 /// log-and-continue (notifications never fail ingestion).
 pub async fn send_via_smtp(smtp: &SmtpConfig, email: OutboundEmail) -> Result<()> {
     let from = smtp_from_mailbox(smtp)?;
-    let to: Mailbox = email
-        .to
-        .parse()
-        .map_err(|e| Error::Mail(format!("invalid recipient address {:?}: {e}", email.to)))?;
-
-    let message = Message::builder()
-        .from(from)
-        .to(to)
-        .subject(email.subject)
-        .header(ContentType::TEXT_PLAIN)
-        .body(email.body)
-        .map_err(|e| {
-            // Log the failure at the adapter so a misconfigured relay is visible
-            // even though the caller log-and-continues. NEVER log credentials or
-            // the message body — `e` carries only the lettre build error.
-            tracing::warn!(error = %e, "smtp send failed");
-            Error::Mail(format!("building message: {e}"))
-        })?;
+    let message = build_message(from, email)?;
 
     let transport = build_transport(smtp)?;
     transport.send(message).await.map_err(|e| {
@@ -140,6 +249,36 @@ pub async fn send_via_smtp(smtp: &SmtpConfig, email: OutboundEmail) -> Result<()
         Error::Mail(format!("sending message: {e}"))
     })?;
     Ok(())
+}
+
+/// Build the `lettre` [`Message`] from an [`OutboundEmail`].
+///
+/// When `html_body` is set the message is `multipart/alternative` with the
+/// plain-text `body` first and the HTML part last (RFC 2046: the last
+/// alternative is the most-preferred, so clients render the HTML). Text-only
+/// emails stay a single `text/plain` part.
+fn build_message(from: Mailbox, email: OutboundEmail) -> Result<Message> {
+    let to: Mailbox = email
+        .to
+        .parse()
+        .map_err(|e| Error::Mail(format!("invalid recipient address {:?}: {e}", email.to)))?;
+
+    let builder = Message::builder().from(from).to(to).subject(email.subject);
+    let built = match email.html_body {
+        Some(html) => builder.multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::plain(email.body))
+                .singlepart(SinglePart::html(html)),
+        ),
+        None => builder.header(ContentType::TEXT_PLAIN).body(email.body),
+    };
+    built.map_err(|e| {
+        // Log the failure at the adapter so a misconfigured relay is visible
+        // even though the caller log-and-continues. NEVER log credentials or
+        // the message body — `e` carries only the lettre build error.
+        tracing::warn!(error = %e, "smtp send failed");
+        Error::Mail(format!("building message: {e}"))
+    })
 }
 
 /// The SMTP submissions port (465) uses implicit TLS; other ports (587, 25) use
@@ -264,22 +403,181 @@ mod tests {
         assert!(email.body.contains("2026-01-08"));
     }
 
+    fn test_project() -> Project {
+        let now = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        Project {
+            id: Uuid::nil(),
+            short_id: "web001".to_string(),
+            team_id: Uuid::nil(),
+            name: "checkout-api".to_string(),
+            slug: "checkout-api".to_string(),
+            dsn_public_key: "pk".to_string(),
+            retention_events: 1000,
+            retention_days: 0,
+            muted: false,
+            webhook_url: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn test_issue(title: &str) -> Issue {
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 9, 30, 0).unwrap();
+        Issue {
+            id: Uuid::nil(),
+            short_id: "iss001".to_string(),
+            project_id: Uuid::nil(),
+            fingerprint: "fp".to_string(),
+            title: title.to_string(),
+            culprit: Some("checkout.handlers.charge".to_string()),
+            level: Some("error".to_string()),
+            environment: Some("production".to_string()),
+            release: None,
+            status: crate::domain::IssueStatus::Unresolved,
+            muted_at: None,
+            muted_until: None,
+            mute_threshold: None,
+            mute_window_seconds: None,
+            first_seen: now,
+            last_seen: now,
+            event_count: 42,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Load the real templates from the repo `templates/` dir (CWD-independent),
+    /// so these unit tests exercise the same files shipped in the image.
+    fn test_templates() -> Templates {
+        Templates::load(concat!(env!("CARGO_MANIFEST_DIR"), "/templates")).expect("templates load")
+    }
+
     #[test]
-    fn new_issue_email_has_org_and_title() {
-        let email = new_issue_email(&test_config(), "dev@example.com", "ValueError: boom");
-        assert!(email.subject.contains("Acme"));
+    fn new_issue_email_leads_with_project_and_error() {
+        let email = new_issue_email(
+            &test_templates(),
+            &test_config(),
+            "dev@example.com",
+            &test_project(),
+            &test_issue("ValueError: boom"),
+        )
+        .unwrap();
+        // Subject is project-scoped, not org-scoped.
+        assert!(email.subject.contains("[checkout-api]"));
         assert!(email.subject.contains("New issue"));
         assert!(email.subject.contains("ValueError: boom"));
-        assert!(email.body.contains("ValueError: boom"));
-        assert!(email.body.contains("https://errors.example.com"));
+        assert!(!email.subject.contains("Acme"));
+
+        let html = email.html_body.as_deref().expect("html part present");
+        // Project and error are the hero; org is demoted to the footer fine print.
+        assert!(html.contains("New issue in checkout-api"));
+        assert!(html.contains("ValueError: boom"));
+        assert!(html.contains("checkout.handlers.charge")); // culprit
+        assert!(html.contains("production")); // environment
+        assert!(html.contains("42")); // event count
+        // Branding: primary color for chrome/CTA, red for an error severity.
+        assert!(html.contains("#1d85e5")); // --primary
+        assert!(html.contains("#dc2626")); // Tailwind red-600
+        // Deep link to the issue and the unsubscribe/settings page.
+        // Deep link uses the short public ids (web001/iss001), not the UUIDs —
+        // mirrors the SPA route so the link resolves in the dashboard.
+        assert!(html.contains("https://errors.example.com/projects/web001/issues/iss001"));
+        assert!(html.contains("https://errors.example.com/profile"));
+        // Footer explains why the recipient got this.
+        assert!(html.contains("You're receiving this because"));
+        // Plain-text fallback carries the same signal.
+        assert!(email.body.contains("New issue in checkout-api"));
+        assert!(email.body.contains("https://errors.example.com/profile"));
     }
 
     #[test]
     fn regression_email_mentions_regression() {
-        let email = regression_email(&test_config(), "dev@example.com", "KeyError: nope");
+        let email = regression_email(
+            &test_templates(),
+            &test_config(),
+            "dev@example.com",
+            &test_project(),
+            &test_issue("KeyError: nope"),
+        )
+        .unwrap();
         assert!(email.subject.contains("Regression"));
-        assert!(email.body.contains("regressed"));
-        assert!(email.body.contains("KeyError: nope"));
+        assert!(email.subject.contains("[checkout-api]"));
+        let html = email.html_body.as_deref().expect("html part present");
+        assert!(html.contains("regressed in checkout-api"));
+        assert!(html.contains("KeyError: nope"));
+        assert!(email.body.contains("happening again"));
+    }
+
+    #[test]
+    fn notification_html_escapes_user_controlled_title() {
+        // Error titles come from untrusted SDK payloads — they must not inject
+        // markup. Tera auto-escapes `{{ }}` in the `.html` template.
+        let email = new_issue_email(
+            &test_templates(),
+            &test_config(),
+            "dev@example.com",
+            &test_project(),
+            &test_issue("<script>alert('x')</script>"),
+        )
+        .unwrap();
+        let html = email.html_body.unwrap();
+        assert!(!html.contains("<script>alert"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn notification_message_is_multipart_alternative_with_html() {
+        let email = new_issue_email(
+            &test_templates(),
+            &test_config(),
+            "dev@example.com",
+            &test_project(),
+            &test_issue("ValueError: boom"),
+        )
+        .unwrap();
+        let from: Mailbox = "soika@example.com".parse().unwrap();
+        let message = build_message(from, email).unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+        // The wire message must be multipart/alternative carrying BOTH a
+        // text/plain fallback and the styled text/html part.
+        assert!(
+            raw.contains("multipart/alternative"),
+            "not multipart: {raw}"
+        );
+        assert!(raw.contains("text/plain"));
+        assert!(raw.contains("text/html"));
+        assert!(raw.contains("New issue in checkout-api"));
+    }
+
+    #[test]
+    fn text_only_message_stays_single_text_plain_part() {
+        // Invite/test emails have no HTML part — they must NOT become multipart.
+        let email = invite_email(&test_config(), "dev@example.com", &test_invite());
+        let from: Mailbox = "soika@example.com".parse().unwrap();
+        let raw = String::from_utf8(build_message(from, email).unwrap().formatted()).unwrap();
+        assert!(!raw.contains("multipart"));
+        assert!(raw.contains("text/plain"));
+    }
+
+    #[test]
+    fn severity_drives_accent_color() {
+        let templates = test_templates();
+        let config = test_config();
+        let project = test_project();
+        let render = |level: &str| {
+            let mut issue = test_issue("boom");
+            issue.level = Some(level.to_string());
+            new_issue_email(&templates, &config, "d@e.com", &project, &issue)
+                .unwrap()
+                .html_body
+                .unwrap()
+        };
+        assert!(render("error").contains("#dc2626")); // red-600
+        assert!(render("fatal").contains("#dc2626"));
+        assert!(render("warning").contains("#f59e0b")); // amber-500
+        let info = render("info");
+        assert!(info.contains("#1d85e5")); // falls back to primary
+        assert!(!info.contains("#dc2626"));
     }
 
     #[test]

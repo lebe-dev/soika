@@ -362,7 +362,7 @@ mod tests {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::MIGRATOR.run(&pool).await.unwrap();
         // default_events_retention = 3 drives the project whose own value is 0.
-        let state = crate::build_state(pool, test_config(3));
+        let state = crate::build_state(pool, test_config(3)).unwrap();
 
         let team = state.teams.create("team".into()).await.unwrap();
         // project_a keeps its own retention (2); project_b is non-positive and
@@ -425,7 +425,7 @@ mod tests {
         crate::MIGRATOR.run(&pool).await.unwrap();
         // High count retention so count-based pruning never fires here; the
         // config default drives only the project whose own retention_days is 0.
-        let state = crate::build_state(pool, test_config_with(10_000, 14));
+        let state = crate::build_state(pool, test_config_with(10_000, 14)).unwrap();
 
         let team = state.teams.create("team".into()).await.unwrap();
         // project_a uses its OWN age retention (7 days). project_b leaves it at 0
@@ -493,7 +493,7 @@ mod tests {
 
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::MIGRATOR.run(&pool).await.unwrap();
-        let state = crate::build_state(pool, test_config(10_000));
+        let state = crate::build_state(pool, test_config(10_000)).unwrap();
 
         let team = state.teams.create("team".into()).await.unwrap();
         let project = state
@@ -565,7 +565,7 @@ mod tests {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::MIGRATOR.run(&pool).await.unwrap();
         // Count retention high and BOTH age defaults disabled (0): nothing pruned.
-        let state = crate::build_state(pool, test_config_with(10_000, 0));
+        let state = crate::build_state(pool, test_config_with(10_000, 0)).unwrap();
 
         let team = state.teams.create("team".into()).await.unwrap();
         let project = state

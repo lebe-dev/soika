@@ -73,7 +73,9 @@ async fn main() -> Result<()> {
         None => None,
     };
 
-    let state = build_state(pool, config.clone()).with_oidc(oidc);
+    let state = build_state(pool, config.clone())
+        .context("building application state")?
+        .with_oidc(oidc);
 
     // The built-in admin is no longer provisioned from env: on first run the
     // service is uninitialized and the SPA routes the operator to `/setup`,

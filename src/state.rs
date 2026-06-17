@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::auth::{LoginGuard, OidcProvider};
 use crate::config::Config;
 use crate::ingest::RateLimiter;
+use crate::mail::Templates;
 use crate::ports::{
     Clock, EventRepository, FavoriteRepository, InviteRepository, IssueRepository, Mailer,
     ProjectRepository, SessionRepository, SettingsRepository, TagMuteRuleRepository,
@@ -31,6 +32,8 @@ pub struct AppState {
     pub invites: Arc<dyn InviteRepository>,
     pub settings: Arc<dyn SettingsRepository>,
     pub mailer: Arc<dyn Mailer>,
+    /// Tera templates for outbound email (loaded once at startup).
+    pub templates: Arc<Templates>,
     pub clock: Arc<dyn Clock>,
     /// Soft per-project ingestion rate limiter. Owned by the state so it
     /// is per-instance (and configurable in tests) rather than process-global.

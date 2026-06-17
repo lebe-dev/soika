@@ -42,7 +42,7 @@ impl TestApp {
             .expect("connect in-memory sqlite");
         MIGRATOR.run(&pool).await.expect("run migrations");
 
-        let state = build_state(pool, test_config(lockout));
+        let state = build_state(pool, test_config(lockout)).unwrap();
         seed_account(&state).await;
 
         TestApp {

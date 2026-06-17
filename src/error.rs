@@ -47,6 +47,10 @@ pub enum Error {
     #[error("mail error: {0}")]
     Mail(String),
 
+    /// Email template loading or rendering failure.
+    #[error("template error: {0}")]
+    Template(String),
+
     /// Catch-all internal error.
     #[error("internal error: {0}")]
     Internal(String),

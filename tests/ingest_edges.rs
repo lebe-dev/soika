@@ -75,7 +75,7 @@ impl TestApp {
             .expect("connect in-memory sqlite");
         MIGRATOR.run(&pool).await.expect("run migrations");
 
-        let mut state = build_state(pool, test_config());
+        let mut state = build_state(pool, test_config()).unwrap();
 
         let team = state
             .teams

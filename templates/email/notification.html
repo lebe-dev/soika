@@ -1,0 +1,107 @@
+{#
+  New-issue / regression notification email (HTML part).
+
+  Rendered by `crate::mail::notification_email`. Tera auto-escapes every `{{ }}`
+  in this `.html` template, so user/SDK-controlled values (title, culprit,
+  environment) are safe to interpolate directly.
+
+  Context: kind ("new_issue"|"regression"), project_name, title, culprit, level,
+  environment, event_count, first_seen, issue_url, settings_url, org_name.
+
+  `issue_url`/`settings_url` use `| safe`: they are built entirely server-side
+  from operator config (`base_url`) plus internally-generated `[a-z0-9]` short
+  ids (see `crate::mail::mod`), so no untrusted input reaches them. The filter
+  is required because Tera's auto-escaper would otherwise turn the URL's `/`
+  into `&#x2F;` and break the link. Never interpolate user/SDK input here.
+#}
+{#- Brand palette: the SPA's --primary (oklch(0.61 0.17 252)) as literal hex
+    (email clients have no oklch()/CSS-variable support) and Tailwind red/amber. -#}
+{%- set_global primary = "#1d85e5" -%}
+{%- set_global on_primary = "#ffffff" -%}
+{%- if level == "error" or level == "fatal" or level == "critical" -%}
+  {%- set_global accent = "#dc2626" -%}{# Tailwind red-600 #}
+{%- elif level == "warning" -%}
+  {%- set_global accent = "#f59e0b" -%}{# Tailwind amber-500 #}
+{%- else -%}
+  {%- set_global accent = primary -%}
+{%- endif -%}
+{%- if kind == "regression" -%}
+  {%- set_global badge = "Regression" -%}
+  {%- set_global headline = "Issue regressed in " ~ project_name -%}
+  {%- set_global intro = "A resolved issue is happening again and is unresolved once more." -%}
+{%- else -%}
+  {%- set_global badge = "New issue" -%}
+  {%- set_global headline = "New issue in " ~ project_name -%}
+  {%- set_global intro = "A new issue was just detected." -%}
+{%- endif -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only">
+<title>{{ headline }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ badge }} in {{ project_name }}: {{ title }}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<tr><td style="background:{{ primary }};padding:16px 28px;">
+<span style="color:{{ on_primary }};font-size:17px;font-weight:700;letter-spacing:.02em;">soika</span>
+</td></tr>
+<tr><td style="padding:28px 28px 8px;">
+<span style="display:inline-block;padding:3px 11px;border-radius:5px;background:{{ accent }};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">{{ badge }}</span>
+<h1 style="margin:14px 0 4px;color:#111827;font-size:21px;line-height:1.3;font-weight:700;">{{ headline }}</h1>
+<p style="margin:0;color:#6b7280;font-size:14px;line-height:1.5;">{{ intro }}</p>
+</td></tr>
+<tr><td style="padding:18px 28px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;overflow:hidden;border:1px solid #eceef1;">
+<tr>
+<td width="4" style="background:{{ accent }};width:4px;"></td>
+<td style="background:#f8f9fb;padding:14px 16px;">
+<div style="color:#111827;font-size:14px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word;">{{ title }}</div>
+{%- if culprit %}
+<div style="margin-top:6px;color:#6b7280;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">{{ culprit }}</div>
+{%- endif %}
+</td>
+</tr>
+</table>
+</td></tr>
+<tr><td style="padding:6px 28px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+{%- if level %}
+<tr>
+<td style="padding:7px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">Level</td>
+<td style="padding:7px 0;"><span style="display:inline-block;padding:2px 9px;border-radius:5px;background:{{ accent }};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">{{ level }}</span></td>
+</tr>
+{%- endif %}
+{%- if environment %}
+<tr>
+<td style="padding:7px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">Environment</td>
+<td style="padding:7px 0;color:#111827;font-size:13px;font-weight:500;">{{ environment }}</td>
+</tr>
+{%- endif %}
+<tr>
+<td style="padding:7px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">Total events</td>
+<td style="padding:7px 0;color:#111827;font-size:13px;font-weight:500;">{{ event_count }}</td>
+</tr>
+<tr>
+<td style="padding:7px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">First seen</td>
+<td style="padding:7px 0;color:#111827;font-size:13px;font-weight:500;">{{ first_seen }}</td>
+</tr>
+</table>
+</td></tr>
+<tr><td style="padding:22px 28px 30px;">
+<a href="{{ issue_url | safe }}" style="display:inline-block;background:{{ primary }};color:{{ on_primary }};font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;">View issue &rarr;</a>
+</td></tr>
+<tr><td style="padding:18px 28px;border-top:1px solid #eef0f2;background:#fafbfc;">
+<p style="margin:0 0 8px;color:#6b7280;font-size:12px;line-height:1.5;">You're receiving this because you're a member of the <strong style="color:#374151;">{{ project_name }}</strong> team and have email notifications enabled.</p>
+<p style="margin:0;font-size:12px;line-height:1.5;"><a href="{{ settings_url | safe }}" style="color:#6b7280;text-decoration:underline;font-weight:500;">Manage your notification settings &rarr;</a></p>
+</td></tr>
+</table>
+<p style="margin:16px 0 0;color:#9ca3af;font-size:11px;">soika &middot; {{ org_name }}</p>
+</td></tr>
+</table>
+</body>
+</html>

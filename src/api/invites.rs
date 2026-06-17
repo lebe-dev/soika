@@ -214,6 +214,7 @@ pub async fn create(
                  Accept your invite:\n{link}\n\n\
                  This link expires in {INVITE_TTL_DAYS} days."
             ),
+            html_body: None,
         };
         // Swallow send errors: the copyable link still works.
         email_sent = state.mailer.send(message).await.is_ok();

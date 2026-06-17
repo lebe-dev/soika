@@ -59,6 +59,10 @@ lettre = { version = "0.11", default-features = false, features = [
     "builder",
 ] }
 
+# Email templating — HTML + text bodies live in `templates/email/` and are
+# rendered at runtime (no TLS deps, so the musl/Alpine release build is safe).
+tera = { version = "1", default-features = false }
+
 # Outbound HTTP for the webhook notification channel (Story 6.2). rustls (not
 # native-tls) to match sqlx/lettre and avoid pulling in openssl; no
 # default-features so we drop default-tls/charset/http2 we don't need.

@@ -53,7 +53,11 @@ pub async fn connect_pool(database_url: &str) -> Result<SqlitePool> {
 
 /// Build the [`AppState`] from a connected pool and resolved config, wiring the
 /// SQLite adapters and the SMTP-or-noop mailer.
-pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
+///
+/// Loads the email templates (from [`mail::templates_dir`]) up front so a
+/// missing or broken `templates/` directory fails fast at startup rather than
+/// at the first notification.
+pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
     use adapters::clock::SystemClock;
     use adapters::mailer::{NoopMailer, SmtpMailer};
     use adapters::sqlite::{
@@ -71,9 +75,11 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         None => Arc::new(NoopMailer),
     };
 
+    let templates = Arc::new(mail::Templates::load(&mail::templates_dir())?);
+
     let login_guard = Arc::new(LoginGuard::new(config.lockout.clone()));
 
-    AppState {
+    Ok(AppState {
         config: Arc::new(config),
         users: Arc::new(SqliteUserRepository::new(pool.clone())),
         sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
@@ -86,11 +92,12 @@ pub fn build_state(pool: SqlitePool, config: Config) -> AppState {
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
         settings: Arc::new(SqliteSettingsRepository::new(pool)),
         mailer,
+        templates,
         clock: Arc::new(SystemClock),
         rate_limiter: Arc::new(RateLimiter::new(DEFAULT_LIMIT, DEFAULT_WINDOW)),
         login_guard,
         // The OIDC provider (if any) is wired separately after startup discovery
         // (fail-fast) via [`AppState::with_oidc`].
         oidc: None,
-    }
+    })
 }

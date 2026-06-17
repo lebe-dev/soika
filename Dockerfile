@@ -81,9 +81,15 @@ RUN apk add --no-cache ca-certificates wget \
 
 COPY --from=backend /build/soika /app/soika
 
+# Email templates (Tera) are loaded at runtime from `$TEMPLATES_DIR` (default
+# `templates`, resolved against WORKDIR /app). Shipped as files — not embedded —
+# so operators can tweak the look without rebuilding the binary.
+COPY templates/ /app/templates/
+
 # SQLite database lives on a mounted volume (the reference deployment).
 ENV DATABASE_URL="sqlite:///app/data/soika.db?mode=rwc" \
-    BIND_ADDR="0.0.0.0:8080"
+    BIND_ADDR="0.0.0.0:8080" \
+    TEMPLATES_DIR="/app/templates"
 
 VOLUME ["/app/data"]
 

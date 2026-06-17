@@ -39,7 +39,7 @@ async fn build_router() -> axum::Router {
         .await
         .expect("connect in-memory sqlite");
     MIGRATOR.run(&pool).await.expect("run migrations");
-    let state = build_state(pool, test_config());
+    let state = build_state(pool, test_config()).unwrap();
     router::build(state)
 }
 

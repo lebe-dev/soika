@@ -109,7 +109,9 @@ pub fn error_response(err: Error) -> Response {
         Error::Forbidden(_) => StatusCode::FORBIDDEN,
         Error::Conflict(_) => StatusCode::CONFLICT,
         Error::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-        Error::Db(_) | Error::Mail(_) | Error::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::Db(_) | Error::Mail(_) | Error::Template(_) | Error::Internal(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     };
     json_error(status, err.to_string())
 }

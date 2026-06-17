@@ -67,7 +67,7 @@ impl TestApp {
             .expect("connect in-memory sqlite");
         MIGRATOR.run(&pool).await.expect("run migrations");
 
-        let mut state = build_state(pool, test_config());
+        let mut state = build_state(pool, test_config()).unwrap();
         if let Some(limit) = limit {
             // A short window keeps the test fast while still exercising the real
             // fixed-window counter the handler consults.

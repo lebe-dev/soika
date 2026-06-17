@@ -5,12 +5,20 @@ use crate::error::Result;
 use async_trait::async_trait;
 
 /// A composed outbound email message.
+///
+/// `body` is the plain-text part and is always present. When `html_body` is
+/// `Some`, delivery sends a `multipart/alternative` message so clients that
+/// render HTML get the styled version while text-only clients fall back to
+/// `body`.
 #[derive(Debug, Clone)]
 pub struct OutboundEmail {
     pub to: String,
     pub subject: String,
-    /// Plain-text body.
+    /// Plain-text body (the `multipart/alternative` fallback).
     pub body: String,
+    /// Optional HTML body. When set, the message is sent as
+    /// `multipart/alternative` with `body` as the text fallback.
+    pub html_body: Option<String>,
 }
 
 /// Sends outbound email. The no-op implementation is used when SMTP is unset.

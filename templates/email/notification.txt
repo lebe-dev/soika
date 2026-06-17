@@ -1,0 +1,29 @@
+{#- New-issue / regression notification email (plain-text fallback). Same
+    information and ordering as notification.html. Not auto-escaped (.txt). -#}
+{%- if kind == "regression" -%}
+  {%- set_global headline = "Issue regressed in " ~ project_name -%}
+  {%- set_global intro = "A resolved issue is happening again and is unresolved once more." -%}
+{%- else -%}
+  {%- set_global headline = "New issue in " ~ project_name -%}
+  {%- set_global intro = "A new issue was just detected." -%}
+{%- endif -%}
+{{ headline }}
+
+{{ intro }}
+
+{{ title }}
+{% if culprit %}{{ culprit }}
+{% endif %}{% if level %}Level: {{ level }}
+{% endif %}{% if environment %}Environment: {{ environment }}
+{% endif %}Total events: {{ event_count }}
+First seen: {{ first_seen }}
+
+View the issue:
+{{ issue_url }}
+
+—
+You're receiving this because you're a member of the {{ project_name }} team and have
+email notifications enabled. Manage your notification settings:
+{{ settings_url }}
+
+soika · {{ org_name }}
