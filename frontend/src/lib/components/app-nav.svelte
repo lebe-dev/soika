@@ -16,6 +16,7 @@
   import LogOut from '@lucide/svelte/icons/log-out';
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
+  import Menu from '@lucide/svelte/icons/menu';
 
   let { user, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } = $props();
 
@@ -59,12 +60,39 @@
 <header
   class="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur"
 >
-  <div class="container flex h-14 items-center gap-6">
+  <div class="container flex h-14 items-center gap-2 sm:gap-6">
+    <!-- Mobile: hamburger menu collapses the primary nav links. -->
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger class="md:hidden">
+        <Button variant="ghost" size="icon" aria-label="Open navigation">
+          <Menu class="size-5" />
+          {#if pendingApprovals > 0 && canManageInstance}
+            <AlertTriangle class="text-primary size-3" />
+          {/if}
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="start" class="w-48">
+        {#each visibleItems as item (item.href)}
+          <DropdownMenu.Item
+            onclick={() => goto(item.href)}
+            class={cn(isActive(item.href) && 'bg-accent')}
+          >
+            <item.icon class="size-4" />
+            {item.label}
+            {#if item.href === '/admin' && pendingApprovals > 0}
+              <AlertTriangle class="text-primary ml-auto size-3.5" />
+            {/if}
+          </DropdownMenu.Item>
+        {/each}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+
     <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
       <span class="text-primary">soika</span>
     </a>
 
-    <nav class="flex items-center gap-1 text-sm">
+    <!-- Desktop: full inline nav. -->
+    <nav class="hidden items-center gap-1 text-sm md:flex">
       {#each visibleItems as item (item.href)}
         <a
           href={item.href}
@@ -100,7 +128,7 @@
         <DropdownMenu.Trigger>
           <Button variant="ghost" size="sm" class="gap-2">
             <UserIcon class="size-4" />
-            {user.display_name}
+            <span class="hidden max-w-[12ch] truncate sm:inline">{user.display_name}</span>
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" class="w-48">
