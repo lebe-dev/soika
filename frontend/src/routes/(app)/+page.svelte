@@ -178,7 +178,7 @@
             <select
               id="project-team"
               bind:value={teamId}
-              class="border-input focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
+              class="border-input focus-visible:border-primary focus-visible:ring-primary/30 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
             >
               {#each teams as team (team.id)}
                 <option value={team.id}>{team.name}</option>
@@ -265,7 +265,7 @@
         {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
           <a
             href={`/projects/${project.id}`}
-            class="group focus-visible:ring-ring rounded-lg transition focus-visible:ring-2 focus-visible:outline-none"
+            class="group focus-visible:ring-primary/30 rounded-lg transition focus-visible:ring-1 focus-visible:outline-none"
           >
             <Card.Root
               class="group-hover:border-primary/50 group-hover:ring-primary/20 h-full transition-colors group-hover:ring-2"

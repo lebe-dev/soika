@@ -178,7 +178,7 @@
           onclick={toggleNotifications}
           class={cn(
             'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors',
-            'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+            'focus-visible:ring-primary/30 focus-visible:ring-offset-background focus-visible:ring-1 focus-visible:ring-offset-2 focus-visible:outline-none',
             'disabled:cursor-not-allowed disabled:opacity-50',
             user?.notifications_enabled ? 'bg-primary' : 'bg-input'
           )}

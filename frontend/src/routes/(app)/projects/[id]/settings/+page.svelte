@@ -365,7 +365,7 @@
             id="owning-team"
             bind:value={selectedTeamId}
             disabled={movingTeam}
-            class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-3 disabled:opacity-50"
+            class="border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:opacity-50"
           >
             {#each teamOptions as team (team.id)}
               <option value={team.id}>{team.name}</option>

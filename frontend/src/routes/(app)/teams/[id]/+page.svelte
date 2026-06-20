@@ -397,7 +397,7 @@
             <select
               id="invite-role"
               bind:value={inviteRole}
-              class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-3"
+              class="border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 h-8 rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-1"
             >
               <option value="contributor">Contributor</option>
               <option value="admin">Admin</option>
@@ -552,7 +552,7 @@
           <select
             id="add-member"
             bind:value={selectedUserId}
-            class="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-3"
+            class="border-input focus-visible:border-primary focus-visible:ring-primary/30 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-1"
           >
             {#each candidates as user (user.id)}
               <option value={user.id}>{user.display_name} ({user.email})</option>
@@ -565,7 +565,7 @@
         <select
           id="add-member-role"
           bind:value={selectedRole}
-          class="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-3"
+          class="border-input focus-visible:border-primary focus-visible:ring-primary/30 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-1"
         >
           <option value="contributor">Contributor</option>
           <option value="admin">Admin</option>
