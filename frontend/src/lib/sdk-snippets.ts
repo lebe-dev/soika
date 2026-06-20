@@ -67,6 +67,34 @@ Sentry.init({
 });`
     },
     {
+      language: 'python',
+      label: 'Python',
+      code: `import sentry_sdk
+
+sentry_sdk.init(
+    dsn="${dsn}",
+    traces_sample_rate=0,
+)`
+    },
+    {
+      language: 'java',
+      label: 'Java',
+      code: `import io.sentry.Sentry;
+
+Sentry.init(options -> {
+  options.setDsn("${dsn}");
+});`
+    },
+    {
+      language: 'kotlin',
+      label: 'Kotlin',
+      code: `import io.sentry.Sentry
+
+Sentry.init { options ->
+  options.dsn = "${dsn}"
+}`
+    },
+    {
       language: 'generic',
       label: 'Generic / raw HTTP',
       code: `# Point any Sentry-compatible SDK at this DSN:

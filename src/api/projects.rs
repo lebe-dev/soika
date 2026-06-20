@@ -846,6 +846,34 @@ fn sdk_snippets(
             ),
         },
         SdkSnippet {
+            language: "python",
+            label: "Python",
+            code: format!(
+                "import sentry_sdk\n\n\
+                 sentry_sdk.init(\n    \
+                     dsn=\"{dsn}\",\n    \
+                     traces_sample_rate=0,\n)"
+            ),
+        },
+        SdkSnippet {
+            language: "java",
+            label: "Java",
+            code: format!(
+                "import io.sentry.Sentry;\n\n\
+                 Sentry.init(options -> {{\n  \
+                     options.setDsn(\"{dsn}\");\n}});"
+            ),
+        },
+        SdkSnippet {
+            language: "kotlin",
+            label: "Kotlin",
+            code: format!(
+                "import io.sentry.Sentry\n\n\
+                 Sentry.init {{ options ->\n  \
+                     options.dsn = \"{dsn}\"\n}}"
+            ),
+        },
+        SdkSnippet {
             language: "generic",
             label: "Generic / raw HTTP",
             code: format!(
@@ -1164,7 +1192,18 @@ mod tests {
         let store_url = "http://host/api/1/store/";
         let snippets = sdk_snippets(dsn, "key", envelope_url, store_url);
         let langs: Vec<&str> = snippets.iter().map(|s| s.language).collect();
-        assert_eq!(langs, vec!["go", "rust", "javascript", "generic"]);
+        assert_eq!(
+            langs,
+            vec![
+                "go",
+                "rust",
+                "javascript",
+                "python",
+                "java",
+                "kotlin",
+                "generic"
+            ]
+        );
         for snippet in &snippets {
             assert!(
                 snippet.code.contains(dsn),
