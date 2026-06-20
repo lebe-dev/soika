@@ -341,7 +341,7 @@
 
   <!-- Members: the primary surface. Soft top accent, roster with avatars.
        Invites live here as a secondary action (dialog), not their own block. -->
-  <Card.Root class="border-t-primary border-t-[3px] shadow-sm">
+  <Card.Root class="shadow-sm">
     <Card.Header class="flex-row items-start justify-between space-y-0">
       <div class="space-y-1">
         <div class="flex items-center gap-1.5">
