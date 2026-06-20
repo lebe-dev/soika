@@ -4,6 +4,7 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import CopyField from '$lib/components/copy-field.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
+  import KeyRound from '@lucide/svelte/icons/key-round';
   import { sdkSnippets } from '$lib/sdk-snippets';
   import type { PageData } from './$types';
 
@@ -21,9 +22,12 @@
 <PageTitle title={`${data.project.name} · SDK Setup`} />
 
 <div class="space-y-6">
-  <Card.Root>
+  <Card.Root class="ring-foreground/15 dark:ring-foreground/30 shadow-sm">
     <Card.Header>
-      <Card.Title>DSN</Card.Title>
+      <Card.Title class="flex items-center gap-2">
+        <KeyRound class="text-muted-foreground size-4" />
+        DSN
+      </Card.Title>
       <Card.Description>
         Point your Sentry-compatible SDK at this DSN to start sending events to this project.
       </Card.Description>

@@ -13,7 +13,12 @@
     label = 'value',
     block = false,
     class: className
-  }: { value: string; label?: string; block?: boolean; class?: string } = $props();
+  }: {
+    value: string;
+    label?: string;
+    block?: boolean;
+    class?: string;
+  } = $props();
 
   let copied = $state(false);
 
@@ -41,9 +46,9 @@
       aria-label={`Copy ${label}`}
     >
       {#if copied}
-        <Check class="size-4 text-green-600" />
+        <Check class="size-3.5 text-green-600" />
       {:else}
-        <Copy class="size-4" />
+        <Copy class="size-3.5" />
       {/if}
     </Button>
   </div>
@@ -61,9 +66,9 @@
       aria-label={`Copy ${label}`}
     >
       {#if copied}
-        <Check class="size-4 text-green-600" />
+        <Check class="size-3.5 text-green-600" />
       {:else}
-        <Copy class="size-4" />
+        <Copy class="size-3.5" />
       {/if}
     </Button>
   </div>
