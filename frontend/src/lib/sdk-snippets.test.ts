@@ -8,7 +8,7 @@ describe('sdkSnippets', () => {
   it('covers all languages and embeds the DSN in each', () => {
     const snippets = sdkSnippets(DSN, KEY);
     const langs = snippets.map((s) => s.language);
-    expect(langs).toEqual(['go', 'rust', 'javascript', 'generic']);
+    expect(langs).toEqual(['go', 'rust', 'javascript', 'python', 'java', 'kotlin', 'generic']);
     for (const snippet of snippets) {
       expect(snippet.code, `${snippet.language} missing DSN`).toContain(DSN);
     }
