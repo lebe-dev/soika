@@ -28,25 +28,34 @@
 }
 
 .dark {
-  --background: hsl(222.2 84% 4.9%);
-  --foreground: hsl(210 40% 98%);
-  --card: hsl(222.2 84% 4.9%);
-  --card-foreground: hsl(210 40% 98%);
-  --popover: hsl(222.2 84% 4.9%);
-  --popover-foreground: hsl(210 40% 98%);
-  --primary: oklch(0.61 0.17 252);
-  --primary-foreground: hsl(222.2 47.4% 11.2%);
-  --secondary: hsl(217.2 32.6% 17.5%);
-  --secondary-foreground: hsl(210 40% 98%);
-  --muted: hsl(217.2 32.6% 17.5%);
-  --muted-foreground: hsl(215 20.2% 65.1%);
-  --accent: hsl(217.2 32.6% 17.5%);
+  /* base surface: чуть светлее near-black, меньше насыщенности */
+  --background: hsl(222 47% 6%);
+  --foreground: hsl(210 40% 96%); /* не чистый 98%, мягче */
+
+  /* elevation: background < card < popover */
+  --card: hsl(222 40% 9%);
+  --card-foreground: hsl(210 40% 96%);
+  --popover: hsl(222 38% 11%);
+  --popover-foreground: hsl(210 40% 96%);
+
+  /* акцент: чуть светлее и менее насыщенный, чем в light; foreground консистентный */
+  --primary: oklch(0.68 0.15 252);
+  --primary-foreground: hsl(210 40% 98%);
+
+  --secondary: hsl(217 30% 16%);
+  --secondary-foreground: hsl(210 40% 96%);
+  --muted: hsl(217 30% 16%);
+  --muted-foreground: hsl(215 18% 62%); /* вторичный текст, ~AA на background */
+  --accent: hsl(217 30% 20%); /* чуть светлее muted — для hover/выделения */
   --accent-foreground: hsl(210 40% 98%);
-  --destructive: hsl(0 62.8% 30.6%);
+
+  /* destructive: в оригинале L занижен (30%) — на тёмном выглядит мутно; поднимаем */
+  --destructive: oklch(0.55 0.16 25);
   --destructive-foreground: hsl(210 40% 98%);
-  --border: hsl(217.2 32.6% 17.5%);
-  --input: hsl(217.2 32.6% 17.5%);
-  --ring: hsl(212.7 26.8% 83.9%);
+
+  --border: hsl(217 25% 22%); /* светлее muted, чтобы отделять обводку от заливки */
+  --input: hsl(217 25% 18%);
+  --ring: oklch(0.68 0.15 252); /* связал с primary — частый паттерн новых дефолтов */
 }
 
 @theme inline {
