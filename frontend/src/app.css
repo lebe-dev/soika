@@ -93,6 +93,11 @@
   ::before {
     border-color: var(--border);
   }
+  /* Base type scale: 15px instead of the 16px browser default, so the whole
+     rem-based typography is 1px smaller. */
+  html {
+    font-size: 15px;
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
