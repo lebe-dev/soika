@@ -233,9 +233,9 @@
           }
         }}
       />
-      <div class="border-input flex rounded-md border text-sm" role="group" aria-label="Sort order">
+      <div class="border-input flex h-9 rounded-md border text-sm" role="group" aria-label="Sort order">
         <button
-          class="rounded-l-md px-3 py-1.5 transition-colors {sortMode === 'activity'
+          class="flex items-center rounded-l-md px-3 transition-colors {sortMode === 'activity'
             ? 'bg-secondary text-secondary-foreground font-medium'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
           onclick={() => (sortMode = 'activity')}
@@ -243,7 +243,7 @@
           By activity
         </button>
         <button
-          class="border-input rounded-r-md border-l px-3 py-1.5 transition-colors {sortMode ===
+          class="border-input flex items-center rounded-r-md border-l px-3 transition-colors {sortMode ===
           'name'
             ? 'bg-secondary text-secondary-foreground font-medium'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
