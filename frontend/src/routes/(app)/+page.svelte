@@ -233,7 +233,11 @@
           }
         }}
       />
-      <div class="border-input flex h-9 rounded-md border text-sm" role="group" aria-label="Sort order">
+      <div
+        class="border-input flex h-9 rounded-md border text-sm"
+        role="group"
+        aria-label="Sort order"
+      >
         <button
           class="flex items-center rounded-l-md px-3 transition-colors {sortMode === 'activity'
             ? 'bg-secondary text-secondary-foreground font-medium'
@@ -263,7 +267,9 @@
             href={`/projects/${project.id}`}
             class="group focus-visible:ring-ring rounded-lg transition focus-visible:ring-2 focus-visible:outline-none"
           >
-            <Card.Root class="group-hover:border-primary/50 group-hover:ring-primary/20 h-full transition-colors group-hover:ring-2">
+            <Card.Root
+              class="group-hover:border-primary/50 group-hover:ring-primary/20 h-full transition-colors group-hover:ring-2"
+            >
               <Card.Header>
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
