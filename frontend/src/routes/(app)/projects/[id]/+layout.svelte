@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { page } from '$app/stores';
-  import { Badge } from '$lib/components/ui/badge';
   import { cn } from '$lib/utils';
   import type { LayoutData } from './$types';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -9,7 +8,7 @@
   import ListFilter from '@lucide/svelte/icons/list-filter';
   import Terminal from '@lucide/svelte/icons/terminal';
   import Settings from '@lucide/svelte/icons/settings';
-  import VolumeX from '@lucide/svelte/icons/volume-x';
+  import BellOff from '@lucide/svelte/icons/bell-off';
 
   // Project area shell header with project name/DSN status and
   // sub-navigation across Issues, SDK Setup, and Settings. The project is loaded
@@ -66,10 +65,14 @@
       <div class="flex items-center gap-2">
         <h1 class="truncate text-2xl font-semibold tracking-tight">{project.name}</h1>
         {#if project.muted}
-          <Badge variant="secondary" class="gap-1">
-            <VolumeX class="size-3" />
-            Muted
-          </Badge>
+          <a
+            href={`${base}/settings`}
+            title="Notifications muted — open settings"
+            aria-label="Notifications muted — open settings"
+            class="text-orange-500 transition-colors hover:text-orange-600"
+          >
+            <BellOff class="size-5" />
+          </a>
         {/if}
       </div>
       <p class="text-muted-foreground font-mono text-xs">{project.slug}</p>

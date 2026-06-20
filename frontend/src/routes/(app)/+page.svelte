@@ -5,12 +5,11 @@
   import type { Project } from '$lib/api';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import { Badge } from '$lib/components/ui/badge';
   import * as Card from '$lib/components/ui/card';
   import * as Dialog from '$lib/components/ui/dialog';
   import { toast } from '$lib/components/ui/sonner';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
-  import VolumeX from '@lucide/svelte/icons/volume-x';
+  import BellOff from '@lucide/svelte/icons/bell-off';
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import Star from '@lucide/svelte/icons/star';
@@ -278,12 +277,12 @@
                       {project.slug}
                     </Card.Description>
                   </div>
-                  <div class="flex shrink-0 items-center gap-1">
+                  <div class="flex shrink-0 items-center gap-2">
                     {#if project.muted}
-                      <Badge variant="secondary" class="gap-1">
-                        <VolumeX class="size-3" />
-                        Muted
-                      </Badge>
+                      <BellOff
+                        class="text-muted-foreground size-4"
+                        aria-label="Notifications muted"
+                      />
                     {/if}
                     <button
                       onclick={(e) => toggleFavorite(e, project.id)}

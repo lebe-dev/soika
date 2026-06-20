@@ -11,6 +11,7 @@
   import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
+  import { cn } from '$lib/utils';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import Plus from '@lucide/svelte/icons/plus';
 
@@ -246,7 +247,7 @@
   </Card.Root>
 
   <!-- Mute -->
-  <Card.Root>
+  <Card.Root class={project.muted ? 'ring-1 ring-orange-500' : undefined}>
     <Card.Header>
       <Card.Title>Notifications</Card.Title>
       <Card.Description>
@@ -265,9 +266,27 @@
           {/if}
         </div>
         {#if isAdmin}
-          <Button variant="outline" disabled={mutating} onclick={toggleMute}>
-            {project.muted ? 'Unmute project' : 'Mute project'}
-          </Button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!project.muted}
+            aria-label={project.muted ? 'Unmute project' : 'Mute project'}
+            disabled={mutating}
+            onclick={toggleMute}
+            class={cn(
+              'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors',
+              'focus-visible:ring-primary/30 focus-visible:ring-offset-background focus-visible:ring-1 focus-visible:ring-offset-2 focus-visible:outline-none',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+              project.muted ? 'bg-input' : 'bg-primary'
+            )}
+          >
+            <span
+              class={cn(
+                'bg-background pointer-events-none inline-block size-4 transform rounded-full shadow-sm ring-0 transition-transform',
+                project.muted ? 'translate-x-0.5' : 'translate-x-4'
+              )}
+            ></span>
+          </button>
         {/if}
       </div>
 
