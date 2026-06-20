@@ -23,6 +23,14 @@
   let displayName = $state(authStore.user?.display_name ?? '');
   let savingProfile = $state(false);
 
+  // The auth store is seeded asynchronously by the layout load, so it may be
+  // `undefined` at component-init time. Re-sync the field whenever the
+  // server-side value changes (initial load + after save). This only tracks
+  // `user?.display_name`, so it does not clobber in-progress edits.
+  $effect(() => {
+    displayName = user?.display_name ?? '';
+  });
+
   const displayNameDirty = $derived(displayName.trim() !== (user?.display_name ?? ''));
 
   async function saveProfile(event: SubmitEvent) {
@@ -146,7 +154,7 @@
   </Card.Root>
 
   <!-- Notifications -->
-  <Card.Root>
+  <Card.Root class={cn(!user?.notifications_enabled && 'ring-orange-500')}>
     <Card.Header>
       <Card.Title>Notifications</Card.Title>
       <Card.Description>Email notifications for new issues and regressions.</Card.Description>

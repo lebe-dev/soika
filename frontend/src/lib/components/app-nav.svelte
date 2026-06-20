@@ -18,9 +18,16 @@
   import Moon from '@lucide/svelte/icons/moon';
   import Menu from '@lucide/svelte/icons/menu';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
+  import BellOff from '@lucide/svelte/icons/bell-off';
   import { navActions } from '$lib/stores/nav-actions.svelte';
 
-  let { user, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } = $props();
+  let { user: initialUser, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } =
+    $props();
+
+  // Read the live user from the auth store so nav state (e.g. the
+  // notifications-off bell) reacts to profile updates without a page reload.
+  // The store is seeded by the layout load; fall back to the prop until then.
+  const user = $derived(authStore.user ?? initialUser);
 
   type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
 
@@ -118,6 +125,18 @@
     </nav>
 
     <div class="ml-auto flex items-center gap-1">
+      {#if !user.notifications_enabled}
+        <Button
+          variant="ghost"
+          size="icon"
+          onclick={() => goto('/profile')}
+          aria-label="Email notifications are off"
+          title="Email notifications are off"
+        >
+          <BellOff class="size-4 text-orange-500" />
+        </Button>
+      {/if}
+
       {#if navActions.newProjectCallback !== null}
         <Button
           variant="ghost"
