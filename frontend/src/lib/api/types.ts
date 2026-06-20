@@ -99,6 +99,8 @@ export interface AuthConfig {
 export interface ProjectOverview extends Project {
   unresolved_count: number;
   favorited: boolean;
+  /** RFC 3339 timestamp of the most recent unresolved issue; null when no unresolved issues. */
+  last_issue_at: Timestamp | null;
 }
 
 /**

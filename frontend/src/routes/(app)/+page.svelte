@@ -59,6 +59,10 @@
     return () => clearTimeout(timer);
   });
 
+  // --- Sort mode ---
+  type SortMode = 'activity' | 'name';
+  let sortMode = $state<SortMode>('activity');
+
   const filteredAndSorted = $derived.by(() => {
     const q = debouncedQuery.toLowerCase().trim();
     const filtered =
@@ -68,6 +72,16 @@
       const aFav = favoritedIds.has(a.project.id) ? 1 : 0;
       const bFav = favoritedIds.has(b.project.id) ? 1 : 0;
       if (bFav !== aFav) return bFav - aFav;
+
+      if (sortMode === 'activity') {
+        const aHas = a.unresolvedCount > 0 ? 1 : 0;
+        const bHas = b.unresolvedCount > 0 ? 1 : 0;
+        if (bHas !== aHas) return bHas - aHas;
+        if (a.lastIssueAt && b.lastIssueAt) {
+          return b.lastIssueAt.localeCompare(a.lastIssueAt);
+        }
+      }
+
       return a.project.name.localeCompare(b.project.name);
     });
   });
@@ -206,18 +220,39 @@
       </Card.Content>
     </Card.Root>
   {:else}
-    <Input
-      bind:value={searchQuery}
-      placeholder="Search projects…"
-      class="max-w-sm"
-      aria-label="Search projects"
-      onkeydown={(e) => {
-        if (e.key === 'Escape') {
-          searchQuery = '';
-          (e.target as HTMLInputElement).blur();
-        }
-      }}
-    />
+    <div class="flex flex-wrap items-center gap-3">
+      <Input
+        bind:value={searchQuery}
+        placeholder="Search projects…"
+        class="max-w-sm"
+        aria-label="Search projects"
+        onkeydown={(e) => {
+          if (e.key === 'Escape') {
+            searchQuery = '';
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+      <div class="border-input flex rounded-md border text-sm" role="group" aria-label="Sort order">
+        <button
+          class="rounded-l-md px-3 py-1.5 transition-colors {sortMode === 'activity'
+            ? 'bg-secondary text-secondary-foreground font-medium'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+          onclick={() => (sortMode = 'activity')}
+        >
+          By activity
+        </button>
+        <button
+          class="border-input rounded-r-md border-l px-3 py-1.5 transition-colors {sortMode ===
+          'name'
+            ? 'bg-secondary text-secondary-foreground font-medium'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+          onclick={() => (sortMode = 'name')}
+        >
+          By name
+        </button>
+      </div>
+    </div>
 
     {#if filteredAndSorted.length === 0}
       <p class="text-muted-foreground text-sm">No projects match your search.</p>

@@ -14,16 +14,19 @@ export interface ProjectOverview {
   /** Number of unresolved issues for the project. */
   unresolvedCount: number;
   favorited: boolean;
+  /** RFC 3339 timestamp of the most recent unresolved issue; null when none. */
+  lastIssueAt: string | null;
 }
 
 export const load: PageLoad = async ({ parent }) => {
   const { config } = await parent();
 
   const overviews: ProjectOverview[] = (config?.projects ?? []).map(
-    ({ unresolved_count, favorited, ...project }) => ({
+    ({ unresolved_count, last_issue_at, favorited, ...project }) => ({
       project,
       unresolvedCount: unresolved_count,
-      favorited
+      favorited,
+      lastIssueAt: last_issue_at ?? null
     })
   );
   const teams: TeamSummary[] = config?.teams ?? [];

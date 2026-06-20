@@ -342,13 +342,16 @@ pub struct ProjectDetailView {
 /// A project plus its unresolved-issue count, for the dashboard bootstrap.
 ///
 /// `project` is flattened so the JSON shape is a superset of [`ProjectView`]
-/// with one extra `unresolved_count` field.
+/// with extra `unresolved_count`, `favorited`, and `last_issue_at` fields.
 #[derive(Debug, Serialize)]
 pub struct ProjectOverviewView {
     #[serde(flatten)]
     pub project: ProjectView,
     pub unresolved_count: i64,
     pub favorited: bool,
+    /// RFC 3339 timestamp of the most recent unresolved issue's `last_seen`;
+    /// `null` when the project has no unresolved issues.
+    pub last_issue_at: Option<String>,
 }
 
 /// Projects visible to `user`, each with its unresolved-issue count and favorite flag.
@@ -371,6 +374,7 @@ pub async fn overviews(
 
     let ids: Vec<Id> = projects.iter().map(|p| p.id).collect();
     let counts = state.issues.unresolved_counts(&ids).await?;
+    let last_seen = state.issues.last_seen_per_project(&ids).await?;
     let favorite_ids = state.favorites.list_for_user(user.id).await?;
     let favorite_set: std::collections::HashSet<Id> = favorite_ids.into_iter().collect();
 
@@ -379,10 +383,12 @@ pub async fn overviews(
         .map(|project| {
             let unresolved_count = counts.get(&project.id).copied().unwrap_or(0);
             let favorited = favorite_set.contains(&project.id);
+            let last_issue_at = last_seen.get(&project.id).map(|ts| ts.to_rfc3339());
             ProjectOverviewView {
                 project: ProjectView::from_project(project, &state.config.base_url),
                 unresolved_count,
                 favorited,
+                last_issue_at,
             }
         })
         .collect();

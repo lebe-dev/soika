@@ -359,6 +359,30 @@ impl IssueRepository for SqliteIssueRepository {
         Ok(counts)
     }
 
+    async fn last_seen_per_project(&self, project_ids: &[Id]) -> Result<HashMap<Id, Timestamp>> {
+        if project_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let placeholders = vec!["?"; project_ids.len()].join(",");
+        let sql = format!(
+            "SELECT project_id, MAX(last_seen) AS last_seen FROM issues \
+             WHERE status = 'unresolved' AND project_id IN ({placeholders}) \
+             GROUP BY project_id"
+        );
+        let mut query = sqlx::query(&sql);
+        for id in project_ids {
+            query = query.bind(id.to_string());
+        }
+        let rows = query.fetch_all(&self.db).await?;
+        let mut result = HashMap::with_capacity(rows.len());
+        for row in &rows {
+            let project_id = parse_id(row.try_get::<String, _>("project_id")?)?;
+            let last_seen = parse_ts(row.try_get::<String, _>("last_seen")?)?;
+            result.insert(project_id, last_seen);
+        }
+        Ok(result)
+    }
+
     async fn override_fingerprint(&self, issue_id: Id, new_fingerprint: String) -> Result<Issue> {
         // One transaction so the collision check + merge/rename is atomic and
         // respects the unique (project_id, fingerprint) index under concurrency.

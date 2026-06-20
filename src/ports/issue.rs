@@ -108,6 +108,13 @@ pub trait IssueRepository: Send + Sync {
     /// N+1 of [`list`](Self::list) calls.
     async fn unresolved_counts(&self, project_ids: &[Id]) -> Result<HashMap<Id, i64>>;
 
+    /// Latest `last_seen` timestamp of any unresolved issue per project.
+    ///
+    /// Returns a map keyed by project id; projects with no unresolved issues
+    /// are omitted. Used by the dashboard to sort projects by most recent
+    /// activity.
+    async fn last_seen_per_project(&self, project_ids: &[Id]) -> Result<HashMap<Id, Timestamp>>;
+
     /// Override an issue's fingerprint after the fact (operator merge / split).
     ///
     /// Semantics (one transaction, respecting the unique

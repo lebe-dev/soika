@@ -396,6 +396,25 @@ mod tests {
             Ok(counts)
         }
 
+        async fn last_seen_per_project(
+            &self,
+            project_ids: &[Id],
+        ) -> Result<std::collections::HashMap<Id, crate::domain::Timestamp>> {
+            let rows = self.rows.lock().unwrap();
+            let mut result = std::collections::HashMap::new();
+            for id in project_ids {
+                if let Some(ts) = rows
+                    .iter()
+                    .filter(|i| i.project_id == *id && i.status == IssueStatus::Unresolved)
+                    .map(|i| i.last_seen)
+                    .max()
+                {
+                    result.insert(*id, ts);
+                }
+            }
+            Ok(result)
+        }
+
         async fn override_fingerprint(
             &self,
             issue_id: Id,
