@@ -15,6 +15,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import * as Card from '$lib/components/ui/card';
   import * as Dialog from '$lib/components/ui/dialog';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Table from '$lib/components/ui/table';
   import { toast } from '$lib/components/ui/sonner';
   import CopyField from '$lib/components/copy-field.svelte';
@@ -25,6 +26,7 @@
   import UserMinus from '@lucide/svelte/icons/user-minus';
   import FolderKanban from '@lucide/svelte/icons/folder-kanban';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
   import PageTitle from '$lib/components/page-title.svelte';
   import RoleHint from '$lib/components/role-hint.svelte';
   import type { PageData } from './$types';
@@ -262,16 +264,23 @@
       </p>
     </div>
     {#if canManageInstance}
-      <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" class="gap-1.5" onclick={openRename}>
-          <Pencil class="size-4" />
-          Rename
-        </Button>
-        <Button variant="outline" size="sm" class="gap-1.5" onclick={() => (deleteOpen = true)}>
-          <Trash2 class="size-4" />
-          Delete
-        </Button>
-      </div>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          <Button variant="outline" size="icon" aria-label="Team actions">
+            <EllipsisVertical class="size-4" />
+          </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end" class="w-40">
+          <DropdownMenu.Item onclick={openRename}>
+            <Pencil class="size-4" />
+            Rename
+          </DropdownMenu.Item>
+          <DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
+            <Trash2 class="size-4" />
+            Delete
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
     {/if}
   </div>
 
