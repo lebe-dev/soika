@@ -214,6 +214,11 @@ export interface UpdateProjectRequest {
   webhook_url?: string;
 }
 
+/** Move a project to a different owning team (instance Owner/Manager only). */
+export interface ChangeProjectTeamRequest {
+  team_id: Id;
+}
+
 export interface Dsn {
   dsn: string;
   public_key: string;

@@ -9,6 +9,7 @@ import type {
   AddTeamMemberRequest,
   AdminUser,
   AuthConfig,
+  ChangeProjectTeamRequest,
   CreateInviteRequest,
   CreateProjectRequest,
   CreateTagMuteRuleRequest,
@@ -87,6 +88,9 @@ export const projects = {
   get: (id: Id, ctx?: Ctx) => http.get<ProjectDetail>(`/projects/${id}`, { fetch: ctx?.fetch }),
   update: (id: Id, body: UpdateProjectRequest, ctx?: Ctx) =>
     http.patch<Project>(`/projects/${id}`, { body, fetch: ctx?.fetch }),
+  /** Move a project to a different owning team (instance Owner/Manager only). */
+  changeTeam: (id: Id, body: ChangeProjectTeamRequest, ctx?: Ctx) =>
+    http.patch<Project>(`/projects/${id}/team`, { body, fetch: ctx?.fetch }),
   remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/projects/${id}`, { fetch: ctx?.fetch }),
   issues: (id: Id, query?: IssueListQuery, ctx?: Ctx) =>
     http.get<Issue[]>(`/projects/${id}/issues`, { query, fetch: ctx?.fetch }),

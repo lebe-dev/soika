@@ -492,6 +492,141 @@ async fn regenerate_dsn_requires_admin() {
     assert_ne!(rotated, "dsn-alpha", "the DSN public key was rotated");
 }
 
+// ---------------------------------------------------------------------------
+// PATCH /api/projects/{id}/team: move a project to another team (Manager-gated).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn manager_can_change_project_team_and_access_follows() {
+    let app = Fixture::spawn().await;
+    // An instance Owner (manager-capable) performs the move.
+    app.create_user("owner@example.com", true).await;
+    // A contributor of the *target* team gains access once the project moves.
+    let target_member = app.create_user("target@example.com", false).await;
+
+    let team_a = app.create_team("team-a").await;
+    let team_b = app.create_team("team-b").await;
+    let project = app.create_project(team_a, "alpha", "dsn-alpha").await;
+    app.state
+        .teams
+        .add_member(team_b, target_member, TeamRole::Contributor)
+        .await
+        .unwrap();
+
+    // Before the move, the target-team member has no access (closed membership).
+    let target_cookie = app.login("target@example.com").await;
+    let (status, _) = app
+        .get(
+            &format!("/api/projects/{}", project.short_id),
+            &target_cookie,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "target-team member has no access before the move"
+    );
+
+    // The owner moves the project to team-b.
+    let owner_cookie = app.login("owner@example.com").await;
+    let (status, body) = app
+        .patch_json(
+            &format!("/api/projects/{}/team", project.short_id),
+            &owner_cookie,
+            &json!({ "team_id": team_b.to_string() }),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "instance owner may move the project"
+    );
+    assert_eq!(
+        body["team_id"],
+        team_b.to_string(),
+        "the response reflects the new owning team"
+    );
+
+    // The owning team really changed in storage.
+    let moved = app
+        .state
+        .projects
+        .find_by_short_id(&project.short_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(moved.team_id, team_b, "the project now belongs to team-b");
+
+    // Access follows the team: the target-team member can now read the project.
+    let (status, _) = app
+        .get(
+            &format!("/api/projects/{}", project.short_id),
+            &target_cookie,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "access follows the owning team after the move"
+    );
+}
+
+#[tokio::test]
+async fn change_team_requires_manager() {
+    let app = Fixture::spawn().await;
+    // A team admin is project-admin, but NOT an instance manager.
+    let admin = app.create_user("teamadmin@example.com", false).await;
+    let team_a = app.create_team("team-a").await;
+    let team_b = app.create_team("team-b").await;
+    let project = app.create_project(team_a, "alpha", "dsn-alpha").await;
+    app.add_membership(project.id, admin, Role::Admin).await;
+
+    let cookie = app.login("teamadmin@example.com").await;
+    let (status, _) = app
+        .patch_json(
+            &format!("/api/projects/{}/team", project.short_id),
+            &cookie,
+            &json!({ "team_id": team_b.to_string() }),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "a team admin (non-manager) cannot move a project between teams"
+    );
+
+    // The project did not move.
+    let unchanged = app.team_of_project(project.id).await;
+    assert_eq!(unchanged, team_a, "the project stayed in its team");
+}
+
+#[tokio::test]
+async fn change_team_to_unknown_team_is_404() {
+    let app = Fixture::spawn().await;
+    app.create_user("owner@example.com", true).await;
+    let team_a = app.create_team("team-a").await;
+    let project = app.create_project(team_a, "alpha", "dsn-alpha").await;
+
+    let cookie = app.login("owner@example.com").await;
+    let (status, _) = app
+        .patch_json(
+            &format!("/api/projects/{}/team", project.short_id),
+            &cookie,
+            &json!({ "team_id": Id::new_v4().to_string() }),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "moving to a non-existent team is a 404"
+    );
+    assert_eq!(
+        app.team_of_project(project.id).await,
+        team_a,
+        "the project stayed put"
+    );
+}
+
 fn test_config() -> Config {
     Config {
         organization_name: "test".into(),

@@ -75,6 +75,34 @@
     }
   }
 
+  // --- Owning team (instance Owner/Manager only) ---------------------------
+  // Moving a project reassigns who can access it (access derives from the
+  // owning team), so it is gated to instance managers. The loader populates
+  // `teamOptions` only for them; otherwise the control is hidden. The API
+  // enforces the real `require_manager` check.
+  const teamOptions = $derived(data.teamOptions);
+  const canMoveTeam = $derived(teamOptions.length > 0);
+  let selectedTeamId = $state(untrack(() => data.project.team_id));
+  let movingTeam = $state(false);
+  const teamDirty = $derived(selectedTeamId !== project.team_id);
+
+  async function changeTeam(event: SubmitEvent) {
+    event.preventDefault();
+    if (!teamDirty) return;
+    movingTeam = true;
+    try {
+      await projects.changeTeam(project.id, { team_id: selectedTeamId });
+      await invalidateAll();
+      selectedTeamId = project.team_id;
+      toast.success('Project moved to a different team');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to move project'));
+      reportUnexpected(err);
+    } finally {
+      movingTeam = false;
+    }
+  }
+
   // --- Mute ----------------------------------------------------------------
   let mutating = $state(false);
   async function toggleMute() {
@@ -319,6 +347,39 @@
       {/if}
     </Card.Content>
   </Card.Root>
+
+  <!-- Owning team (instance Owner/Manager only) -->
+  {#if canMoveTeam}
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Owning team</Card.Title>
+        <Card.Description>
+          Move this project to a different team. Access (and admin rights) follow the new team —
+          members of the previous team lose access.
+        </Card.Description>
+      </Card.Header>
+      <form onsubmit={changeTeam} class="contents">
+        <Card.Content class="space-y-2">
+          <label for="owning-team" class="text-sm font-medium">Team</label>
+          <select
+            id="owning-team"
+            bind:value={selectedTeamId}
+            disabled={movingTeam}
+            class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-3 disabled:opacity-50"
+          >
+            {#each teamOptions as team (team.id)}
+              <option value={team.id}>{team.name}</option>
+            {/each}
+          </select>
+        </Card.Content>
+        <Card.Footer>
+          <Button type="submit" variant="outline" disabled={movingTeam || !teamDirty}>
+            {movingTeam ? 'Moving…' : 'Move project'}
+          </Button>
+        </Card.Footer>
+      </form>
+    </Card.Root>
+  {/if}
 
   <!-- Members & invites are managed at the team level -->
   <Card.Root>

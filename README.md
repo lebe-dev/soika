@@ -57,6 +57,12 @@ A caller's effective access to a given project resolves as:
    **Admin**, team `Contributor` ⇒ project **Member**;
 3. otherwise **no access** (closed membership).
 
+Because project access derives entirely from the owning team, **moving a project
+to another team reassigns who can see it** — the previous team loses access and
+the new team gains it. This is an instance-management action: only an instance
+`Owner`/`Manager` can move a project (from the project's **Settings → Owning
+team**), and they may move it to any team.
+
 ### Permission matrix
 
 | Action | Member / Contributor | Team Admin | Manager | Owner |
@@ -65,6 +71,7 @@ A caller's effective access to a given project resolves as:
 | Resolve / mute issue, mute-rules | ✔ | ✔ | ✔ | ✔ |
 | Project settings (retention, webhook, DSN, mute, rename) | – | ✔ | ✔ | ✔ |
 | Create / delete project in a team | – | ✔ | ✔ | ✔ |
+| Move a project to another team | – | – | ✔ | ✔ |
 | Manage team composition + team roles | – | ✔ (own) | ✔ (all) | ✔ (all) |
 | Create / delete a team | – | – | ✔ | ✔ |
 | Invites, approve pending, delete users, set instance roles | – | – | ✔ | ✔ |

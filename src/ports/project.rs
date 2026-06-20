@@ -22,6 +22,9 @@ pub struct NewProject {
 #[derive(Debug, Clone, Default)]
 pub struct ProjectUpdate {
     pub name: Option<String>,
+    /// Move the project to a different owning team. `None` leaves it unchanged.
+    /// The caller must validate the target team exists (the FK is enforced).
+    pub team_id: Option<Id>,
     pub retention_events: Option<i64>,
     /// Age-based retention in days; `None` leaves it unchanged.
     pub retention_days: Option<i64>,

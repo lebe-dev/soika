@@ -177,6 +177,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let sql = format!(
             "UPDATE projects SET \
                 name = COALESCE(?, name), \
+                team_id = COALESCE(?, team_id), \
                 retention_events = COALESCE(?, retention_events), \
                 retention_days = COALESCE(?, retention_days), \
                 muted = COALESCE(?, muted), \
@@ -189,6 +190,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let webhook_value = update.webhook_url.flatten();
         let row = sqlx::query(&sql)
             .bind(update.name)
+            .bind(update.team_id.map(|id| id.to_string()))
             .bind(update.retention_events)
             .bind(update.retention_days)
             .bind(update.muted.map(|m| if m { 1_i64 } else { 0 }))

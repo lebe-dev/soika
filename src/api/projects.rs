@@ -626,10 +626,62 @@ pub async fn update(
 
     let update = crate::ports::ProjectUpdate {
         name: req.name.map(|n| n.trim().to_string()),
+        // Moving a project between teams is a Manager-gated operation handled by
+        // [`change_team`]; the admin-level PATCH never touches `team_id`.
+        team_id: None,
         retention_events: req.retention_events,
         retention_days: req.retention_days,
         muted: req.muted,
         webhook_url,
+    };
+
+    match state.projects.update(project_id, update).await {
+        Ok(project) => {
+            let view = ProjectView::from_project(project, &state.config.base_url);
+            Json(view).into_response()
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+/// Request body for `PATCH /projects/{id}/team` (move project to another team).
+#[derive(Debug, Deserialize)]
+pub struct ChangeTeamRequest {
+    pub team_id: Id,
+}
+
+/// `PATCH /projects/{id}/team` — move a project to a different owning team.
+///
+/// Instance-gated (`Owner | Manager`): moving a project reassigns *who* can
+/// access it (project access derives from the owning team), so it is not a
+/// project-admin action but an instance-management one — see [`require_manager`].
+/// The target team must exist (`404` otherwise).
+pub async fn change_team(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+    Json(req): Json<ChangeTeamRequest>,
+) -> Response {
+    let project_id = match resolve_project(&state, &id).await {
+        Ok(project) => project.id,
+        Err(resp) => return resp,
+    };
+
+    if let Err(resp) = require_manager(&user) {
+        return resp;
+    }
+
+    // The target team must exist; the FK would reject a dangling id, but we
+    // surface a clear 404 instead of a generic DB error.
+    match state.teams.find_by_id(req.team_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return json_error(StatusCode::NOT_FOUND, "team not found"),
+        Err(err) => return error_response(err),
+    }
+
+    let update = crate::ports::ProjectUpdate {
+        team_id: Some(req.team_id),
+        ..Default::default()
     };
 
     match state.projects.update(project_id, update).await {
