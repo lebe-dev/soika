@@ -46,7 +46,9 @@
     </Card.Header>
     <Card.Content>
       <Tabs.Root bind:value={active}>
-        <Tabs.List>
+        <Tabs.List
+          class="[&_[data-slot=tabs-trigger]:not(:first-child)]:border-l-border [&_[data-slot=tabs-trigger]]:text-xs [&_[data-slot=tabs-trigger]:not(:first-child)]:rounded-l-none"
+        >
           {#each snippets as snippet (snippet.language)}
             <Tabs.Trigger value={snippet.language}>{snippet.label}</Tabs.Trigger>
           {/each}
