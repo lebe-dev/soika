@@ -234,7 +234,7 @@
         }}
       />
       <div
-        class="border-input flex h-9 rounded-md border text-sm"
+        class="border-input flex h-8 rounded-md border text-sm"
         role="group"
         aria-label="Sort order"
       >
