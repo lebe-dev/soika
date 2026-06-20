@@ -15,6 +15,7 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import Star from '@lucide/svelte/icons/star';
   import PageTitle from '$lib/components/page-title.svelte';
+  import { navActions } from '$lib/stores/nav-actions.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -88,6 +89,13 @@
 
   // --- Create-project dialog state ---
   let createOpen = $state(false);
+
+  $effect(() => {
+    navActions.newProjectCallback = () => (createOpen = true);
+    return () => {
+      navActions.newProjectCallback = null;
+    };
+  });
   let name = $state('');
   let teamId = $state('');
   let submitting = $state(false);
@@ -124,76 +132,68 @@
 <PageTitle title="Dashboard" />
 
 <div class="space-y-6">
-  <div class="flex items-end justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
-      <p class="text-muted-foreground text-sm">
-        {#if overviews.length === 0}
-          No projects yet — create your first to start capturing errors.
-        {:else}
-          {overviews.length}
-          {overviews.length === 1 ? 'project' : 'projects'} in your workspace.
-        {/if}
-      </p>
-    </div>
-
-    <Dialog.Root bind:open={createOpen}>
-      <Dialog.Trigger>
-        <Button class="gap-2">
-          <FolderPlus class="size-4" />
-          New project
-        </Button>
-      </Dialog.Trigger>
-      <Dialog.Content class="sm:max-w-md">
-        <Dialog.Header>
-          <Dialog.Title>Create project</Dialog.Title>
-          <Dialog.Description>
-            A project owns a DSN and groups the errors your SDK sends.
-          </Dialog.Description>
-        </Dialog.Header>
-
-        {#if !canCreate}
-          <p class="text-muted-foreground text-sm">
-            You need a team before creating a project.
-            <a href="/teams" class="text-foreground underline-offset-4 hover:underline">
-              Create a team
-            </a>
-            first.
-          </p>
-        {:else}
-          <form onsubmit={createProject} class="space-y-4">
-            <div class="space-y-2">
-              <label for="project-name" class="text-sm font-medium">Name</label>
-              <Input
-                id="project-name"
-                bind:value={name}
-                placeholder="my-service"
-                autocomplete="off"
-                required
-              />
-            </div>
-            <div class="space-y-2">
-              <label for="project-team" class="text-sm font-medium">Team</label>
-              <select
-                id="project-team"
-                bind:value={teamId}
-                class="border-input focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
-              >
-                {#each teams as team (team.id)}
-                  <option value={team.id}>{team.name}</option>
-                {/each}
-              </select>
-            </div>
-            <Dialog.Footer>
-              <Button type="submit" disabled={submitting || !name.trim()}>
-                {submitting ? 'Creating…' : 'Create project'}
-              </Button>
-            </Dialog.Footer>
-          </form>
-        {/if}
-      </Dialog.Content>
-    </Dialog.Root>
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
+    <p class="text-muted-foreground text-sm">
+      {#if overviews.length === 0}
+        No projects yet — create your first to start capturing errors.
+      {:else}
+        {overviews.length}
+        {overviews.length === 1 ? 'project' : 'projects'} in your workspace.
+      {/if}
+    </p>
   </div>
+
+  <Dialog.Root bind:open={createOpen}>
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Create project</Dialog.Title>
+        <Dialog.Description>
+          A project owns a DSN and groups the errors your SDK sends.
+        </Dialog.Description>
+      </Dialog.Header>
+
+      {#if !canCreate}
+        <p class="text-muted-foreground text-sm">
+          You need a team before creating a project.
+          <a href="/teams" class="text-foreground underline-offset-4 hover:underline">
+            Create a team
+          </a>
+          first.
+        </p>
+      {:else}
+        <form onsubmit={createProject} class="space-y-4">
+          <div class="space-y-2">
+            <label for="project-name" class="text-sm font-medium">Name</label>
+            <Input
+              id="project-name"
+              bind:value={name}
+              placeholder="my-service"
+              autocomplete="off"
+              required
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="project-team" class="text-sm font-medium">Team</label>
+            <select
+              id="project-team"
+              bind:value={teamId}
+              class="border-input focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
+            >
+              {#each teams as team (team.id)}
+                <option value={team.id}>{team.name}</option>
+              {/each}
+            </select>
+          </div>
+          <Dialog.Footer>
+            <Button type="submit" disabled={submitting || !name.trim()}>
+              {submitting ? 'Creating…' : 'Create project'}
+            </Button>
+          </Dialog.Footer>
+        </form>
+      {/if}
+    </Dialog.Content>
+  </Dialog.Root>
 
   {#if overviews.length === 0}
     <Card.Root>

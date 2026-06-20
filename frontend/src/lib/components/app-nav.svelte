@@ -17,6 +17,8 @@
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
   import Menu from '@lucide/svelte/icons/menu';
+  import FolderPlus from '@lucide/svelte/icons/folder-plus';
+  import { navActions } from '$lib/stores/nav-actions.svelte';
 
   let { user, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } = $props();
 
@@ -116,6 +118,18 @@
     </nav>
 
     <div class="ml-auto flex items-center gap-1">
+      {#if navActions.newProjectCallback !== null}
+        <Button
+          variant="ghost"
+          size="icon"
+          onclick={navActions.newProjectCallback}
+          aria-label="New project"
+          title="New project"
+        >
+          <FolderPlus class="size-4" />
+        </Button>
+      {/if}
+
       <Button variant="ghost" size="icon" onclick={toggleMode} aria-label="Toggle theme">
         {#if mode.current === 'dark'}
           <Sun class="size-4" />
@@ -126,7 +140,7 @@
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button variant="ghost" size="sm" class="gap-2">
+          <Button variant="ghost" class="gap-2">
             <UserIcon class="size-4" />
             <span class="hidden max-w-[12ch] truncate sm:inline">{user.display_name}</span>
           </Button>
