@@ -126,3 +126,44 @@ mailcrab:
 # --- Deploy ---
 deploy:
     ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
+
+# --- SonarQube (static analysis) ---
+# Compose stack lives in sonarqube.yml (SonarQube Community Build + PostgreSQL).
+# The scanner runs as a one-shot `docker run` and reads sonar-project.properties.
+sonarComposeFile := "sonarqube.yml"
+# Host URL as seen from *inside* the scanner container. host.docker.internal reaches the
+# host's published port 9000 on Docker Desktop and (via --add-host) on Linux.
+sonarHostUrl := env_var_or_default("SONAR_HOST_URL", "http://host.docker.internal:9000")
+
+# Start SonarQube + PostgreSQL (UI at http://localhost:9000, admin/admin on first login)
+sonar-up:
+    docker compose -f {{ sonarComposeFile }} up -d
+    @echo "==> SonarQube starting at http://localhost:9000 (first boot ~1-2 min). Login admin/admin, then:"
+    @echo "==> 1. Set a strong password."
+    @echo "==> 2. Create a token (My Account -> Security) and put it in .env as SONAR_TOKEN=sqp_xxx."
+
+# Stop SonarQube (named volumes keep the DB + analysis history)
+sonar-down:
+    docker compose -f {{ sonarComposeFile }} down
+
+# Wipe SonarQube including all data volumes
+sonar-clean:
+    docker compose -f {{ sonarComposeFile }} down -v
+
+# Run the scanner against the running instance. Reads SONAR_TOKEN from .env.
+sonar-scan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${SONAR_TOKEN:-}" ]; then
+        echo "error: SONAR_TOKEN is not set." >&2
+        echo "  Generate a token at {{ sonarHostUrl }} -> My Account -> Security," >&2
+        echo "  then add it to .env:  SONAR_TOKEN=sqp_xxx" >&2
+        exit 1
+    fi
+    docker run --rm \
+        --add-host=host.docker.internal:host-gateway \
+        -e SONAR_HOST_URL="{{ sonarHostUrl }}" \
+        -e SONAR_TOKEN="$SONAR_TOKEN" \
+        -v "$PWD:/usr/src" \
+        sonarsource/sonar-scanner-cli:latest \
+        -Dsonar.projectVersion="{{ version }}"
