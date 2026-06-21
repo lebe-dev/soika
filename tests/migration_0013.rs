@@ -26,7 +26,7 @@ async fn apply_migrations_before(pool: &sqlx::SqlitePool, before: i64) {
     let mut migrations: Vec<_> = MIGRATOR.iter().filter(|m| m.version < before).collect();
     migrations.sort_by_key(|m| m.version);
     for m in migrations {
-        sqlx::raw_sql(&m.sql)
+        sqlx::raw_sql(m.sql.clone())
             .execute(pool)
             .await
             .unwrap_or_else(|e| panic!("apply migration {}: {e}", m.version));
@@ -39,7 +39,7 @@ async fn apply_migration_0013(pool: &sqlx::SqlitePool) {
         .iter()
         .find(|m| m.version == MIGRATION_0013_VERSION)
         .expect("migration 0013 exists");
-    sqlx::raw_sql(&m.sql)
+    sqlx::raw_sql(m.sql.clone())
         .execute(pool)
         .await
         .expect("apply migration 0013");

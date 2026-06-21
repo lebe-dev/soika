@@ -6,7 +6,6 @@
 //! dedicated shared module — see the integration followups.
 
 use axum::Json;
-use axum::async_trait;
 use axum::extract::{FromRequestParts, Path, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -79,7 +78,6 @@ pub struct AuthUser(pub User);
 /// instance. Owner-only operations re-check [`User::instance_role`] inline.
 pub struct AdminUser(pub User);
 
-#[async_trait]
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = ApiError;
 
@@ -92,7 +90,6 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AdminUser {
     type Rejection = ApiError;
 
@@ -116,7 +113,6 @@ impl FromRequestParts<AppState> for AdminUser {
 /// branch on the session instead of being gated behind a `401`.
 pub struct OptionalAuthUser(pub Option<User>);
 
-#[async_trait]
 impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = std::convert::Infallible;
 

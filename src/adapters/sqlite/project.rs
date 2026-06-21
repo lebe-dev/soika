@@ -75,7 +75,7 @@ impl ProjectRepository for SqliteProjectRepository {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) \
              RETURNING {PROJECT_COLS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(id.to_string())
             .bind(short_id)
             .bind(new.team_id.to_string())
@@ -95,7 +95,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
     async fn find_by_id(&self, id: Id) -> Result<Option<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE id = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(id.to_string())
             .fetch_optional(&self.db)
             .await?;
@@ -104,7 +104,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
     async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE short_id = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(short_id)
             .fetch_optional(&self.db)
             .await?;
@@ -113,7 +113,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
     async fn find_by_slug(&self, slug: &str) -> Result<Option<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE slug = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(slug)
             .fetch_optional(&self.db)
             .await?;
@@ -122,7 +122,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
     async fn find_by_dsn(&self, dsn_public_key: &str) -> Result<Option<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE dsn_public_key = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(dsn_public_key)
             .fetch_optional(&self.db)
             .await?;
@@ -131,13 +131,15 @@ impl ProjectRepository for SqliteProjectRepository {
 
     async fn list(&self) -> Result<Vec<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects ORDER BY name");
-        let rows = sqlx::query(&sql).fetch_all(&self.db).await?;
+        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+            .fetch_all(&self.db)
+            .await?;
         rows.iter().map(row_to_project).collect()
     }
 
     async fn list_for_team(&self, team_id: Id) -> Result<Vec<Project>> {
         let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE team_id = ? ORDER BY name");
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(team_id.to_string())
             .fetch_all(&self.db)
             .await?;
@@ -188,7 +190,7 @@ impl ProjectRepository for SqliteProjectRepository {
         );
         let webhook_present = i64::from(update.webhook_url.is_some());
         let webhook_value = update.webhook_url.flatten();
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(update.name)
             .bind(update.team_id.map(|id| id.to_string()))
             .bind(update.retention_events)
@@ -212,7 +214,7 @@ impl ProjectRepository for SqliteProjectRepository {
             "UPDATE projects SET dsn_public_key = ?, updated_at = ? \
              WHERE id = ? RETURNING {PROJECT_COLS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(new_dsn_public_key)
             .bind(now.to_rfc3339())
             .bind(id.to_string())

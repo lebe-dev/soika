@@ -5,8 +5,8 @@
 //! self-describing and future parameter changes remain backward-compatible.
 
 use argon2::Argon2;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use rand::rngs::OsRng;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt, SaltString};
+use rand::Rng;
 
 use crate::error::{Error, Result};
 
@@ -18,7 +18,12 @@ pub fn hash_password(password: &str) -> Result<String> {
         return Err(Error::validation("password must not be empty"));
     }
 
-    let salt = SaltString::generate(&mut OsRng);
+    // password-hash's `SaltString::generate` ties us to its (older) rand_core
+    // version; instead draw salt bytes from the workspace `rand` and b64-encode.
+    let mut salt_bytes = [0u8; Salt::RECOMMENDED_LENGTH];
+    rand::rng().fill_bytes(&mut salt_bytes);
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .map_err(|e| Error::internal(format!("salt generation failed: {e}")))?;
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)

@@ -4,11 +4,10 @@
 //! insert event → counters → notify.
 
 use std::io::Read;
-use std::net::SocketAddr;
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{ConnectInfo, Path, RawQuery, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
@@ -18,6 +17,7 @@ use super::enrich::{RequestMeta, enrich};
 use super::envelope::{self, EnvelopeItem};
 use super::ratelimit::Decision;
 use super::tags;
+use crate::auth::PeerAddr;
 use crate::domain::stacktrace::NormalizedEvent;
 use crate::domain::{Project, Timestamp};
 use crate::grouping::{self, IngestInput, NotifyKind};
@@ -32,7 +32,7 @@ pub async fn envelope(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     RawQuery(query): RawQuery,
-    connect: Option<ConnectInfo<SocketAddr>>,
+    PeerAddr(peer): PeerAddr,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -53,7 +53,7 @@ pub async fn envelope(
     };
 
     // Request-derived enrichment (client IP, browser/OS) applied to every event.
-    let meta = RequestMeta::from_request(&headers, connect.map(|c| c.0));
+    let meta = RequestMeta::from_request(&headers, peer);
     let header_event_id = parsed.header_event_id();
     let now = state.clock.now();
 
@@ -106,7 +106,7 @@ pub async fn store(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     RawQuery(query): RawQuery,
-    connect: Option<ConnectInfo<SocketAddr>>,
+    PeerAddr(peer): PeerAddr,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -125,7 +125,7 @@ pub async fn store(
         }
     };
 
-    let meta = RequestMeta::from_request(&headers, connect.map(|c| c.0));
+    let meta = RequestMeta::from_request(&headers, peer);
     let now = state.clock.now();
     match process_event(&state, &project, payload, &meta, now).await {
         // `process_event` derives the id from the payload's `event_id` (or

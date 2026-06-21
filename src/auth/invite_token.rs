@@ -6,8 +6,7 @@
 //! while a matching, unexpired, unaccepted invite exists. Tokens are generated
 //! with a CSPRNG, making them practically unguessable.
 
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::Rng;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -21,7 +20,7 @@ pub const INVITE_TTL_DAYS: i64 = 7;
 /// Generate a fresh opaque invite token (256 bits of entropy).
 pub fn generate_invite_token() -> String {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 

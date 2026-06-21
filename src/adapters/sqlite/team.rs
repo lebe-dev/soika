@@ -100,17 +100,21 @@ impl TeamRepository for SqliteTeamRepository {
     }
 
     async fn find_by_id(&self, id: Id) -> Result<Option<Team>> {
-        let row = sqlx::query_as::<_, TeamRow>(&format!("{SELECT_TEAM} WHERE id = ?"))
-            .bind(id_to_db(id))
-            .fetch_optional(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, TeamRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_TEAM} WHERE id = ?"
+        )))
+        .bind(id_to_db(id))
+        .fetch_optional(&self.db)
+        .await?;
         row.map(TeamRow::into_domain).transpose()
     }
 
     async fn list(&self) -> Result<Vec<Team>> {
-        let rows = sqlx::query_as::<_, TeamRow>(&format!("{SELECT_TEAM} ORDER BY name"))
-            .fetch_all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, TeamRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_TEAM} ORDER BY name"
+        )))
+        .fetch_all(&self.db)
+        .await?;
         rows.into_iter().map(TeamRow::into_domain).collect()
     }
 

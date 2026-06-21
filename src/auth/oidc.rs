@@ -22,11 +22,11 @@ use async_trait::async_trait;
 use openidconnect::core::{
     CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreProviderMetadata,
 };
-use openidconnect::reqwest::async_http_client;
 use openidconnect::url::Url;
 use openidconnect::{
-    AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
+    EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
+    TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,20 @@ use crate::config::OidcConfig;
 use crate::error::{Error, Result};
 
 use super::signing;
+
+/// The fully-configured [`CoreClient`] type as produced by
+/// [`CoreClient::from_provider_metadata`] + `set_redirect_uri`: the auth
+/// endpoint is always set, token/userinfo endpoints are optional (`MaybeSet`),
+/// and the remaining endpoints are unused. openidconnect 4 encodes endpoint
+/// presence in the type, so a struct field must spell out these states.
+type DiscoveredClient = CoreClient<
+    EndpointSet,      // authorization endpoint
+    EndpointNotSet,   // device authorization endpoint
+    EndpointNotSet,   // introspection endpoint
+    EndpointNotSet,   // revocation endpoint
+    EndpointMaybeSet, // token endpoint
+    EndpointMaybeSet, // userinfo endpoint
+>;
 
 /// Lifetime of the transient OIDC state cookie: the browser only
 /// needs it for the brief redirect round-trip to the provider.
@@ -99,7 +113,7 @@ pub trait OidcProvider: Send + Sync {
 
 /// Production [`OidcProvider`] backed by [`openidconnect::core::CoreClient`].
 pub struct OidcClient {
-    client: CoreClient,
+    client: DiscoveredClient,
     scopes: Vec<String>,
     provider_name: String,
     allowed_email_domains: Vec<String>,
@@ -115,7 +129,8 @@ impl OidcClient {
         let redirect = RedirectUrl::new(config.redirect_url.clone())
             .map_err(|e| Error::validation(format!("invalid OAUTH_REDIRECT_URL: {e}")))?;
 
-        let metadata = CoreProviderMetadata::discover_async(issuer, async_http_client)
+        let http_client = build_http_client()?;
+        let metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
             .await
             .map_err(|e| Error::internal(format!("OIDC discovery failed: {e}")))?;
 
@@ -165,11 +180,13 @@ impl OidcProvider for OidcClient {
         pkce_verifier: PkceCodeVerifier,
         nonce: Nonce,
     ) -> Result<OidcClaims> {
+        let http_client = build_http_client()?;
         let token_response = self
             .client
             .exchange_code(AuthorizationCode::new(code))
+            .map_err(|e| Error::Auth(format!("OIDC token endpoint unavailable: {e}")))?
             .set_pkce_verifier(pkce_verifier)
-            .request_async(async_http_client)
+            .request_async(&http_client)
             .await
             .map_err(|e| Error::Auth(format!("OIDC token exchange failed: {e}")))?;
 
@@ -196,6 +213,16 @@ impl OidcProvider for OidcClient {
     fn require_approval(&self) -> bool {
         self.require_approval
     }
+}
+
+/// Build the rustls-backed async reqwest client used for OIDC network calls
+/// (discovery + token exchange). Redirects are disabled to avoid SSRF, per the
+/// openidconnect guidance.
+fn build_http_client() -> Result<openidconnect::reqwest::Client> {
+    openidconnect::reqwest::ClientBuilder::new()
+        .redirect(openidconnect::reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| Error::internal(format!("failed to build OIDC HTTP client: {e}")))
 }
 
 /// Normalize verified ID-token claims into our [`OidcClaims`].

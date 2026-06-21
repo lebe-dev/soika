@@ -59,10 +59,8 @@ const SHORT_ID_LEN: usize = 6;
 /// Callers persist this into a UNIQUE column; the astronomically rare collision
 /// is handled by retrying (see [`unique_short_id`]).
 pub(crate) fn generate_short_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
     (0..SHORT_ID_LEN)
-        .map(|_| SHORT_ID_ALPHABET[rng.gen_range(0..SHORT_ID_ALPHABET.len())] as char)
+        .map(|_| SHORT_ID_ALPHABET[rand::random_range(0..SHORT_ID_ALPHABET.len())] as char)
         .collect()
 }
 
@@ -78,10 +76,17 @@ pub async fn backfill_short_ids(db: &Db) -> Result<(), Error> {
     for table in ["projects", "issues"] {
         let select = format!("SELECT id FROM {table} WHERE short_id IS NULL LIMIT 1");
         let update = format!("UPDATE {table} SET short_id = ? WHERE id = ?");
-        while let Some(row) = sqlx::query(&select).fetch_optional(db).await? {
+        while let Some(row) = sqlx::query(sqlx::AssertSqlSafe(&*select))
+            .fetch_optional(db)
+            .await?
+        {
             let id: String = sqlx::Row::try_get(&row, "id")?;
             let code = unique_short_id(db, table).await?;
-            sqlx::query(&update).bind(code).bind(id).execute(db).await?;
+            sqlx::query(sqlx::AssertSqlSafe(&*update))
+                .bind(code)
+                .bind(id)
+                .execute(db)
+                .await?;
         }
     }
     Ok(())
@@ -96,7 +101,7 @@ pub(crate) async fn unique_short_id(db: &Db, table: &str) -> Result<String, Erro
     let sql = format!("SELECT 1 FROM {table} WHERE short_id = ? LIMIT 1");
     for _ in 0..16 {
         let candidate = generate_short_id();
-        let taken = sqlx::query(&sql)
+        let taken = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(&candidate)
             .fetch_optional(db)
             .await?

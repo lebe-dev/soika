@@ -79,7 +79,7 @@ fn parse_ts_opt(s: Option<String>) -> Result<Option<Timestamp>> {
 impl IssueRepository for SqliteIssueRepository {
     async fn find_by_id(&self, id: Id) -> Result<Option<Issue>> {
         let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(id.to_string())
             .fetch_optional(&self.db)
             .await?;
@@ -88,7 +88,7 @@ impl IssueRepository for SqliteIssueRepository {
 
     async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>> {
         let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE short_id = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(short_id)
             .fetch_optional(&self.db)
             .await?;
@@ -102,7 +102,7 @@ impl IssueRepository for SqliteIssueRepository {
     ) -> Result<Option<Issue>> {
         let sql =
             format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = ? AND fingerprint = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(project_id.to_string())
             .bind(fingerprint)
             .fetch_optional(&self.db)
@@ -124,7 +124,7 @@ impl IssueRepository for SqliteIssueRepository {
 
         let existing_sql =
             format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = ? AND fingerprint = ?");
-        let existing = sqlx::query(&existing_sql)
+        let existing = sqlx::query(sqlx::AssertSqlSafe(&*existing_sql))
             .bind(upsert.project_id.to_string())
             .bind(&upsert.fingerprint)
             .fetch_optional(&mut *tx)
@@ -148,7 +148,7 @@ impl IssueRepository for SqliteIssueRepository {
                     updated_at = ? \
                  WHERE id = ? RETURNING {ISSUE_COLS}"
             );
-            let updated_row = sqlx::query(&update_sql)
+            let updated_row = sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
                 .bind(new_status.as_str())
                 .bind(&seen)
                 .bind(&seen)
@@ -177,7 +177,7 @@ impl IssueRepository for SqliteIssueRepository {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unresolved', ?, ?, 1, ?, ?) \
              RETURNING {ISSUE_COLS}"
         );
-        let inserted = sqlx::query(&insert_sql)
+        let inserted = sqlx::query(sqlx::AssertSqlSafe(&*insert_sql))
             .bind(id.to_string())
             .bind(short_id)
             .bind(upsert.project_id.to_string())
@@ -213,7 +213,7 @@ impl IssueRepository for SqliteIssueRepository {
                 updated_at = ? \
              WHERE id = ? RETURNING {ISSUE_COLS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(status.as_str())
             .bind(chrono::Utc::now().to_rfc3339())
             .bind(issue_id.to_string())
@@ -244,7 +244,7 @@ impl IssueRepository for SqliteIssueRepository {
                 updated_at = ? \
              WHERE id = ? RETURNING {ISSUE_COLS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(&now)
             .bind(&until)
             .bind(threshold)
@@ -310,7 +310,7 @@ impl IssueRepository for SqliteIssueRepository {
              LIMIT ? OFFSET ?"
         );
         let status_str = filter.status.map(|s| s.as_str().to_string());
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(project_id.to_string())
             .bind(&status_str)
             .bind(&status_str)
@@ -345,7 +345,7 @@ impl IssueRepository for SqliteIssueRepository {
              WHERE status = 'unresolved' AND project_id IN ({placeholders}) \
              GROUP BY project_id"
         );
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql));
         for id in project_ids {
             query = query.bind(id.to_string());
         }
@@ -369,7 +369,7 @@ impl IssueRepository for SqliteIssueRepository {
              WHERE status = 'unresolved' AND project_id IN ({placeholders}) \
              GROUP BY project_id"
         );
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql));
         for id in project_ids {
             query = query.bind(id.to_string());
         }
@@ -392,7 +392,7 @@ impl IssueRepository for SqliteIssueRepository {
         // 1. Load the target issue (the row identified by `issue_id` always
         //    survives — a merge deletes the *other* colliding row).
         let target_sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
-        let target_row = sqlx::query(&target_sql)
+        let target_row = sqlx::query(sqlx::AssertSqlSafe(&*target_sql))
             .bind(issue_id.to_string())
             .fetch_optional(&mut *tx)
             .await?;
@@ -413,7 +413,7 @@ impl IssueRepository for SqliteIssueRepository {
             "SELECT {ISSUE_COLS} FROM issues \
              WHERE project_id = ? AND fingerprint = ? AND id <> ?"
         );
-        let collision_row = sqlx::query(&collision_sql)
+        let collision_row = sqlx::query(sqlx::AssertSqlSafe(&*collision_sql))
             .bind(target.project_id.to_string())
             .bind(&new_fingerprint)
             .bind(issue_id.to_string())
@@ -456,7 +456,7 @@ impl IssueRepository for SqliteIssueRepository {
                     updated_at = ? \
                  WHERE id = ? RETURNING {ISSUE_COLS}"
             );
-            sqlx::query(&update_sql)
+            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
                 .bind(&new_fingerprint)
                 .bind(event_count)
                 .bind(first_seen.to_rfc3339())
@@ -471,7 +471,7 @@ impl IssueRepository for SqliteIssueRepository {
                 "UPDATE issues SET fingerprint = ?, updated_at = ? \
                  WHERE id = ? RETURNING {ISSUE_COLS}"
             );
-            sqlx::query(&update_sql)
+            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
                 .bind(&new_fingerprint)
                 .bind(&now)
                 .bind(target.id.to_string())

@@ -8,6 +8,14 @@ license = "MIT"
 repository = "https://github.com/tinyops/soika"
 default-run = "soika"
 
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+
 # Library crate: domain logic, ingestion, grouping, persistence, mailer, scheduler.
 [lib]
 name = "soika"
@@ -20,13 +28,13 @@ path = "src/main.rs"
 
 [dependencies]
 # HTTP / async runtime
-axum = { version = "0.7", features = ["macros"] }
-tokio = { version = "1", features = ["full"] }
-tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["compression-full", "cors", "fs", "trace"] }
+axum = { version = "0.8.9", features = ["macros"] }
+tokio = { version = "1.52.3", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.7.0", features = ["compression-full", "cors", "fs", "trace"] }
 
 # Persistence (SQLite for MVP, ANSI-friendly so Postgres can be added later)
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
     "sqlite",
@@ -37,23 +45,22 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
 
 # Errors — thiserror for the lib, anyhow for the bin.
-thiserror = "1"
-anyhow = "1"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
 
 # Auth / crypto
-argon2 = "0.5"
-password-hash = "0.5"
-rand = "0.8"
+argon2 = "0.5.3"
+rand = "0.10.1"
 # HMAC-SHA256 signing for session cookies / invite tokens (src/auth/signing.rs).
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13.0"
+sha2 = "0.11.0"
 
 # Email (SMTP via lettre)
-lettre = { version = "0.11", default-features = false, features = [
+lettre = { version = "0.11.22", default-features = false, features = [
     "tokio1-rustls-tls",
     "smtp-transport",
     "builder",
@@ -61,26 +68,31 @@ lettre = { version = "0.11", default-features = false, features = [
 
 # Email templating — HTML + text bodies live in `templates/email/` and are
 # rendered at runtime (no TLS deps, so the musl/Alpine release build is safe).
-tera = { version = "1", default-features = false }
+tera = { version = "1.20.1", default-features = false }
 
 # Outbound HTTP for the webhook notification channel (Story 6.2). rustls (not
 # native-tls) to match sqlx/lettre and avoid pulling in openssl; no
 # default-features so we drop default-tls/charset/http2 we don't need.
+# Pinned to 0.12 to share a single reqwest with `oauth2` (via `openidconnect`),
+# which requires 0.12 — this also lets our `rustls-tls` feature (webpki-roots +
+# `ring`) apply to the OIDC HTTP client by feature unification. reqwest 0.13's
+# `rustls` feature would force the `aws-lc-rs` provider and break the
+# musl/Alpine release build.
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
 
 # Observability
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Sentry error reporting (optional at runtime; enabled when SENTRY_DSN is set).
 # The `ureq` transport with `rustls` keeps us on the `ring` provider used by the
 # rest of the stack (the `reqwest` transport would pull a second TLS stack via
 # aws-lc-rs, breaking the musl/Alpine release build). The `tracing` integration
 # turns `error!` events into Sentry events; `panic` captures panics.
-sentry = { version = "0.48", default-features = false, features = [
+sentry = { version = "0.48.2", default-features = false, features = [
     "backtrace",
     "contexts",
     "debug-images",
@@ -91,27 +103,20 @@ sentry = { version = "0.48", default-features = false, features = [
 ] }
 
 # Embedded frontend assets
-rust-embed = { version = "8", features = ["mime-guess"] }
-mime_guess = "2"
+rust-embed = { version = "8.11.0", features = ["mime-guess"] }
+mime_guess = "2.0.5"
 
 # OIDC: discovery, JWKS-validation of the ID-token, PKCE, nonce. Uses the
 # existing rustls `reqwest` as the async HTTP client (no native-tls/openssl).
-openidconnect = { version = "3", default-features = false, features = ["reqwest"] }
+openidconnect = { version = "4.0.1", default-features = false, features = ["reqwest"] }
 
 # Misc
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-base64 = "0.22"
-flate2 = "1"
-croner = "2"
-async-trait = "0.1"
+uuid = { version = "1.23.3", features = ["v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+base64 = "0.22.1"
+flate2 = "1.1.9"
+croner = "3.0.1"
+async-trait = "0.1.89"
 
 [dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
-
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"
+tower = { version = "0.5.3", features = ["util"] }

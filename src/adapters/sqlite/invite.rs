@@ -88,17 +88,19 @@ impl InviteRepository for SqliteInviteRepository {
     }
 
     async fn find_by_token(&self, token: &str) -> Result<Option<Invite>> {
-        let row = sqlx::query_as::<_, InviteRow>(&format!("{SELECT_INVITE} WHERE token = ?"))
-            .bind(token)
-            .fetch_optional(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, InviteRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_INVITE} WHERE token = ?"
+        )))
+        .bind(token)
+        .fetch_optional(&self.db)
+        .await?;
         row.map(InviteRow::into_domain).transpose()
     }
 
     async fn list_for_team(&self, team_id: Id) -> Result<Vec<Invite>> {
-        let rows = sqlx::query_as::<_, InviteRow>(&format!(
+        let rows = sqlx::query_as::<_, InviteRow>(sqlx::AssertSqlSafe(format!(
             "{SELECT_INVITE} WHERE team_id = ? ORDER BY created_at"
-        ))
+        )))
         .bind(id_to_db(team_id))
         .fetch_all(&self.db)
         .await?;

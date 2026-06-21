@@ -62,7 +62,7 @@ impl EventRepository for SqliteEventRepository {
             "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
              VALUES (?, ?, ?, ?, ?, ?) RETURNING {EVENT_COLS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(id.to_string())
             .bind(new.event_id)
             .bind(new.issue_id.to_string())
@@ -76,7 +76,7 @@ impl EventRepository for SqliteEventRepository {
 
     async fn find_by_id(&self, id: Id) -> Result<Option<Event>> {
         let sql = format!("SELECT {EVENT_COLS} FROM events WHERE id = ?");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(id.to_string())
             .fetch_optional(&self.db)
             .await?;
@@ -90,7 +90,7 @@ impl EventRepository for SqliteEventRepository {
             "SELECT {EVENT_COLS} FROM events WHERE issue_id = ? \
              ORDER BY received_at DESC, id DESC LIMIT ?"
         );
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(issue_id.to_string())
             .bind(limit)
             .fetch_all(&self.db)
@@ -103,7 +103,7 @@ impl EventRepository for SqliteEventRepository {
             "SELECT {EVENT_COLS} FROM events WHERE issue_id = ? \
              ORDER BY received_at DESC, id DESC LIMIT 1"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(issue_id.to_string())
             .fetch_optional(&self.db)
             .await?;

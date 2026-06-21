@@ -38,7 +38,7 @@ pub use password::{hash_password, verify_password};
 // Per-project authorization is NOT re-exported here: the single source of that
 // rule is `crate::api::projects::effective_role` (team-aware). This module
 // exposes only authentication (`CurrentUser`) and the instance-role gates.
-pub use extractor::{AuthRejection, CurrentUser, require_manager, require_owner};
+pub use extractor::{AuthRejection, CurrentUser, PeerAddr, require_manager, require_owner};
 
 // --- Session surface (used by handlers; also by other agents if needed) ------
 pub use session::{

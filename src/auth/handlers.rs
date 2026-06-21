@@ -10,10 +10,8 @@
 //!
 //! Errors render as `{ "error": "..." }` JSON with the mapped HTTP status.
 
-use std::net::SocketAddr;
-
 use axum::Json;
-use axum::extract::{ConnectInfo, Path, State};
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
@@ -22,7 +20,7 @@ use crate::domain::{Id, InstanceRole, Invite, TeamRole, User};
 use crate::error::Error;
 use crate::state::AppState;
 
-use super::extractor::CurrentUser;
+use super::extractor::{CurrentUser, PeerAddr};
 use super::invite_token::check_invite_usable;
 use super::lockout::{LockoutDecision, client_ip, lockout_key};
 use super::password::{hash_password, verify_password};
@@ -213,12 +211,12 @@ fn validate_display_name(name: &str) -> Result<String, Error> {
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
-    connect: Option<ConnectInfo<SocketAddr>>,
+    PeerAddr(peer): PeerAddr,
     Json(body): Json<LoginRequest>,
 ) -> Result<Response, AuthError> {
     let email = normalize_email(&body.email)?;
 
-    let ip = client_ip(&headers, connect.map(|c| c.0));
+    let ip = client_ip(&headers, peer);
     let key = lockout_key(&ip, &email);
     if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
         // Security event: a brute-force-locked key was used. Log the client IP
@@ -438,7 +436,7 @@ pub async fn accept_invite(
     current: Option<CurrentUser>,
     Path(token): Path<String>,
     headers: HeaderMap,
-    connect: Option<ConnectInfo<SocketAddr>>,
+    PeerAddr(peer): PeerAddr,
     body: Option<Json<AcceptInviteRequest>>,
 ) -> Result<Response, AuthError> {
     let invite = load_usable_invite(&state, &token).await?;
@@ -457,7 +455,7 @@ pub async fn accept_invite(
             .unwrap_or("unknown")
             .trim()
             .to_ascii_lowercase();
-        let ip = client_ip(&headers, connect.map(|c| c.0));
+        let ip = client_ip(&headers, peer);
         let key = lockout_key(&ip, &candidate_email);
         if let LockoutDecision::Locked { retry_after_secs } = state.login_guard.check(&key) {
             // Security event: a brute-force-locked key was used on the invite

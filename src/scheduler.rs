@@ -18,6 +18,7 @@
 use std::time::Duration;
 
 use croner::Cron;
+use croner::parser::{CronParser, Seconds};
 
 use crate::domain::Timestamp;
 use crate::error::{Error, Result};
@@ -82,9 +83,10 @@ async fn run_loop(state: &AppState) -> Result<()> {
 /// Default `0 */15 * * * *` is a 6-field pattern; `with_seconds_optional`
 /// lets operators also supply a standard 5-field crontab line.
 pub fn parse_cron(expr: &str) -> Result<Cron> {
-    Cron::new(expr)
-        .with_seconds_optional()
-        .parse()
+    CronParser::builder()
+        .seconds(Seconds::Optional)
+        .build()
+        .parse(expr)
         .map_err(|e| Error::validation(format!("invalid RETENTION_CRON {expr:?}: {e}")))
 }
 

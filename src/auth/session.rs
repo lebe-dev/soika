@@ -8,8 +8,7 @@
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue};
 use chrono::Duration;
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::Rng;
 
 use crate::config::Config;
 use crate::domain::{Id, Session};
@@ -27,7 +26,7 @@ pub const SESSION_TTL_DAYS: i64 = 30;
 /// Generate a fresh opaque session id (256 bits of entropy, URL-safe base64).
 pub fn generate_session_id() -> String {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     URL_SAFE_NO_PAD.encode(bytes)

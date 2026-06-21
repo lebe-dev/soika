@@ -43,9 +43,9 @@ pub fn build(state: AppState) -> Router {
         .allow_methods([Method::POST, Method::OPTIONS])
         .allow_headers(Any);
     let ingest_routes = Router::new()
-        .route("/:project_id/envelope/", post(ingest::envelope))
+        .route("/{project_id}/envelope/", post(ingest::envelope))
         // Legacy store endpoint: single bare JSON event (pre-envelope SDKs).
-        .route("/:project_id/store/", post(ingest::store))
+        .route("/{project_id}/store/", post(ingest::store))
         .layer(ingest_cors);
 
     let api_routes = Router::new()
@@ -56,60 +56,60 @@ pub fn build(state: AppState) -> Router {
             get(api::projects::list).post(api::projects::create),
         )
         .route(
-            "/projects/:id",
+            "/projects/{id}",
             get(api::projects::get)
                 .patch(api::projects::update)
                 .delete(api::projects::delete),
         )
-        .route("/projects/:id/team", patch(api::projects::change_team))
-        .route("/projects/:id/issues", get(api::projects::list_issues))
-        .route("/projects/:id/dsn", get(api::projects::dsn))
-        .route("/projects/:id/sdk-setup", get(api::projects::sdk_setup))
-        .route("/projects/:id/mute", post(api::projects::mute))
+        .route("/projects/{id}/team", patch(api::projects::change_team))
+        .route("/projects/{id}/issues", get(api::projects::list_issues))
+        .route("/projects/{id}/dsn", get(api::projects::dsn))
+        .route("/projects/{id}/sdk-setup", get(api::projects::sdk_setup))
+        .route("/projects/{id}/mute", post(api::projects::mute))
         .route(
-            "/projects/:id/mute-rules",
+            "/projects/{id}/mute-rules",
             get(api::mute_rules::list).post(api::mute_rules::create),
         )
         .route(
-            "/projects/:id/mute-rules/:rule_id",
+            "/projects/{id}/mute-rules/{rule_id}",
             delete(api::mute_rules::delete),
         )
-        .route("/projects/:id/favorite", post(api::projects::favorite))
+        .route("/projects/{id}/favorite", post(api::projects::favorite))
         .route(
-            "/projects/:id/regenerate-dsn",
+            "/projects/{id}/regenerate-dsn",
             post(api::projects::regenerate_dsn),
         )
         // --- Issues ---
-        .route("/issues/:id", get(api::issues::get))
-        .route("/issues/:id/events", get(api::issues::list_events))
-        .route("/issues/:id/resolve", post(api::issues::resolve))
-        .route("/issues/:id/mute", post(api::issues::mute))
-        .route("/issues/:id/unresolve", post(api::issues::unresolve))
+        .route("/issues/{id}", get(api::issues::get))
+        .route("/issues/{id}/events", get(api::issues::list_events))
+        .route("/issues/{id}/resolve", post(api::issues::resolve))
+        .route("/issues/{id}/mute", post(api::issues::mute))
+        .route("/issues/{id}/unresolve", post(api::issues::unresolve))
         .route(
-            "/issues/:id/fingerprint",
+            "/issues/{id}/fingerprint",
             patch(api::issues::update_fingerprint),
         )
         // --- Events ---
-        .route("/events/:id", get(api::events::get))
+        .route("/events/{id}", get(api::events::get))
         // --- Teams ---
         .route("/teams", get(api::teams::list).post(api::teams::create))
         .route(
-            "/teams/:id",
+            "/teams/{id}",
             get(api::teams::get)
                 .patch(api::teams::update)
                 .delete(api::teams::delete),
         )
-        .route("/teams/:id/members", post(api::teams::add_member))
+        .route("/teams/{id}/members", post(api::teams::add_member))
         .route(
-            "/teams/:id/members/:user_id",
+            "/teams/{id}/members/{user_id}",
             delete(api::teams::remove_member).patch(api::teams::set_member_role),
         )
         // --- Team invites ---
         .route(
-            "/teams/:id/invites",
+            "/teams/{id}/invites",
             get(api::invites::list).post(api::invites::create),
         )
-        .route("/teams/:id/invites/:token", delete(api::invites::revoke))
+        .route("/teams/{id}/invites/{token}", delete(api::invites::revoke))
         // --- Profile ---
         // Read goes through the bootstrap `/auth/config` (which embeds the
         // current user); only the update verb lives here.
@@ -117,7 +117,7 @@ pub fn build(state: AppState) -> Router {
         // --- Invites (preview/accept). The browser-facing accept *page* is the
         // SPA route `/invite/{token}`; this is the JSON API it calls. ---
         .route(
-            "/invite/:token",
+            "/invite/{token}",
             get(auth::get_invite).post(auth::accept_invite),
         )
         // --- Service settings & admin ---
@@ -128,11 +128,11 @@ pub fn build(state: AppState) -> Router {
         .route("/settings/test-email", post(api::settings::test_email))
         .route("/admin/users", get(api::settings::list_users))
         .route(
-            "/admin/users/:id/approve",
+            "/admin/users/{id}/approve",
             post(api::settings::approve_user),
         )
         .route(
-            "/admin/users/:id",
+            "/admin/users/{id}",
             patch(api::settings::set_user_role).delete(api::settings::delete_user),
         );
 

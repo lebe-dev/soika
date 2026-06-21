@@ -32,7 +32,6 @@ use crate::state::AppState;
 #[derive(Debug, Clone)]
 pub struct CurrentUser(pub User);
 
-#[axum::async_trait]
 impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = Response;
 

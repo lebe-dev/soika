@@ -10,7 +10,10 @@
 //! module only provides authentication ([`CurrentUser`]) and the instance-wide
 //! role gates ([`require_manager`], [`require_owner`]).
 
-use axum::extract::FromRequestParts;
+use std::convert::Infallible;
+use std::net::SocketAddr;
+
+use axum::extract::{ConnectInfo, FromRequestParts, OptionalFromRequestParts};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
@@ -57,13 +60,10 @@ impl IntoResponse for AuthRejection {
     }
 }
 
-#[axum::async_trait]
-impl FromRequestParts<AppState> for CurrentUser {
-    type Rejection = AuthRejection;
-
+impl CurrentUser {
     // Note: the crate-wide `Result` alias is single-arg; spell out the two-arg
-    // std `Result` here to match the trait signature.
-    async fn from_request_parts(
+    // std `Result` here to match the trait signatures.
+    async fn resolve(
         parts: &mut Parts,
         state: &AppState,
     ) -> std::result::Result<Self, AuthRejection> {
@@ -85,6 +85,56 @@ impl FromRequestParts<AppState> for CurrentUser {
             .ok_or_else(|| AuthRejection("user no longer exists".into()))?;
 
         Ok(CurrentUser(user))
+    }
+}
+
+impl FromRequestParts<AppState> for CurrentUser {
+    type Rejection = AuthRejection;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> std::result::Result<Self, AuthRejection> {
+        Self::resolve(parts, state).await
+    }
+}
+
+// axum 0.8 no longer derives `Option<T>` from `FromRequestParts`; an optional
+// extractor must opt in via `OptionalFromRequestParts`. A missing or invalid
+// session yields `None` (anonymous), never a rejection.
+impl OptionalFromRequestParts<AppState> for CurrentUser {
+    type Rejection = AuthRejection;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> std::result::Result<Option<Self>, AuthRejection> {
+        Ok(Self::resolve(parts, state).await.ok())
+    }
+}
+
+/// Optional peer socket address of the request.
+///
+/// `Some` when the server is started with `into_make_service_with_connect_info`
+/// (production), `None` when handlers are driven directly (tests via `oneshot`).
+/// axum 0.8 dropped the blanket `Option<ConnectInfo<_>>` extractor, so we read
+/// the `ConnectInfo` request extension ourselves and never reject.
+#[derive(Debug, Clone, Copy)]
+pub struct PeerAddr(pub Option<SocketAddr>);
+
+impl<S: Send + Sync> FromRequestParts<S> for PeerAddr {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Infallible> {
+        Ok(Self(
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ci| ci.0),
+        ))
     }
 }
 

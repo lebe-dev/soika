@@ -94,18 +94,22 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn find_by_id(&self, id: Id) -> Result<Option<User>> {
-        let row = sqlx::query_as::<_, UserRow>(&format!("{SELECT_USER} WHERE id = ?"))
-            .bind(id_to_db(id))
-            .fetch_optional(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, UserRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_USER} WHERE id = ?"
+        )))
+        .bind(id_to_db(id))
+        .fetch_optional(&self.db)
+        .await?;
         row.map(UserRow::into_domain).transpose()
     }
 
     async fn find_by_email(&self, email: &str) -> Result<Option<User>> {
-        let row = sqlx::query_as::<_, UserRow>(&format!("{SELECT_USER} WHERE email = ?"))
-            .bind(email)
-            .fetch_optional(&self.db)
-            .await?;
+        let row = sqlx::query_as::<_, UserRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_USER} WHERE email = ?"
+        )))
+        .bind(email)
+        .fetch_optional(&self.db)
+        .await?;
         row.map(UserRow::into_domain).transpose()
     }
 
@@ -128,7 +132,7 @@ impl UserRepository for SqliteUserRepository {
         }
         sql.push_str(" WHERE id = ?");
 
-        let mut query = sqlx::query(&sql).bind(ts_to_db(now));
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql)).bind(ts_to_db(now));
         if let Some(name) = &update.display_name {
             query = query.bind(name.as_str());
         }
@@ -171,9 +175,11 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn list(&self) -> Result<Vec<User>> {
-        let rows = sqlx::query_as::<_, UserRow>(&format!("{SELECT_USER} ORDER BY created_at"))
-            .fetch_all(&self.db)
-            .await?;
+        let rows = sqlx::query_as::<_, UserRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_USER} ORDER BY created_at"
+        )))
+        .fetch_all(&self.db)
+        .await?;
         rows.into_iter().map(UserRow::into_domain).collect()
     }
 
