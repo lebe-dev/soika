@@ -40,8 +40,12 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
+      // `lcov` emits `coverage/lcov.info`, which SonarQube reads
+      // (`sonar.javascript.lcov.reportPaths`); `text` keeps the console table.
+      reporter: ['text', 'lcov'],
       include: ['src/**/*.{ts,svelte.ts}'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts']
+      // `components/ui` is vendored shadcn-svelte — not our code to test.
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/lib/components/ui/**']
     }
   }
 });

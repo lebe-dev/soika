@@ -11,9 +11,18 @@ import type { SdkSnippet } from '$lib/api';
 /** Ingestion endpoint URLs derived from a DSN, matching the backend layout. */
 type IngestUrls = { envelopeUrl: string; storeUrl: string };
 
+/** Strip leading and trailing `/` from a path without a backtracking regex. */
+function trimSlashes(path: string): string {
+  let start = 0;
+  let end = path.length;
+  while (start < end && path[start] === '/') start++;
+  while (end > start && path[end - 1] === '/') end--;
+  return path.slice(start, end);
+}
+
 function ingestUrls(dsn: string): IngestUrls {
   const url = new URL(dsn);
-  const projectId = url.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+  const projectId = trimSlashes(url.pathname);
   const base = url.origin;
   return {
     envelopeUrl: `${base}/api/${projectId}/envelope/`,
