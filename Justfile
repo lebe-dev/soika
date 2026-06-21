@@ -70,9 +70,20 @@ test-backend name="":
 test-frontend name="":
     cd frontend && yarn vitest run {{ if name != "" { name } else { "" } }}
 
-# Run the frontend tests with a V8 coverage report.
+# Run the backend tests with an LCOV coverage report (read by SonarQube via
+# `sonar.rust.lcov.reportPaths`). Requires `cargo install cargo-llvm-cov`.
+# `--remap-path-prefix` makes source paths workspace-relative so they resolve
+# inside the dockerized sonar-scanner (which mounts the repo at /usr/src).
+test-backend-coverage:
+    cargo llvm-cov --lcov --remap-path-prefix --output-path lcov.info
+
+# Run the frontend tests with a V8 coverage report. The lcov paths are emitted
+# relative to `frontend/`; rewrite them to be repo-root-relative so the
+# dockerized sonar-scanner (repo mounted at /usr/src) resolves them to the
+# indexed `frontend/src/...` files.
 test-frontend-coverage:
     cd frontend && yarn vitest run --coverage
+    sed -i.bak 's#^SF:#SF:frontend/#' frontend/coverage/lcov.info && rm -f frontend/coverage/lcov.info.bak
 
 test: test-backend && test-frontend
 
@@ -151,7 +162,9 @@ sonar-clean:
     docker compose -f {{ sonarComposeFile }} down -v
 
 # Run the scanner against the running instance. Reads SONAR_TOKEN from .env.
-sonar-scan:
+# Regenerates the backend + frontend coverage reports first so SonarQube reads
+# fresh `lcov.info` / `frontend/coverage/lcov.info` (otherwise coverage shows 0%).
+sonar-scan: test-backend-coverage test-frontend-coverage
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${SONAR_TOKEN:-}" ]; then
