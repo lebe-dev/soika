@@ -108,7 +108,10 @@
     { label: '100 events per 24 hours', body: { events: 100, window_seconds: DAY } }
   ];
 
-  async function mute(body?: MuteRequest, label?: string) {
+  async function mute(
+    body: MuteRequest | undefined = undefined,
+    label: string | undefined = undefined
+  ) {
     acting = true;
     try {
       const updated = await issuesApi.mute(issue.id, body);

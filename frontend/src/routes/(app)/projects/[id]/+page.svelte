@@ -125,7 +125,7 @@
   // Set or delete a single URL search param, preserving the others. An empty /
   // null value (or a value equal to `clearOn`) removes the param so we never
   // send a blank filter to the API.
-  function setParam(key: string, value: string | null, clearOn?: string) {
+  function setParam(key: string, value: string | null, clearOn: string | undefined = undefined) {
     const url = new URL($page.url);
     const trimmed = value?.trim() ?? '';
     if (trimmed === '' || trimmed === clearOn) url.searchParams.delete(key);
