@@ -115,7 +115,7 @@ function parseExceptions(payload: Json): ExceptionEntry[] {
 
 /** Resolve the most relevant stacktrace, mirroring the backend resolution order. */
 function resolveStacktrace(payload: Json, exceptions: ExceptionEntry[]): Stacktrace | undefined {
-  const thrown = exceptions[exceptions.length - 1];
+  const thrown = exceptions.at(-1);
   if (thrown?.stacktrace) return thrown.stacktrace;
   for (const exc of exceptions) {
     if (exc.stacktrace) return exc.stacktrace;
@@ -153,7 +153,7 @@ function messageObject(obj: Json | undefined): string | undefined {
 export function parseEvent(payload: unknown): ParsedEvent {
   const obj = asObject(payload) ?? {};
   const exceptions = parseExceptions(obj);
-  const thrown = exceptions[exceptions.length - 1];
+  const thrown = exceptions.at(-1);
   return {
     exceptionType: thrown?.type,
     exceptionValue: thrown?.value,
@@ -193,7 +193,7 @@ export function frameLocation(frame: Frame): string | undefined {
     return frame.function;
   }
   const file = frameFile(frame);
-  if (file) return frame.lineno !== undefined ? `${file}:${frame.lineno}` : file;
+  if (file) return frame.lineno === undefined ? file : `${file}:${frame.lineno}`;
   return frame.module;
 }
 
@@ -202,7 +202,7 @@ export function mostRelevantFrame(st: Stacktrace): Frame | undefined {
   for (let i = st.frames.length - 1; i >= 0; i--) {
     if (isInApp(st.frames[i])) return st.frames[i];
   }
-  return st.frames[st.frames.length - 1];
+  return st.frames.at(-1);
 }
 
 /**

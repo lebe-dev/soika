@@ -3,7 +3,7 @@
 // Every helper accepts an optional request-scoped `fetch` so it can be called
 // from a SvelteKit `load` (forward the `fetch` SvelteKit provides there).
 
-import { http, ApiError, errorMessage, type Fetch } from './client';
+import { http, type Fetch } from './client';
 import type {
   AcceptInviteRequest,
   AddTeamMemberRequest,
@@ -46,7 +46,7 @@ import type {
   User
 } from './types';
 
-export { ApiError, errorMessage };
+export { ApiError, errorMessage } from './client';
 export type { Fetch };
 export * from './types';
 
