@@ -131,18 +131,27 @@ pub fn issue_title(event: &Value) -> String {
 }
 
 /// [`issue_title`] for an already-parsed [`NormalizedEvent`].
+///
+/// Volatile tokens in the exception value / message are replaced with typed
+/// placeholders (`<int>`, `<uuid>`, `<id>`) so the title reflects the *group*
+/// rather than one event's random sample (e.g. `Not found: /download/<id>`),
+/// mirroring Sentry's parameterized titles. The raw value is still preserved on
+/// the stored event and shown on the event detail.
 pub fn title_from_normalized(event: &NormalizedEvent) -> String {
     if let Some(ty) = event.exception_type.as_deref().filter(|s| !s.is_empty()) {
         return match event.exception_value.as_deref().filter(|s| !s.is_empty()) {
-            Some(value) => format!("{ty}: {}", truncate_title(value)),
+            Some(value) => format!(
+                "{ty}: {}",
+                truncate_title(&normalize::normalize_message(value))
+            ),
             None => ty.to_string(),
         };
     }
     if let Some(msg) = event.message.as_deref().filter(|s| !s.is_empty()) {
-        return truncate_title(msg);
+        return truncate_title(&normalize::normalize_message(msg));
     }
     if let Some(val) = event.exception_value.as_deref().filter(|s| !s.is_empty()) {
-        return truncate_title(val);
+        return truncate_title(&normalize::normalize_message(val));
     }
     "Unknown error".to_string()
 }
@@ -334,6 +343,24 @@ mod tests {
     fn title_for_message() {
         let event = json!({ "message": "queue backed up" });
         assert_eq!(issue_title(&event), "queue backed up");
+    }
+
+    #[test]
+    fn title_parameterizes_volatile_tokens() {
+        // The screenshot case: a random download token becomes a placeholder so
+        // the title reflects the group, not one event's sample.
+        let a = json!({
+            "exception": { "values": [{ "type": "Error", "value": "Not found: /download/oW2Euf6y8" }]}
+        });
+        let b = json!({
+            "exception": { "values": [{ "type": "Error", "value": "Not found: /download/GaycV4viT" }]}
+        });
+        assert_eq!(issue_title(&a), "Error: Not found: /download/<id>");
+        assert_eq!(
+            issue_title(&a),
+            issue_title(&b),
+            "same title across the group"
+        );
     }
 
     #[test]

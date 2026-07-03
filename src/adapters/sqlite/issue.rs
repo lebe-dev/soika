@@ -140,9 +140,15 @@ impl IssueRepository for SqliteIssueRepository {
             } else {
                 current.status
             };
+            // Refresh the title on every event. It is a stable, parameterized
+            // form (volatile tokens masked to <int>/<uuid>/<id>), so this is
+            // idempotent within a group AND self-heals issues whose title was
+            // frozen from an early raw sample. culprit/level/environment/release
+            // stay untouched — those keep the first-observed values by design.
             let update_sql = format!(
                 "UPDATE issues SET \
                     status = ?, \
+                    title = ?, \
                     last_seen = ?, \
                     event_count = event_count + 1, \
                     updated_at = ? \
@@ -150,6 +156,7 @@ impl IssueRepository for SqliteIssueRepository {
             );
             let updated_row = sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
                 .bind(new_status.as_str())
+                .bind(&upsert.title)
                 .bind(&seen)
                 .bind(&seen)
                 .bind(current.id.to_string())

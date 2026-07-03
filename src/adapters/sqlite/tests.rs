@@ -141,3 +141,43 @@ pub(crate) async fn insert_user(pool: &Db, email: &str) -> crate::domain::Id {
     .expect("insert user");
     id
 }
+
+#[tokio::test]
+async fn upsert_refreshes_title_on_repeat_event() {
+    use crate::ports::{IssueRepository, IssueUpsert};
+    use chrono::TimeZone;
+
+    let pool = test_pool().await;
+    let team_id = insert_team(&pool, "t").await;
+    let project_id = insert_project(&pool, team_id, "p", "dsn-p").await;
+    let repo = super::SqliteIssueRepository::new(pool.clone());
+
+    let base = |title: &str, at: i64| IssueUpsert {
+        project_id,
+        fingerprint: "fp-1".to_string(),
+        title: title.to_string(),
+        culprit: None,
+        level: None,
+        environment: None,
+        release: None,
+        seen_at: chrono::Utc.timestamp_opt(at, 0).single().unwrap(),
+    };
+
+    // First event freezes an (already parameterized) title.
+    let first = repo
+        .upsert_by_fingerprint(base("Error: Not found: /download/<id>", 100))
+        .await
+        .expect("first upsert");
+    assert!(first.is_new);
+
+    // A second event in the same group refreshes the title (last-write-wins),
+    // so an issue never keeps a stale early sample.
+    let second = repo
+        .upsert_by_fingerprint(base("Error: Not found: /download/<id>", 200))
+        .await
+        .expect("second upsert");
+    assert!(!second.is_new);
+    assert_eq!(second.issue.id, first.issue.id, "same group");
+    assert_eq!(second.issue.title, "Error: Not found: /download/<id>");
+    assert_eq!(second.issue.event_count, 2);
+}

@@ -101,38 +101,120 @@ pub fn normalize_path(path: &str) -> String {
     strip_bundle_hash(&p)
 }
 
-/// Normalize a free-form message into a stable grouping key.
-///
-/// Collapses runs of digits to `0` and whitespace to single spaces so that
-/// numerically varying messages (ids, counts, timestamps) group together.
-pub fn normalize_message(message: &str) -> String {
-    let mut out = String::with_capacity(message.len());
-    let mut prev_digit = false;
-    let mut prev_space = false;
+/// Typed placeholders for volatile tokens, mirroring Sentry's message
+/// parameterization. Used for BOTH the grouping key and the issue title, so the
+/// displayed title matches how events were grouped.
+const PLACEHOLDER_INT: &str = "<int>";
+const PLACEHOLDER_UUID: &str = "<uuid>";
+const PLACEHOLDER_ID: &str = "<id>";
 
-    for ch in message.trim().chars() {
-        if ch.is_ascii_digit() {
-            if !prev_digit {
-                out.push('0');
-            }
-            prev_digit = true;
-            prev_space = false;
-            continue;
-        }
-        prev_digit = false;
+/// Minimum length for a mixed letters+digits token to be treated as a random
+/// id/hash (`<id>`) rather than a meaningful word. Keeps `md5`, `log4j`, `v1`
+/// readable while `oW2Euf6y8` collapses.
+const MIN_RANDOM_TOKEN_LEN: usize = 6;
+
+/// Normalize a free-form message into a stable grouping key / display form.
+///
+/// Collapses whitespace to single spaces and replaces volatile tokens with
+/// typed placeholders (Sentry-style): integers → `<int>`, UUIDs → `<uuid>`, and
+/// random ids/hashes embedded in paths (e.g. `/download/oW2Euf6y8`) → `<id>`.
+/// Messages differing only in such tokens group together while genuinely
+/// different messages stay distinct.
+pub fn normalize_message(message: &str) -> String {
+    let trimmed = message.trim();
+    let mut out = String::with_capacity(trimmed.len());
+    let mut prev_space = false;
+    let mut i = 0;
+
+    while i < trimmed.len() {
+        let ch = trimmed[i..].chars().next().unwrap();
 
         if ch.is_whitespace() {
             if !prev_space {
                 out.push(' ');
             }
             prev_space = true;
+            i += ch.len_utf8();
             continue;
         }
         prev_space = false;
+
+        // A standalone UUID collapses whole, even though its `-` separators
+        // would otherwise split it into short hex tokens that survive masking.
+        if trimmed.get(i..i + 36).is_some_and(is_uuid) {
+            out.push_str(PLACEHOLDER_UUID);
+            i += 36;
+            continue;
+        }
+
+        if ch.is_ascii_alphanumeric() {
+            let start = i;
+            while i < trimmed.len()
+                && trimmed[i..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphanumeric())
+            {
+                i += 1; // ASCII alphanumerics are single-byte.
+            }
+            out.push_str(&normalize_token(&trimmed[start..i]));
+            continue;
+        }
+
         out.push(ch);
+        i += ch.len_utf8();
     }
 
     out.trim().to_string()
+}
+
+/// Normalize one alphanumeric token for message grouping/display.
+///
+/// Pure-digit tokens → `<int>`; long mixed letters+digits tokens (random
+/// ids/hashes) → `<id>`; short/plain tokens keep their letters but still
+/// collapse any internal digit runs to `<int>`.
+fn normalize_token(token: &str) -> String {
+    let has_digit = token.bytes().any(|b| b.is_ascii_digit());
+    let has_alpha = token.bytes().any(|b| b.is_ascii_alphabetic());
+
+    if has_digit && !has_alpha {
+        return PLACEHOLDER_INT.to_string();
+    }
+    if has_digit && has_alpha && token.len() >= MIN_RANDOM_TOKEN_LEN {
+        return PLACEHOLDER_ID.to_string();
+    }
+    collapse_digit_runs(token)
+}
+
+/// Replace each maximal run of digits in `token` with `<int>`, leaving letters
+/// untouched (`v1` → `v<int>`, `x86` → `x<int>`).
+fn collapse_digit_runs(token: &str) -> String {
+    let mut out = String::with_capacity(token.len());
+    let mut prev_digit = false;
+    for ch in token.chars() {
+        if ch.is_ascii_digit() {
+            if !prev_digit {
+                out.push_str(PLACEHOLDER_INT);
+            }
+            prev_digit = true;
+            continue;
+        }
+        prev_digit = false;
+        out.push(ch);
+    }
+    out
+}
+
+/// Whether `s` is exactly a canonical `8-4-4-4-12` hex UUID.
+fn is_uuid(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    bytes.iter().enumerate().all(|(idx, &b)| match idx {
+        8 | 13 | 18 | 23 => b == b'-',
+        _ => b.is_ascii_hexdigit(),
+    })
 }
 
 /// Strip a Rust symbol hash suffix like `::h1a2b3c4d5e6f7a8b` (16 hex chars).
@@ -264,11 +346,70 @@ mod tests {
             normalize_message("user 12345 not found"),
             normalize_message("user 6789 not found")
         );
-        assert_eq!(normalize_message("user 1 not found"), "user 0 not found");
+        assert_eq!(
+            normalize_message("user 1 not found"),
+            "user <int> not found"
+        );
     }
 
     #[test]
     fn message_whitespace_collapses() {
         assert_eq!(normalize_message("a   b\t c"), "a b c");
+    }
+
+    #[test]
+    fn message_random_path_token_masked() {
+        // The screenshot case: same error, different random download token.
+        assert_eq!(
+            normalize_message("Not found: /download/oW2Euf6y8"),
+            normalize_message("Not found: /download/GaycV4viT")
+        );
+        assert_eq!(
+            normalize_message("Not found: /download/oW2Euf6y8"),
+            "Not found: /download/<id>"
+        );
+    }
+
+    #[test]
+    fn message_uuid_masked() {
+        assert_eq!(
+            normalize_message("session 550e8400-e29b-41d4-a716-446655440000 expired"),
+            normalize_message("session 067e6162-3b6f-4ae2-a171-2470b63dff00 expired")
+        );
+        assert_eq!(
+            normalize_message("session 550e8400-e29b-41d4-a716-446655440000 expired"),
+            "session <uuid> expired"
+        );
+    }
+
+    #[test]
+    fn message_plain_words_and_short_tokens_survive() {
+        // Real words stay untouched; short mixed tokens keep their letters and
+        // only their digit runs collapse, so distinct errors stay distinct.
+        assert_eq!(
+            normalize_message("connection refused"),
+            "connection refused"
+        );
+        assert_eq!(normalize_message("md5 mismatch"), "md<int> mismatch");
+        assert_eq!(
+            normalize_message("http error v1.2"),
+            "http error v<int>.<int>"
+        );
+    }
+
+    #[test]
+    fn message_distinct_text_stays_distinct() {
+        assert_ne!(
+            normalize_message("Not found: /download/oW2Euf6y8"),
+            normalize_message("Not found: /upload/oW2Euf6y8")
+        );
+    }
+
+    #[test]
+    fn is_uuid_matches_canonical_form_only() {
+        assert!(is_uuid("550e8400-e29b-41d4-a716-446655440000"));
+        assert!(!is_uuid("550e8400e29b41d4a716446655440000"));
+        assert!(!is_uuid("550e8400-e29b-41d4-a716-44665544000g"));
+        assert!(!is_uuid("short"));
     }
 }

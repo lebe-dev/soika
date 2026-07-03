@@ -288,9 +288,10 @@ mod tests {
                 if is_regression {
                     issue.status = IssueStatus::Unresolved;
                 }
-                // Mirror the real adapter: upsert bumps the counter and advances
-                // last_seen — it is the single source of counter truth.
+                // Mirror the real adapter: upsert bumps the counter, advances
+                // last_seen, and refreshes the (stable, parameterized) title.
                 issue.event_count += 1;
+                issue.title = upsert.title.clone();
                 if upsert.seen_at > issue.last_seen {
                     issue.last_seen = upsert.seen_at;
                 }
