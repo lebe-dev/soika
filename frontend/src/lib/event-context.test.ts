@@ -92,6 +92,64 @@ describe('extractContext', () => {
     expect(labels).toContain('Runtime');
   });
 
+  it('keeps generic contexts as detail sections with their fields', () => {
+    const ctx = extractContext({
+      contexts: {
+        'Rust Tracing Fields': {
+          type: 'unknown',
+          error: 'database error: (code: 5) database is locked',
+          project_id: '502f5798'
+        },
+        browser: { name: 'Firefox', version: '121.0' }
+      }
+    });
+
+    const fields = ctx.details.find((d) => d.label === 'Rust Tracing Fields');
+    expect(fields?.rows).toEqual([
+      { key: 'error', value: 'database error: (code: 5) database is locked' },
+      { key: 'project_id', value: '502f5798' }
+    ]);
+    // Product contexts stay in the compact `contexts` list, not duplicated here.
+    expect(ctx.details.map((d) => d.label)).not.toContain('Browser');
+  });
+
+  it('flattens the nested `data` object of a trace context', () => {
+    const ctx = extractContext({
+      contexts: {
+        trace: {
+          type: 'trace',
+          op: 'soika::router::http',
+          trace_id: 'ccd5f410',
+          data: { method: 'POST', path: '/api/x/envelope/', 'code.line.number': 170 }
+        }
+      }
+    });
+
+    const trace = ctx.details.find((d) => d.label === 'Trace');
+    const rows = Object.fromEntries(trace!.rows.map((r) => [r.key, r.value]));
+    expect(rows.op).toBe('soika::router::http');
+    expect(rows.method).toBe('POST');
+    expect(rows.path).toBe('/api/x/envelope/');
+    expect(rows['code.line.number']).toBe('170');
+    expect(rows.type).toBeUndefined();
+  });
+
+  it('surfaces a tracing error field as a headline chip', () => {
+    const ctx = extractContext({
+      contexts: {
+        'Rust Tracing Fields': { type: 'unknown', error: 'database is locked' }
+      }
+    });
+    expect(ctx.error).toBe('database is locked');
+  });
+
+  it('reports a context-only payload as non-empty', () => {
+    const ctx = extractContext({
+      contexts: { 'Rust Tracing Location': { file: 'src/ingest/handlers.rs', line: 84 } }
+    });
+    expect(isContextEmpty(ctx)).toBe(false);
+  });
+
   it('joins SDK name and version', () => {
     const ctx = extractContext({ sdk: { name: 'sentry.javascript.svelte', version: '8.0.0' } });
     expect(ctx.sdk).toBe('sentry.javascript.svelte 8.0.0');

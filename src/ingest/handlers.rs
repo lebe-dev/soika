@@ -74,6 +74,9 @@ pub async fn envelope(
             }
         };
 
+        // Captured before the payload moves, so a failure can name the event.
+        let payload_event_id = event_id_from_payload(&payload);
+
         match process_event(&state, &project, payload, &meta, now).await {
             Ok(event_id) => {
                 if accepted_event_id.is_none() {
@@ -81,7 +84,15 @@ pub async fn envelope(
                 }
             }
             Err(e) => {
-                tracing::error!(error = %e, project_id = %project.id, "ingest failed to process event");
+                tracing::error!(
+                    error = %error_chain(&e),
+                    project_id = %project.id,
+                    project_slug = %project.slug,
+                    event_id = payload_event_id.as_deref().unwrap_or("<none>"),
+                    endpoint = "envelope",
+                    sdk = %meta.user_agent.as_deref().unwrap_or("<unknown>"),
+                    "ingest failed to process event"
+                );
                 return internal_error();
             }
         }
@@ -127,12 +138,21 @@ pub async fn store(
 
     let meta = RequestMeta::from_request(&headers, peer);
     let now = state.clock.now();
+    let payload_event_id = event_id_from_payload(&payload);
     match process_event(&state, &project, payload, &meta, now).await {
         // `process_event` derives the id from the payload's `event_id` (or
         // synthesizes one), matching the envelope path's behavior.
         Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
         Err(e) => {
-            tracing::error!(error = %e, project_id = %project.id, "ingest failed to process event");
+            tracing::error!(
+                error = %error_chain(&e),
+                project_id = %project.id,
+                project_slug = %project.slug,
+                event_id = payload_event_id.as_deref().unwrap_or("<none>"),
+                endpoint = "store",
+                sdk = %meta.user_agent.as_deref().unwrap_or("<unknown>"),
+                "ingest failed to process event"
+            );
             internal_error()
         }
     }
@@ -413,6 +433,22 @@ fn bad_request(msg: &str) -> Response {
     (StatusCode::BAD_REQUEST, Json(json!({ "detail": msg }))).into_response()
 }
 
+/// Render an error together with its `source` chain.
+///
+/// `Display` on a `thiserror` variant only prints the outermost message, which
+/// for a wrapped `sqlx::Error` hides the driver's own diagnosis — the part that
+/// says which constraint or lock actually failed. Reported errors are only as
+/// useful as their deepest cause, so flatten the chain into one line.
+fn error_chain(error: &crate::error::Error) -> String {
+    let mut out = error.to_string();
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        out.push_str(&format!(" | caused by: {cause}"));
+        source = cause.source();
+    }
+    out
+}
+
 fn internal_error() -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -433,6 +469,7 @@ fn rate_limited(retry_after_secs: u64) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::Error;
     use axum::http::HeaderValue;
 
     #[test]
@@ -574,6 +611,19 @@ mod tests {
     #[test]
     fn event_id_from_payload_absent_is_none() {
         assert_eq!(event_id_from_payload(&json!({})), None);
+    }
+
+    #[test]
+    fn error_chain_appends_sources() {
+        let chain = error_chain(&Error::Db(sqlx::Error::PoolTimedOut));
+        assert!(chain.starts_with("database error:"), "got {chain}");
+        assert!(chain.contains("caused by:"), "got {chain}");
+    }
+
+    #[test]
+    fn error_chain_without_source_is_the_message() {
+        let e = Error::Validation("bad input".to_string());
+        assert_eq!(error_chain(&e), e.to_string());
     }
 
     #[test]

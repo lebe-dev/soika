@@ -6,6 +6,7 @@
   import Tag from '@lucide/svelte/icons/tag';
   import Layers from '@lucide/svelte/icons/layers';
   import Braces from '@lucide/svelte/icons/braces';
+  import CircleAlert from '@lucide/svelte/icons/circle-alert';
 
   // Renders the non-stacktrace context of an event: a headline row of chips
   // (browser, OS, IP, environment, release) plus per-interface sections (user,
@@ -19,6 +20,17 @@
 
 {#if !isContextEmpty(ctx)}
   <div class="space-y-4">
+    <!-- The error string an SDK attached to the event: the one line that says
+         what actually went wrong, so it leads rather than hiding in a table. -->
+    {#if ctx.error}
+      <div
+        class="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-[min(var(--radius-md),12px)] border p-3"
+      >
+        <CircleAlert class="mt-0.5 size-4 shrink-0" />
+        <p class="font-mono text-xs break-words">{ctx.error}</p>
+      </div>
+    {/if}
+
     <!-- Headline chips: the at-a-glance "where / who / what build". -->
     {#if ctx.highlights.length > 0}
       <div class="flex flex-wrap gap-2">
@@ -122,6 +134,15 @@
           </Card.Content>
         </Card.Root>
       {/if}
+
+      {#each ctx.details as detail (detail.label)}
+        <Card.Root>
+          <Card.Content class="space-y-2 p-4">
+            {@render section(detail.label, Braces)}
+            {@render kvTable(detail.rows)}
+          </Card.Content>
+        </Card.Root>
+      {/each}
 
       {#if ctx.additional.length > 0}
         <Card.Root>

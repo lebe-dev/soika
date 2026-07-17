@@ -37,6 +37,12 @@ export interface NamedContext {
   version?: string;
 }
 
+/** A free-form context interface rendered as a full key/value block. */
+export interface ContextDetail {
+  label: string;
+  rows: KeyValue[];
+}
+
 /** The display-relevant context extracted from an event payload. */
 export interface EventContext {
   /** Headline chips: browser, OS, device, runtime, IP, environment, release. */
@@ -50,6 +56,15 @@ export interface EventContext {
     headers: KeyValue[];
   };
   contexts: NamedContext[];
+  /**
+   * Contexts that carry no `name`/`version` — SDK-specific interfaces such as
+   * `trace` or the `Rust Tracing Fields`/`Location` blocks the Rust SDK attaches
+   * to `tracing::error!` events. These hold the actual diagnostic payload (the
+   * error string, the source file/line), so they get a full key/value block.
+   */
+  details: ContextDetail[];
+  /** The `error` field of a tracing context, promoted for headline display. */
+  error?: string;
   sdk?: string;
   additional: KeyValue[];
 }
@@ -68,6 +83,42 @@ function namedContext(label: string, raw: unknown): NamedContext | undefined {
   const version = str(obj.version) ?? str(obj.version_string);
   if (!name && !version) return undefined;
   return { label, name, version };
+}
+
+/**
+ * Read a context entry as a key/value block: every scalar field, plus the
+ * contents of a nested `data` object (the `trace` context nests its request
+ * metadata there). `type` is the Sentry discriminator, not information.
+ */
+function contextDetail(label: string, raw: unknown): ContextDetail | undefined {
+  const obj = asObject(raw);
+  if (!obj) return undefined;
+
+  const rows: KeyValue[] = [];
+  const push = (key: string, value: unknown) => {
+    if (key === 'type') return;
+    const scalar = str(value);
+    if (scalar) {
+      rows.push({ key, value: scalar });
+      return;
+    }
+    if (value !== null && value !== undefined && typeof value === 'object') {
+      rows.push({ key, value: JSON.stringify(value) });
+    }
+  };
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === 'data') {
+      const data = asObject(value);
+      if (data) {
+        for (const [k, v] of Object.entries(data)) push(k, v);
+        continue;
+      }
+    }
+    push(key, value);
+  }
+
+  return rows.length > 0 ? { label, rows } : undefined;
 }
 
 /** Normalize `tags` (object map OR array of `[k, v]` / `{key, value}`) to rows. */
@@ -162,13 +213,25 @@ export function extractContext(payload: unknown): EventContext {
 
   // Named contexts, in a sensible order; skip the ones already shown as chips.
   const handled = new Set(['browser', 'os', 'device', 'runtime']);
-  const otherContexts = Object.entries(contextsObj)
-    .filter(([key]) => !handled.has(key))
+  const rest = Object.entries(contextsObj).filter(([key]) => !handled.has(key));
+
+  const otherContexts = rest
     .map(([key, raw]) => namedContext(titleCase(key), raw))
     .filter((c): c is NamedContext => !!c);
   const contexts = [browser, os, device, runtime, ...otherContexts].filter(
     (c): c is NamedContext => !!c
   );
+
+  // Anything left has no name/version and would otherwise be dropped — yet this
+  // is where SDKs put the diagnostics (error strings, source location, trace).
+  const named = new Set(otherContexts.map((c) => c.label));
+  const details = rest
+    .map(([key, raw]) => contextDetail(titleCase(key), raw))
+    .filter((d): d is ContextDetail => !!d && !named.has(d.label));
+
+  const error = rest
+    .map(([, raw]) => str(asObject(raw)?.error))
+    .find((value): value is string => !!value);
 
   const user = extractUser(obj.user);
   const ip = user.find((r) => r.key === 'IP address')?.value;
@@ -197,6 +260,8 @@ export function extractContext(payload: unknown): EventContext {
     tags: extractTags(obj.tags),
     request: extractRequest(obj.request),
     contexts,
+    details,
+    error,
     sdk,
     additional: extractAdditional(obj.extra)
   };
@@ -210,6 +275,7 @@ export function isContextEmpty(ctx: EventContext): boolean {
     ctx.tags.length === 0 &&
     !ctx.request &&
     ctx.contexts.length === 0 &&
+    ctx.details.length === 0 &&
     !ctx.sdk &&
     ctx.additional.length === 0
   );
