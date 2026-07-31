@@ -134,6 +134,10 @@ ssh:
 mailcrab:
     ssh -N -L 1080:localhost:1080 kaiman
 
+stop:
+    lsof -ti :4200 | xargs kill -9
+    lsof -ti :18080 | xargs kill -9
+
 # --- Deploy ---
 deploy:
     ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
