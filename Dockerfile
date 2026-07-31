@@ -40,7 +40,7 @@ RUN yarn build
 # ---------------------------------------------------------------------------
 # Stage B — backend (Rust release on musl + UPX compression)
 # ---------------------------------------------------------------------------
-FROM rust:1.96.0-alpine3.24 AS backend
+FROM rust:1.97.1-alpine3.24 AS backend
 
 WORKDIR /build
 
