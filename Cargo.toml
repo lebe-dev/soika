@@ -1,6 +1,6 @@
 [package]
 name = "soika"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Lightweight, Sentry-compatible error tracking system written in Rust"
