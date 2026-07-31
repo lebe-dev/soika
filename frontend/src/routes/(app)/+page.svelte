@@ -16,7 +16,19 @@
   import PageTitle from '$lib/components/page-title.svelte';
   import { teamFilterOptions, visibleProjects, type SortMode } from '$lib/dashboard';
   import { navActions } from '$lib/stores/nav-actions.svelte';
+  import { readJson, writeJson } from '$lib/local-storage';
   import type { PageData } from './$types';
+
+  const FILTERS_STORAGE_KEY = 'soika:dashboard:filters';
+
+  interface StoredDashboardFilters {
+    query: string;
+    teamId: string;
+    onlyWithIssues: boolean;
+    sortMode: SortMode;
+  }
+
+  const storedFilters = readJson<Partial<StoredDashboardFilters>>(FILTERS_STORAGE_KEY);
 
   let { data }: { data: PageData } = $props();
 
@@ -49,8 +61,11 @@
   }
 
   // --- Search with debounce ---
-  let searchQuery = $state('');
-  let debouncedQuery = $state('');
+  // Seeded from localStorage so returning to the dashboard restores the last
+  // filters instead of always starting from a blank grid.
+  const initialQuery = typeof storedFilters?.query === 'string' ? storedFilters.query : '';
+  let searchQuery = $state(initialQuery);
+  let debouncedQuery = $state(initialQuery);
 
   $effect(() => {
     const q = searchQuery;
@@ -61,11 +76,21 @@
   });
 
   // --- Sort mode ---
-  let sortMode = $state<SortMode>('activity');
+  let sortMode = $state<SortMode>(storedFilters?.sortMode === 'name' ? 'name' : 'activity');
 
   // --- Team / "with issues" filters ---
-  let filterTeamId = $state('');
-  let onlyWithIssues = $state(false);
+  let filterTeamId = $state(typeof storedFilters?.teamId === 'string' ? storedFilters.teamId : '');
+  let onlyWithIssues = $state(storedFilters?.onlyWithIssues === true);
+
+  // Persist on every change (debounced query, so typing doesn't spam writes).
+  $effect(() => {
+    writeJson(FILTERS_STORAGE_KEY, {
+      query: debouncedQuery,
+      teamId: filterTeamId,
+      onlyWithIssues,
+      sortMode
+    });
+  });
 
   const teamOptions = $derived(teamFilterOptions(overviews, teams));
 
@@ -251,7 +276,9 @@
       <Input
         bind:value={searchQuery}
         placeholder="Search projects…"
-        class="max-w-sm"
+        class="max-w-sm {searchQuery.trim() !== ''
+          ? 'border-primary/50 ring-primary/15 ring-1'
+          : ''}"
         aria-label="Search projects"
         onkeydown={(e) => {
           if (e.key === 'Escape') {
@@ -263,7 +290,9 @@
       {#if teamOptions.length > 1}
         <select
           bind:value={filterTeamId}
-          class="border-input bg-background h-9 rounded-md border px-2 text-sm"
+          class="border-input bg-background h-9 rounded-md border px-2 text-sm {filterTeamId
+            ? 'border-primary/50 ring-primary/15 ring-1'
+            : ''}"
           aria-label="Filter by team"
         >
           <option value="">All teams</option>

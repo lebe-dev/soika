@@ -10,6 +10,7 @@
   import PageTitle from '$lib/components/page-title.svelte';
   import type { LayoutData } from './$types';
   import Inbox from '@lucide/svelte/icons/inbox';
+  import { readJson, writeJson } from '$lib/local-storage';
 
   // Issues list for a project with status filter. The project is
   // provided by the parent layout load; issues are fetched reactively here so
@@ -55,6 +56,62 @@
   const urlLevel = $derived(($page.url.searchParams.get('level') as Level | null) ?? 'all');
   const urlEnvironment = $derived($page.url.searchParams.get('environment') ?? '');
   const urlRelease = $derived($page.url.searchParams.get('release') ?? '');
+
+  // Filters persist per project (environment/release values don't generalize
+  // across projects) so leaving and returning to the Issues tab restores the
+  // last view. The URL stays the source of truth once any filter param is
+  // present — a shared link is never silently overridden by local storage.
+  interface StoredIssueFilters {
+    status: Filter;
+    sort: Sort;
+    level: Level;
+    environment: string;
+    release: string;
+  }
+
+  const FILTER_PARAMS = ['status', 'sort', 'level', 'environment', 'release'] as const;
+
+  function filtersStorageKey(id: string): string {
+    return `soika:issues:${id}:filters`;
+  }
+
+  $effect(() => {
+    const id = projectId;
+    const url = $page.url;
+    if (FILTER_PARAMS.some((key) => url.searchParams.has(key))) return;
+
+    const stored = readJson<Partial<StoredIssueFilters>>(filtersStorageKey(id));
+    if (!stored) return;
+
+    const status: Filter =
+      stored.status && filters.some((f) => f.value === stored.status)
+        ? stored.status
+        : 'unresolved';
+    const sort: Sort =
+      stored.sort && sorts.some((s) => s.value === stored.sort) ? stored.sort : 'last_seen';
+    const level: Level =
+      stored.level && levels.some((l) => l.value === stored.level) ? stored.level : 'all';
+    const environment = typeof stored.environment === 'string' ? stored.environment : '';
+    const release = typeof stored.release === 'string' ? stored.release : '';
+
+    if (
+      status === 'unresolved' &&
+      sort === 'last_seen' &&
+      level === 'all' &&
+      environment === '' &&
+      release === ''
+    ) {
+      return;
+    }
+
+    const next = new URL(url);
+    if (status !== 'unresolved') next.searchParams.set('status', status);
+    if (sort !== 'last_seen') next.searchParams.set('sort', sort);
+    if (level !== 'all') next.searchParams.set('level', level);
+    if (environment !== '') next.searchParams.set('environment', environment);
+    if (release !== '') next.searchParams.set('release', release);
+    goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+  });
 
   let issues = $state<Issue[]>([]);
   let loading = $state(false);
@@ -131,6 +188,14 @@
     if (trimmed === '' || trimmed === clearOn) url.searchParams.delete(key);
     else url.searchParams.set(key, trimmed);
     goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+
+    writeJson<StoredIssueFilters>(filtersStorageKey(projectId), {
+      status: (url.searchParams.get('status') as Filter | null) ?? 'unresolved',
+      sort: (url.searchParams.get('sort') as Sort | null) ?? 'last_seen',
+      level: (url.searchParams.get('level') as Level | null) ?? 'all',
+      environment: url.searchParams.get('environment') ?? '',
+      release: url.searchParams.get('release') ?? ''
+    });
   }
 
   function selectFilter(value: Filter) {
@@ -189,7 +254,9 @@
     <select
       value={urlLevel}
       onchange={(e) => selectLevel(e.currentTarget.value as Level)}
-      class="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      class="border-input bg-background h-9 rounded-md border px-2 text-sm {urlLevel !== 'all'
+        ? 'border-primary/50 ring-primary/15 ring-1'
+        : ''}"
       aria-label="Filter by level"
     >
       {#each levels as l (l.value)}
@@ -203,7 +270,10 @@
       onchange={(e) => setParam('environment', e.currentTarget.value)}
       placeholder="Environment"
       aria-label="Filter by environment"
-      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm"
+      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm {urlEnvironment !==
+      ''
+        ? 'border-primary/50 ring-primary/15 ring-1'
+        : ''}"
     />
 
     <input
@@ -212,7 +282,9 @@
       onchange={(e) => setParam('release', e.currentTarget.value)}
       placeholder="Release"
       aria-label="Filter by release"
-      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm"
+      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm {urlRelease !== ''
+        ? 'border-primary/50 ring-primary/15 ring-1'
+        : ''}"
     />
   </div>
 
