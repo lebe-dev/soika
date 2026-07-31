@@ -14,6 +14,7 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import Star from '@lucide/svelte/icons/star';
   import PageTitle from '$lib/components/page-title.svelte';
+  import { teamFilterOptions, visibleProjects, type SortMode } from '$lib/dashboard';
   import { navActions } from '$lib/stores/nav-actions.svelte';
   import type { PageData } from './$types';
 
@@ -60,31 +61,55 @@
   });
 
   // --- Sort mode ---
-  type SortMode = 'activity' | 'name';
   let sortMode = $state<SortMode>('activity');
 
-  const filteredAndSorted = $derived.by(() => {
-    const q = debouncedQuery.toLowerCase().trim();
-    const filtered =
-      q === '' ? overviews : overviews.filter((o) => o.project.name.toLowerCase().includes(q));
+  // --- Team / "with issues" filters ---
+  let filterTeamId = $state('');
+  let onlyWithIssues = $state(false);
 
-    return [...filtered].sort((a, b) => {
-      const aFav = favoritedIds.has(a.project.id) ? 1 : 0;
-      const bFav = favoritedIds.has(b.project.id) ? 1 : 0;
-      if (bFav !== aFav) return bFav - aFav;
+  const teamOptions = $derived(teamFilterOptions(overviews, teams));
 
-      if (sortMode === 'activity') {
-        const aHas = a.unresolvedCount > 0 ? 1 : 0;
-        const bHas = b.unresolvedCount > 0 ? 1 : 0;
-        if (bHas !== aHas) return bHas - aHas;
-        if (a.lastIssueAt && b.lastIssueAt) {
-          return b.lastIssueAt.localeCompare(a.lastIssueAt);
-        }
-      }
-
-      return a.project.name.localeCompare(b.project.name);
-    });
+  // A team can disappear from the options (project moved or deleted, reload with
+  // a narrower project list) — drop a stale selection so the grid never silently
+  // filters down to nothing.
+  $effect(() => {
+    if (filterTeamId && !teamOptions.some((t) => t.id === filterTeamId)) {
+      filterTeamId = '';
+    }
   });
+
+  // Preview of what the toggle yields: counted against the other active filters
+  // (search + team), so the badge never promises projects the grid would hide.
+  const withIssuesCount = $derived(
+    visibleProjects(overviews, {
+      query: debouncedQuery,
+      teamId: filterTeamId,
+      onlyWithIssues: true,
+      sortMode,
+      favoritedIds
+    }).length
+  );
+
+  const filteredAndSorted = $derived(
+    visibleProjects(overviews, {
+      query: debouncedQuery,
+      teamId: filterTeamId,
+      onlyWithIssues,
+      sortMode,
+      favoritedIds
+    })
+  );
+
+  const filtersActive = $derived(
+    debouncedQuery.trim() !== '' || filterTeamId !== '' || onlyWithIssues
+  );
+
+  function resetFilters() {
+    searchQuery = '';
+    debouncedQuery = '';
+    filterTeamId = '';
+    onlyWithIssues = false;
+  }
 
   // --- Create-project dialog state ---
   let createOpen = $state(false);
@@ -136,6 +161,9 @@
     <p class="text-muted-foreground text-sm">
       {#if overviews.length === 0}
         No projects yet — create your first to start capturing errors.
+      {:else if filtersActive}
+        Showing {filteredAndSorted.length} of {overviews.length}
+        {overviews.length === 1 ? 'project' : 'projects'}.
       {:else}
         {overviews.length}
         {overviews.length === 1 ? 'project' : 'projects'} in your workspace.
@@ -232,8 +260,34 @@
           }
         }}
       />
+      {#if teamOptions.length > 1}
+        <select
+          bind:value={filterTeamId}
+          class="border-input bg-background h-9 rounded-md border px-2 text-sm"
+          aria-label="Filter by team"
+        >
+          <option value="">All teams</option>
+          {#each teamOptions as team (team.id)}
+            <option value={team.id}>{team.name}</option>
+          {/each}
+        </select>
+      {/if}
+
+      <button
+        type="button"
+        aria-pressed={onlyWithIssues}
+        onclick={() => (onlyWithIssues = !onlyWithIssues)}
+        class="border-input flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm transition-colors {onlyWithIssues
+          ? 'bg-secondary text-secondary-foreground font-medium'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+      >
+        <CircleAlert class="size-4 {onlyWithIssues ? 'text-destructive' : ''}" />
+        Projects with issues
+        <span class="text-muted-foreground font-normal tabular-nums">{withIssuesCount}</span>
+      </button>
+
       <div
-        class="border-input flex h-8 rounded-md border text-sm"
+        class="border-input flex h-9 rounded-md border text-sm"
         role="group"
         aria-label="Sort order"
       >
@@ -258,7 +312,10 @@
     </div>
 
     {#if filteredAndSorted.length === 0}
-      <p class="text-muted-foreground text-sm">No projects match your search.</p>
+      <div class="flex flex-wrap items-center gap-3">
+        <p class="text-muted-foreground text-sm">No projects match the current filters.</p>
+        <Button variant="outline" size="sm" onclick={resetFilters}>Clear filters</Button>
+      </div>
     {:else}
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
