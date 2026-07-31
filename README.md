@@ -171,6 +171,55 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
   keeps password login, so the instance remains accessible if SSO is
   misconfigured.
 
+## Database & write concurrency (SQLite)
+
+soika stores everything in one SQLite file. SQLite allows **many readers but
+exactly one writer at a time**, so on a busy instance event ingestion competes
+for the write lock with the retention sweep and with the UI's own writes. soika
+handles that contention itself; the knobs below only exist for tuning it (all are
+optional, and the defaults are the recommended values).
+
+How it works, so the settings make sense:
+
+- The database runs in **WAL** mode, so reading the UI never blocks ingestion.
+- Every write transaction is opened as `BEGIN IMMEDIATE`, i.e. it claims the
+  write lock up front. This is what makes `DB_BUSY_TIMEOUT_MS` effective: a
+  transaction that instead started as a reader and later tried to *become* a
+  writer would be refused instantly (`database is locked`) with no waiting
+  possible.
+- A write refused anyway is **retried** with exponential backoff and jitter
+  (`DB_WRITE_*`).
+- Bulk retention deletes run in **batches** (`DB_DELETE_BATCH`), releasing the
+  lock between batches, so a sweep over a large backlog cannot starve ingestion.
+- If a write is *still* refused after the whole retry budget, ingestion answers
+  **`429` with `Retry-After: DB_BUSY_RETRY_AFTER_SECS`** instead of `500`. Sentry
+  SDKs treat `429` as backpressure and re-send the event later, so events are not
+  lost; the internal JSON API answers `503` in the same situation.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite://soika.db` | Database file; created if missing. |
+| `DB_MAX_CONNECTIONS` | `8` | Connection pool size. |
+| `DB_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for the write lock before reporting "busy". Raise it on a slow or network disk. |
+| `DB_ACQUIRE_TIMEOUT_MS` | `10000` | How long a request waits for a free pooled connection. |
+| `DB_SYNCHRONOUS` | `normal` | Commit durability: `normal` (fsync at WAL checkpoints) or `full` (fsync every commit — safer against OS/power loss, slower, holds the write lock longer). |
+| `DB_WRITE_MAX_RETRIES` | `5` | Retries after a refused write. `0` disables retrying. |
+| `DB_WRITE_RETRY_BASE_MS` | `20` | Delay before the first retry; doubles each attempt (±25% jitter). |
+| `DB_WRITE_RETRY_MAX_MS` | `500` | Upper bound on that delay. |
+| `DB_DELETE_BATCH` | `500` | Rows deleted per statement by the retention sweep. |
+| `DB_BUSY_RETRY_AFTER_SECS` | `2` | `Retry-After` sent to SDKs when the write budget is spent. |
+
+Symptoms and what to change:
+
+- **`ingest deferred an event: database is busy` in the logs** (SDKs are being
+  told to retry) — the instance is writing more than the disk can absorb. Raise
+  `DB_BUSY_TIMEOUT_MS` and/or `DB_WRITE_MAX_RETRIES`, keep `DB_SYNCHRONOUS=normal`,
+  and lower per-project retention so sweeps have less to delete.
+- **Slow UI during retention sweeps** — lower `DB_DELETE_BATCH` (smaller lock
+  holds, more statements).
+- **Network filesystem (NFS/SMB)** — don't. SQLite locking is unreliable there;
+  use a local volume.
+
 ## Error reporting (Sentry)
 
 soika can report **its own** backend and frontend errors to a Sentry (or

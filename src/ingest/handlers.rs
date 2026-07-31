@@ -84,16 +84,7 @@ pub async fn envelope(
                 }
             }
             Err(e) => {
-                tracing::error!(
-                    error = %error_chain(&e),
-                    project_id = %project.id,
-                    project_slug = %project.slug,
-                    event_id = payload_event_id.as_deref().unwrap_or("<none>"),
-                    endpoint = "envelope",
-                    sdk = %meta.user_agent.as_deref().unwrap_or("<unknown>"),
-                    "ingest failed to process event"
-                );
-                return internal_error();
+                return failed_response(&state, &project, &meta, "envelope", payload_event_id, &e);
             }
         }
     }
@@ -143,19 +134,58 @@ pub async fn store(
         // `process_event` derives the id from the payload's `event_id` (or
         // synthesizes one), matching the envelope path's behavior.
         Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
-        Err(e) => {
-            tracing::error!(
-                error = %error_chain(&e),
-                project_id = %project.id,
-                project_slug = %project.slug,
-                event_id = payload_event_id.as_deref().unwrap_or("<none>"),
-                endpoint = "store",
-                sdk = %meta.user_agent.as_deref().unwrap_or("<unknown>"),
-                "ingest failed to process event"
-            );
-            internal_error()
-        }
+        Err(e) => failed_response(&state, &project, &meta, "store", payload_event_id, &e),
     }
+}
+
+/// Log a failed [`process_event`] and pick the response the SDK should see.
+///
+/// A **locked database** (SQLite has a single writer; the bounded retry budget in
+/// the adapter was spent) is transient and not this event's fault, so it answers
+/// `429` with `Retry-After` — the status Sentry SDKs understand as backpressure,
+/// which makes them hold the event and re-send it instead of dropping it as they
+/// would on a `5xx`. It is logged at `warn`: contention is load, not a defect,
+/// and an `error!` here would also mint a Sentry issue per dropped event on a
+/// self-reporting instance.
+///
+/// Anything else is a genuine fault: `500`, logged at `error` with the full cause
+/// chain.
+fn failed_response(
+    state: &AppState,
+    project: &Project,
+    meta: &RequestMeta,
+    endpoint: &'static str,
+    payload_event_id: Option<String>,
+    err: &crate::error::Error,
+) -> Response {
+    let event_id = payload_event_id.as_deref().unwrap_or("<none>");
+    let sdk = meta.user_agent.as_deref().unwrap_or("<unknown>");
+
+    if err.is_busy() {
+        let retry_after = state.config.db.busy_retry_after.as_secs().max(1);
+        tracing::warn!(
+            error = %error_chain(err),
+            project_id = %project.id,
+            project_slug = %project.slug,
+            event_id,
+            endpoint,
+            sdk,
+            retry_after,
+            "ingest deferred an event: database is busy"
+        );
+        return busy(retry_after);
+    }
+
+    tracing::error!(
+        error = %error_chain(err),
+        project_id = %project.id,
+        project_slug = %project.slug,
+        event_id,
+        endpoint,
+        sdk,
+        "ingest failed to process event"
+    );
+    internal_error()
 }
 
 /// Shared ingestion preamble for the `envelope` and `store` endpoints:
@@ -462,6 +492,18 @@ fn rate_limited(retry_after_secs: u64) -> Response {
         StatusCode::TOO_MANY_REQUESTS,
         [("retry-after", retry_after_secs.to_string())],
         Json(json!({ "detail": "rate limited" })),
+    )
+        .into_response()
+}
+
+/// Backpressure from the storage layer: same `429` + `Retry-After` contract as
+/// the rate limiter (that is what SDKs act on), with a body that names the real
+/// reason for anyone reading the response by hand.
+fn busy(retry_after_secs: u64) -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        [("retry-after", retry_after_secs.to_string())],
+        Json(json!({ "detail": "database busy" })),
     )
         .into_response()
 }

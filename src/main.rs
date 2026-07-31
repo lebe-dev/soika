@@ -2,18 +2,15 @@
 //!
 //! The bin crate uses `anyhow` for error handling.
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use sqlx::ConnectOptions;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use soika::auth::{GithubProvider, OidcClient, OidcProvider};
-use soika::config::{OAuthProviderKind, SentryConfig};
+use soika::config::{DbConfig, OAuthProviderKind, SentryConfig};
 use soika::{Config, MIGRATOR, build_state, scheduler};
 
 #[tokio::main]
@@ -32,7 +29,7 @@ async fn main() -> Result<()> {
 
     tracing::info!(org = %config.organization_name, bind = %config.bind_addr, "starting soika");
 
-    let pool = connect_and_migrate(&config.database_url)
+    let pool = connect_and_migrate(&config.database_url, &config.db)
         .await
         .context("connecting to database and running migrations")?;
 
@@ -160,22 +157,24 @@ fn init_sentry(cfg: Option<&SentryConfig>) -> Option<sentry::ClientInitGuard> {
 }
 
 /// Connect to SQLite (creating the file if missing), then run migrations.
-async fn connect_and_migrate(database_url: &str) -> Result<sqlx::SqlitePool> {
-    // `create_if_missing` is the SQLite-specific bit; isolated here in the bin.
-    let connect_options = SqliteConnectOptions::from_str(database_url)
-        .context("parsing DATABASE_URL")?
-        .create_if_missing(true)
-        // Enforce FK constraints per connection so ON DELETE CASCADE fires for
-        // sessions / team_members / invites (SQLite defaults off).
-        .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .disable_statement_logging();
-
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(8)
-        .connect_with(connect_options)
+///
+/// Connection/pool setup (WAL, busy timeout, pool size, …) lives in
+/// [`soika::connect_pool`] so the library and the binary cannot drift apart; the
+/// bin owns only migrations and the one-off short-id backfill.
+async fn connect_and_migrate(database_url: &str, db: &DbConfig) -> Result<sqlx::SqlitePool> {
+    let pool = soika::connect_pool(database_url, db)
         .await
         .context("opening SQLite pool")?;
+
+    tracing::info!(
+        max_connections = db.max_connections,
+        busy_timeout_ms = db.busy_timeout.as_millis(),
+        acquire_timeout_ms = db.acquire_timeout.as_millis(),
+        synchronous = ?db.synchronous,
+        write_max_retries = db.write.max_retries,
+        delete_batch = db.write.delete_batch,
+        "database pool ready (WAL)"
+    );
 
     MIGRATOR.run(&pool).await.context("running migrations")?;
     tracing::info!("database migrations applied");

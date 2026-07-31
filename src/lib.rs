@@ -34,18 +34,45 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 /// Embedded SQL migrations (schema), run at startup.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
-/// Connect to the database and create the pool. The bin crate owns running
+/// Connect to the database and create the pool — the single place SQLite
+/// connection and locking behaviour is configured. The bin crate owns running
 /// migrations via [`MIGRATOR`].
 ///
-/// `foreign_keys` is enabled per connection so `ON DELETE CASCADE` fires for
-/// sessions / team_members / invites (SQLite leaves FKs off by default).
-/// SQLite-specific connection setup is isolated here / in `main`.
-pub async fn connect_pool(database_url: &str) -> Result<SqlitePool> {
+/// Everything here is driven by [`config::DbConfig`] (`DB_*` env vars) so an
+/// operator can widen the timeouts on a slow disk without a rebuild:
+///
+///   * `create_if_missing` — a fresh deployment has no database file yet.
+///   * `foreign_keys` — enabled per connection so `ON DELETE CASCADE` fires for
+///     sessions / team_members / invites (SQLite leaves FKs off by default).
+///   * `journal_mode = WAL` — readers don't block the writer, which is what
+///     makes a single-binary tracker serve the UI while ingesting.
+///   * `busy_timeout` — how long SQLite waits for the one write lock before
+///     returning `SQLITE_BUSY`. It only helps transactions that declare their
+///     write intent up front, which is why every write transaction goes through
+///     `BEGIN IMMEDIATE` (see `adapters::sqlite::write`).
+///   * `synchronous` — `NORMAL` under WAL by default: fewer fsyncs, so the write
+///     lock is held for shorter stretches.
+pub async fn connect_pool(database_url: &str, db: &config::DbConfig) -> Result<SqlitePool> {
+    use sqlx::ConnectOptions;
+    use sqlx::sqlite::{SqliteJournalMode, SqliteSynchronous};
+
+    let synchronous = match db.synchronous {
+        config::Synchronous::Normal => SqliteSynchronous::Normal,
+        config::Synchronous::Full => SqliteSynchronous::Full,
+    };
+
     let options = SqliteConnectOptions::from_str(database_url)
         .map_err(crate::error::Error::Db)?
-        .foreign_keys(true);
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(synchronous)
+        .busy_timeout(db.busy_timeout)
+        .disable_statement_logging();
+
     let pool = SqlitePoolOptions::new()
-        .max_connections(8)
+        .max_connections(db.max_connections)
+        .acquire_timeout(db.acquire_timeout)
         .connect_with(options)
         .await?;
     Ok(pool)
@@ -79,6 +106,11 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
 
     let login_guard = Arc::new(LoginGuard::new(config.lockout.clone()));
 
+    // Read before `config` is moved into the state below. The write policy is
+    // only wired into the repositories on the ingest / retention hot path —
+    // everything else keeps the defaults.
+    let write_policy = config.db.write.clone();
+
     Ok(AppState {
         config: Arc::new(config),
         users: Arc::new(SqliteUserRepository::new(pool.clone())),
@@ -86,8 +118,10 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
         teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
         projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
         favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
-        issues: Arc::new(SqliteIssueRepository::new(pool.clone())),
-        events: Arc::new(SqliteEventRepository::new(pool.clone())),
+        issues: Arc::new(
+            SqliteIssueRepository::new(pool.clone()).with_write_policy(write_policy.clone()),
+        ),
+        events: Arc::new(SqliteEventRepository::new(pool.clone()).with_write_policy(write_policy)),
         mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
         settings: Arc::new(SqliteSettingsRepository::new(pool)),

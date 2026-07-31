@@ -471,6 +471,7 @@ fn test_config() -> Config {
     Config {
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
+        db: soika::config::DbConfig::default(),
         bind_addr: "127.0.0.1:0".into(),
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),

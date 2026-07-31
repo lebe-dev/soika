@@ -157,6 +157,113 @@ impl std::fmt::Debug for OidcConfig {
     }
 }
 
+/// How durably SQLite flushes each commit (`PRAGMA synchronous`).
+///
+/// Under WAL, `Normal` is the documented safe choice: a commit is not fsynced
+/// individually (only at checkpoints), which shortens how long a writer holds
+/// the write lock — the difference between the two is that a power loss / OS
+/// crash may lose the most recent transactions, never a corrupt database.
+/// `Full` fsyncs every commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Synchronous {
+    #[default]
+    Normal,
+    Full,
+}
+
+/// Bounded retry + batching policy for database writes.
+///
+/// SQLite allows exactly one writer at a time. Under concurrent ingestion a
+/// write can be refused with `SQLITE_BUSY` ("database is locked"); the write is
+/// retried with exponential backoff + jitter instead of failing the request, and
+/// only a fully spent budget surfaces as [`crate::Error::DbBusy`].
+#[derive(Debug, Clone)]
+pub struct WritePolicy {
+    /// Retries *after* the first attempt (`DB_WRITE_MAX_RETRIES`). 0 disables
+    /// retrying.
+    pub max_retries: u32,
+    /// Delay before the first retry (`DB_WRITE_RETRY_BASE_MS`); doubles each
+    /// attempt.
+    pub retry_base: Duration,
+    /// Upper bound on the backoff delay (`DB_WRITE_RETRY_MAX_MS`).
+    pub retry_max: Duration,
+    /// Rows deleted per statement by the retention sweep (`DB_DELETE_BATCH`).
+    /// Bulk deletes are chunked so a sweep cannot hold the single write lock for
+    /// seconds while events are being ingested.
+    pub delete_batch: i64,
+}
+
+impl Default for WritePolicy {
+    /// Matches the env-var defaults: 5 retries, 20 ms → 500 ms backoff, 500-row
+    /// delete batches.
+    fn default() -> Self {
+        WritePolicy {
+            max_retries: 5,
+            retry_base: Duration::from_millis(20),
+            retry_max: Duration::from_millis(500),
+            delete_batch: 500,
+        }
+    }
+}
+
+impl WritePolicy {
+    /// Backoff delay before retry `attempt` (0-based): `retry_base * 2^attempt`,
+    /// capped at [`retry_max`](Self::retry_max) and then jittered by ±25% so
+    /// concurrent writers don't retry in lockstep.
+    pub fn backoff(&self, attempt: u32) -> Duration {
+        let factor = 1u32.checked_shl(attempt).unwrap_or(u32::MAX);
+        let delay = self.retry_base.saturating_mul(factor).min(self.retry_max);
+        let millis = delay.as_millis().max(1) as u64;
+        let spread = (millis / 2).max(1);
+        // millis - spread/… stays >= 1: `spread <= millis/2`, so the low end is
+        // at least half the delay.
+        let jittered = millis - spread / 2 + rand::random_range(0..=spread);
+        Duration::from_millis(jittered)
+    }
+}
+
+/// Database connection + concurrency settings (`DB_*`).
+///
+/// soika ships as a single binary on SQLite, where the whole file is guarded by
+/// one write lock. These knobs are the levers that keep concurrent ingestion off
+/// that lock's critical path; every one of them is settable from the environment
+/// so an operator can widen the timeouts on a slow disk without a rebuild.
+#[derive(Debug, Clone)]
+pub struct DbConfig {
+    /// Pool size (`DB_MAX_CONNECTIONS`). Readers scale with it; writers are
+    /// serialized by SQLite regardless.
+    pub max_connections: u32,
+    /// How long SQLite itself waits for the write lock before returning
+    /// `SQLITE_BUSY` (`DB_BUSY_TIMEOUT_MS`). Effective only for transactions that
+    /// declare their intent to write up front (soika uses `BEGIN IMMEDIATE`).
+    pub busy_timeout: Duration,
+    /// How long a caller waits for a free pooled connection
+    /// (`DB_ACQUIRE_TIMEOUT_MS`) before failing with a pool timeout.
+    pub acquire_timeout: Duration,
+    /// Commit durability (`DB_SYNCHRONOUS`: `normal` | `full`).
+    pub synchronous: Synchronous,
+    /// `Retry-After` (`DB_BUSY_RETRY_AFTER_SECS`) advertised to Sentry SDKs when
+    /// ingestion answers `429` because the write budget was spent.
+    pub busy_retry_after: Duration,
+    /// Retry/batching policy for writes (`DB_WRITE_*`, `DB_DELETE_BATCH`).
+    pub write: WritePolicy,
+}
+
+impl Default for DbConfig {
+    /// Matches the env-var defaults: 8 connections, 5 s busy timeout, 10 s
+    /// acquire timeout, `synchronous=NORMAL`, `Retry-After: 2`.
+    fn default() -> Self {
+        DbConfig {
+            max_connections: 8,
+            busy_timeout: Duration::from_secs(5),
+            acquire_timeout: Duration::from_secs(10),
+            synchronous: Synchronous::Normal,
+            busy_retry_after: Duration::from_secs(2),
+            write: WritePolicy::default(),
+        }
+    }
+}
+
 /// Fully resolved runtime configuration.
 ///
 /// `Debug` is hand-written to redact [`secret_key`](Self::secret_key) so a stray
@@ -169,6 +276,8 @@ pub struct Config {
     pub organization_name: String,
     /// sqlx connection string (`DATABASE_URL`).
     pub database_url: String,
+    /// Database pool / locking / write-retry settings (`DB_*`).
+    pub db: DbConfig,
     /// HTTP listen address (`BIND_ADDR`).
     pub bind_addr: String,
     /// Public base URL used in emails / invite links / DSNs (`BASE_URL`).
@@ -204,6 +313,7 @@ impl std::fmt::Debug for Config {
         f.debug_struct("Config")
             .field("organization_name", &self.organization_name)
             .field("database_url", &self.database_url)
+            .field("db", &self.db)
             .field("bind_addr", &self.bind_addr)
             .field("base_url", &self.base_url)
             .field("secret_key", &"***")
@@ -237,6 +347,8 @@ impl Config {
             return Err(Error::validation("SECRET_KEY must not be empty"));
         }
 
+        let db = Self::db_from_env()?;
+
         let allow_signup = parse_bool(&env_or("ALLOW_SIGNUP", "false"));
 
         let default_events_retention = env_or("DEFAULT_EVENTS_RETENTION", "1000")
@@ -258,6 +370,7 @@ impl Config {
         Ok(Config {
             organization_name,
             database_url,
+            db,
             bind_addr,
             base_url,
             secret_key,
@@ -270,6 +383,92 @@ impl Config {
             sentry,
             lockout,
             timezone,
+        })
+    }
+
+    /// Build the database pool / locking / write-retry config, applying
+    /// defaults.
+    ///
+    /// Every value is validated so a misconfiguration fails fast at boot rather
+    /// than turning into a stream of failed writes under load. A zero
+    /// `DB_BUSY_TIMEOUT_MS` is accepted (it means "don't wait in SQLite, let the
+    /// retry loop handle it"); a zero pool size or delete batch is not.
+    fn db_from_env() -> Result<DbConfig> {
+        let defaults = DbConfig::default();
+
+        let max_connections = env_or("DB_MAX_CONNECTIONS", &defaults.max_connections.to_string())
+            .parse::<u32>()
+            .map_err(|e| Error::validation(format!("DB_MAX_CONNECTIONS: {e}")))?;
+        if max_connections == 0 {
+            return Err(Error::validation("DB_MAX_CONNECTIONS must be at least 1"));
+        }
+
+        let busy_timeout = env_millis("DB_BUSY_TIMEOUT_MS", defaults.busy_timeout)?;
+
+        let acquire_timeout = env_millis("DB_ACQUIRE_TIMEOUT_MS", defaults.acquire_timeout)?;
+        if acquire_timeout.is_zero() {
+            return Err(Error::validation(
+                "DB_ACQUIRE_TIMEOUT_MS must be greater than 0",
+            ));
+        }
+
+        let synchronous = match env_or("DB_SYNCHRONOUS", "normal")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "" | "normal" => Synchronous::Normal,
+            "full" => Synchronous::Full,
+            other => {
+                return Err(Error::validation(format!(
+                    "DB_SYNCHRONOUS: unknown value '{other}' (expected 'normal' or 'full')"
+                )));
+            }
+        };
+
+        let busy_retry_after = env_secs(
+            "DB_BUSY_RETRY_AFTER_SECS",
+            defaults.busy_retry_after.as_secs(),
+        )?;
+
+        let write = Self::write_policy_from_env(defaults.write)?;
+
+        Ok(DbConfig {
+            max_connections,
+            busy_timeout,
+            acquire_timeout,
+            synchronous,
+            busy_retry_after,
+            write,
+        })
+    }
+
+    /// Build the write retry/batching policy from `DB_WRITE_*` / `DB_DELETE_BATCH`.
+    fn write_policy_from_env(defaults: WritePolicy) -> Result<WritePolicy> {
+        let max_retries = env_or("DB_WRITE_MAX_RETRIES", &defaults.max_retries.to_string())
+            .parse::<u32>()
+            .map_err(|e| Error::validation(format!("DB_WRITE_MAX_RETRIES: {e}")))?;
+
+        let retry_base = env_millis("DB_WRITE_RETRY_BASE_MS", defaults.retry_base)?;
+        let retry_max = env_millis("DB_WRITE_RETRY_MAX_MS", defaults.retry_max)?;
+        if retry_max < retry_base {
+            return Err(Error::validation(
+                "DB_WRITE_RETRY_MAX_MS must be >= DB_WRITE_RETRY_BASE_MS",
+            ));
+        }
+
+        let delete_batch = env_or("DB_DELETE_BATCH", &defaults.delete_batch.to_string())
+            .parse::<i64>()
+            .map_err(|e| Error::validation(format!("DB_DELETE_BATCH: {e}")))?;
+        if delete_batch < 1 {
+            return Err(Error::validation("DB_DELETE_BATCH must be at least 1"));
+        }
+
+        Ok(WritePolicy {
+            max_retries,
+            retry_base,
+            retry_max,
+            delete_batch,
         })
     }
 
@@ -409,6 +608,14 @@ fn env_opt(key: &str) -> Option<String> {
     }
 }
 
+/// Read a duration in whole milliseconds from `key`, falling back to `default`.
+fn env_millis(key: &str, default: Duration) -> Result<Duration> {
+    let millis = env_or(key, &default.as_millis().to_string())
+        .parse::<u64>()
+        .map_err(|e| Error::validation(format!("{key}: {e}")))?;
+    Ok(Duration::from_millis(millis))
+}
+
 /// Read a duration in whole seconds from `key`, falling back to `default_secs`.
 fn env_secs(key: &str, default_secs: u64) -> Result<Duration> {
     let secs = env_or(key, &default_secs.to_string())
@@ -446,6 +653,131 @@ mod tests {
 
     // Tests mutate process-wide env vars, so serialize them.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const DB_KEYS: &[&str] = &[
+        "DB_MAX_CONNECTIONS",
+        "DB_BUSY_TIMEOUT_MS",
+        "DB_ACQUIRE_TIMEOUT_MS",
+        "DB_SYNCHRONOUS",
+        "DB_BUSY_RETRY_AFTER_SECS",
+        "DB_WRITE_MAX_RETRIES",
+        "DB_WRITE_RETRY_BASE_MS",
+        "DB_WRITE_RETRY_MAX_MS",
+        "DB_DELETE_BATCH",
+    ];
+
+    fn clear_db_env() {
+        for k in DB_KEYS {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn db_config_defaults_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_db_env();
+
+        let db = Config::db_from_env().expect("defaults are valid");
+
+        assert_eq!(db.max_connections, 8);
+        assert_eq!(db.busy_timeout, Duration::from_secs(5));
+        assert_eq!(db.acquire_timeout, Duration::from_secs(10));
+        assert_eq!(db.synchronous, Synchronous::Normal);
+        assert_eq!(db.busy_retry_after, Duration::from_secs(2));
+        assert_eq!(db.write.max_retries, 5);
+        assert_eq!(db.write.retry_base, Duration::from_millis(20));
+        assert_eq!(db.write.retry_max, Duration::from_millis(500));
+        assert_eq!(db.write.delete_batch, 500);
+    }
+
+    #[test]
+    fn db_config_reads_every_knob_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_db_env();
+        unsafe {
+            std::env::set_var("DB_MAX_CONNECTIONS", "4");
+            std::env::set_var("DB_BUSY_TIMEOUT_MS", "12000");
+            std::env::set_var("DB_ACQUIRE_TIMEOUT_MS", "7000");
+            std::env::set_var("DB_SYNCHRONOUS", "FULL");
+            std::env::set_var("DB_BUSY_RETRY_AFTER_SECS", "9");
+            std::env::set_var("DB_WRITE_MAX_RETRIES", "10");
+            std::env::set_var("DB_WRITE_RETRY_BASE_MS", "30");
+            std::env::set_var("DB_WRITE_RETRY_MAX_MS", "900");
+            std::env::set_var("DB_DELETE_BATCH", "250");
+        }
+
+        let db = Config::db_from_env().expect("valid config");
+
+        assert_eq!(db.max_connections, 4);
+        assert_eq!(db.busy_timeout, Duration::from_millis(12_000));
+        assert_eq!(db.acquire_timeout, Duration::from_millis(7_000));
+        assert_eq!(db.synchronous, Synchronous::Full);
+        assert_eq!(db.busy_retry_after, Duration::from_secs(9));
+        assert_eq!(db.write.max_retries, 10);
+        assert_eq!(db.write.retry_base, Duration::from_millis(30));
+        assert_eq!(db.write.retry_max, Duration::from_millis(900));
+        assert_eq!(db.write.delete_batch, 250);
+
+        clear_db_env();
+    }
+
+    #[test]
+    fn db_config_rejects_invalid_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        for (key, value) in [
+            ("DB_MAX_CONNECTIONS", "0"),
+            ("DB_MAX_CONNECTIONS", "many"),
+            ("DB_ACQUIRE_TIMEOUT_MS", "0"),
+            ("DB_SYNCHRONOUS", "off"),
+            ("DB_DELETE_BATCH", "0"),
+            ("DB_WRITE_MAX_RETRIES", "-1"),
+        ] {
+            clear_db_env();
+            unsafe { std::env::set_var(key, value) };
+            let err = Config::db_from_env().expect_err(&format!("{key}={value} must be rejected"));
+            assert!(
+                matches!(err, Error::Validation(_)),
+                "{key}={value} gave {err}"
+            );
+        }
+
+        // retry_max below retry_base is a cross-field violation.
+        clear_db_env();
+        unsafe {
+            std::env::set_var("DB_WRITE_RETRY_BASE_MS", "500");
+            std::env::set_var("DB_WRITE_RETRY_MAX_MS", "100");
+        }
+        let err = Config::db_from_env().expect_err("retry_max < retry_base must be rejected");
+        assert!(matches!(err, Error::Validation(_)), "got {err}");
+
+        clear_db_env();
+    }
+
+    #[test]
+    fn write_policy_backoff_grows_and_is_capped() {
+        let policy = WritePolicy {
+            max_retries: 8,
+            retry_base: Duration::from_millis(20),
+            retry_max: Duration::from_millis(200),
+            delete_batch: 500,
+        };
+
+        // Jitter is +/-25%, so assert the band rather than an exact value.
+        for (attempt, expected) in [(0u32, 20u64), (1, 40), (2, 80), (3, 160)] {
+            let delay = policy.backoff(attempt).as_millis() as u64;
+            assert!(
+                delay >= expected * 3 / 4 && delay <= expected * 5 / 4,
+                "attempt {attempt}: {delay}ms outside +/-25% of {expected}ms"
+            );
+        }
+
+        // Capped, jitter included.
+        for attempt in [4u32, 5, 31, 40] {
+            let delay = policy.backoff(attempt).as_millis() as u64;
+            assert!(delay <= 250, "attempt {attempt}: {delay}ms exceeds the cap");
+        }
+    }
 
     const OAUTH_KEYS: &[&str] = &[
         "OAUTH_ENABLED",

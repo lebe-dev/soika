@@ -1,6 +1,6 @@
 //! SQLite [`TagMuteRuleRepository`] adapter.
 
-use super::{Db, id_from_db, id_to_db, ts_from_db, ts_to_db};
+use super::{Db, begin_write, id_from_db, id_to_db, ts_from_db, ts_to_db};
 use crate::domain::{Id, TagMatch, TagMuteRule};
 use crate::error::Result;
 use crate::ports::{NewTagMuteRule, TagMuteRuleRepository};
@@ -45,7 +45,9 @@ impl TagMuteRuleRepository for SqliteTagMuteRuleRepository {
         let now = chrono::Utc::now();
         let now_db = ts_to_db(now);
 
-        let mut tx = self.db.begin().await?;
+        // A write transaction (`BEGIN IMMEDIATE`), so the rule + its tags land
+        // atomically without risking the deferred-upgrade `SQLITE_BUSY`.
+        let mut tx = begin_write(&self.db).await?;
 
         sqlx::query(
             "INSERT INTO tag_mute_rules (id, project_id, name, created_by, created_at, updated_at) \

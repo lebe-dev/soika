@@ -43,13 +43,21 @@ impl IntoResponse for ApiError {
             Error::Forbidden(_) => StatusCode::FORBIDDEN,
             Error::Conflict(_) => StatusCode::CONFLICT,
             Error::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            // A locked database is transient (SQLite has a single writer and the
+            // retry budget was spent), so it is `503`, not a `500` fault.
+            Error::DbBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // 5xx faults carry their cause only in the response body, which never
         // reaches the operator. Log it so the real reason (e.g. the SMTP error
         // behind a failed test-email) surfaces in tracing and Sentry instead of
         // tower-http's contentless "response failed".
-        if status.is_server_error() {
+        //
+        // Lock contention is logged at `warn`: it is load, not a defect, and
+        // promoting every burst to a Sentry issue would bury real faults.
+        if self.0.is_busy() {
+            tracing::warn!(error = %self.0, "request failed: database is busy");
+        } else if status.is_server_error() {
             tracing::error!(error = %self.0, "request failed");
         }
         let body = Json(ErrorBody {

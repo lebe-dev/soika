@@ -10,7 +10,8 @@
 //! the issue are preserved (they live in a different table). SQL is
 //! ANSI-friendly; the only SQLite-specific bit is TEXT row decoding.
 
-use super::Db;
+use super::{Db, retry_write};
+use crate::config::WritePolicy;
 use crate::domain::{Event, Id, Timestamp};
 use crate::error::{Error, Result};
 use crate::ports::{EventRepository, NewEvent};
@@ -20,11 +21,50 @@ use sqlx::Row;
 #[derive(Clone)]
 pub struct SqliteEventRepository {
     db: Db,
+    write: WritePolicy,
 }
 
 impl SqliteEventRepository {
     pub fn new(db: Db) -> Self {
-        SqliteEventRepository { db }
+        SqliteEventRepository {
+            db,
+            write: WritePolicy::default(),
+        }
+    }
+
+    /// Override the write retry / delete-batch policy (wired from `DB_WRITE_*` /
+    /// `DB_DELETE_BATCH` in `soika::build_state`); [`new`](Self::new) uses the
+    /// defaults.
+    pub fn with_write_policy(mut self, write: WritePolicy) -> Self {
+        self.write = write;
+        self
+    }
+
+    /// Delete rows in [`WritePolicy::delete_batch`]-sized chunks until a chunk
+    /// comes back short, returning the total number of rows deleted.
+    ///
+    /// Retention can span tens of thousands of rows; as a single `DELETE` it
+    /// would hold SQLite's one write lock for the whole sweep and starve
+    /// ingestion. `run_batch` executes exactly one chunk (bounded by the `LIMIT`
+    /// its caller binds), so the lock is released between chunks and each chunk
+    /// is retried independently on contention.
+    async fn delete_in_batches<F, Fut>(&self, what: &str, mut run_batch: F) -> Result<u64>
+    where
+        F: FnMut(i64) -> Fut,
+        Fut: Future<Output = Result<u64>>,
+    {
+        let batch = self.write.delete_batch;
+        let mut total = 0u64;
+        loop {
+            let deleted = retry_write(&self.write, what, || run_batch(batch)).await?;
+            total += deleted;
+            if deleted < batch as u64 {
+                return Ok(total);
+            }
+            // Hand the write lock (and the runtime) to any waiting ingest task
+            // before taking it again for the next chunk.
+            tokio::task::yield_now().await;
+        }
     }
 }
 
@@ -62,15 +102,22 @@ impl EventRepository for SqliteEventRepository {
             "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
              VALUES (?, ?, ?, ?, ?, ?) RETURNING {EVENT_COLS}"
         );
-        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(id.to_string())
-            .bind(new.event_id)
-            .bind(new.issue_id.to_string())
-            .bind(new.project_id.to_string())
-            .bind(payload_text)
-            .bind(new.received_at.to_rfc3339())
-            .fetch_one(&self.db)
-            .await?;
+        let received_at = new.received_at.to_rfc3339();
+        // One statement, so re-running it after a lock conflict is safe: either
+        // the row was written (Ok) or nothing was.
+        let row = retry_write(&self.write, "insert event", || async {
+            let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+                .bind(id.to_string())
+                .bind(&new.event_id)
+                .bind(new.issue_id.to_string())
+                .bind(new.project_id.to_string())
+                .bind(&payload_text)
+                .bind(&received_at)
+                .fetch_one(&self.db)
+                .await?;
+            Ok(row)
+        })
+        .await?;
         row_to_event(&row)
     }
 
@@ -135,26 +182,29 @@ impl EventRepository for SqliteEventRepository {
         project_id: Id,
         retention_events: i64,
     ) -> Result<u64> {
-        // Keep the N most-recent events for the project; delete the rest.
-        // ANSI-friendly: delete rows not in the "keep" set selected by recency.
+        // Keep the N most-recent events for the project; delete the rest, in
+        // batches (see `delete_in_batches`). ANSI-friendly: select the rows *past*
+        // the keep window by recency (`LIMIT batch OFFSET keep`) and delete those.
         // `received_at DESC, id DESC` matches the read-side ordering so the kept
         // set is exactly what the UI shows. A non-positive retention keeps none.
         let keep = retention_events.max(0);
         let sql = "DELETE FROM events \
-             WHERE project_id = ? \
-               AND id NOT IN ( \
+             WHERE id IN ( \
                    SELECT id FROM events \
                    WHERE project_id = ? \
                    ORDER BY received_at DESC, id DESC \
-                   LIMIT ? \
+                   LIMIT ? OFFSET ? \
                )";
-        let res = sqlx::query(sql)
-            .bind(project_id.to_string())
-            .bind(project_id.to_string())
-            .bind(keep)
-            .execute(&self.db)
-            .await?;
-        Ok(res.rows_affected())
+        self.delete_in_batches("prune events over retention", |batch| async move {
+            let res = sqlx::query(sql)
+                .bind(project_id.to_string())
+                .bind(batch)
+                .bind(keep)
+                .execute(&self.db)
+                .await?;
+            Ok(res.rows_affected())
+        })
+        .await
     }
 
     async fn project_ids_with_events(&self) -> Result<Vec<Id>> {
@@ -169,12 +219,28 @@ impl EventRepository for SqliteEventRepository {
     async fn delete_older_than(&self, project_id: Id, cutoff: Timestamp) -> Result<u64> {
         // received_at is RFC3339 TEXT; lexical comparison equals chronological
         // comparison for fixed-offset UTC strings produced by `to_rfc3339`.
-        let res = sqlx::query("DELETE FROM events WHERE project_id = ? AND received_at < ?")
-            .bind(project_id.to_string())
-            .bind(cutoff.to_rfc3339())
-            .execute(&self.db)
-            .await?;
-        Ok(res.rows_affected())
+        // Batched (see `delete_in_batches`) so an age-based sweep of a large
+        // backlog does not hold the write lock against ingestion.
+        let sql = "DELETE FROM events \
+             WHERE id IN ( \
+                   SELECT id FROM events \
+                   WHERE project_id = ? AND received_at < ? \
+                   LIMIT ? \
+               )";
+        let cutoff = cutoff.to_rfc3339();
+        self.delete_in_batches("delete events older than cutoff", |batch| {
+            let cutoff = cutoff.clone();
+            async move {
+                let res = sqlx::query(sql)
+                    .bind(project_id.to_string())
+                    .bind(cutoff)
+                    .bind(batch)
+                    .execute(&self.db)
+                    .await?;
+                Ok(res.rows_affected())
+            }
+        })
+        .await
     }
 }
 
@@ -329,6 +395,71 @@ mod tests {
             .unwrap();
         assert_eq!(deleted, 0);
         assert_eq!(repo.count_for_project(project_a).await.unwrap(), 2);
+    }
+
+    /// A batch size smaller than the number of doomed rows must still delete all
+    /// of them (the loop runs until a chunk comes back short) and keep exactly
+    /// the newest `retention` events.
+    #[tokio::test]
+    async fn prune_deletes_every_batch_when_the_batch_is_smaller_than_the_backlog() {
+        let pool = pool().await;
+        let (project_id, issue_id) = seed(&pool).await;
+        let repo = SqliteEventRepository::new(pool).with_write_policy(WritePolicy {
+            delete_batch: 1,
+            ..WritePolicy::default()
+        });
+
+        let base = chrono::Utc::now();
+        for i in 0..10 {
+            let at = base + chrono::Duration::seconds(i);
+            repo.insert(new_event(project_id, issue_id, at))
+                .await
+                .unwrap();
+        }
+
+        // 10 events, keep 3 → 7 deletions across 7 one-row batches.
+        let deleted = repo
+            .prune_events_over_retention(project_id, 3)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 7);
+        assert_eq!(repo.count_for_project(project_id).await.unwrap(), 3);
+
+        // The survivors are the three newest.
+        let remaining = repo.recent_events(issue_id, 100).await.unwrap();
+        let kept: Vec<i64> = remaining
+            .iter()
+            .map(|e| e.received_at.timestamp())
+            .collect();
+        let expected: Vec<i64> = (7..10)
+            .rev()
+            .map(|i| (base + chrono::Duration::seconds(i)).timestamp())
+            .collect();
+        assert_eq!(kept, expected);
+    }
+
+    /// Same for the age-based sweep: batching must not cut the deletion short.
+    #[tokio::test]
+    async fn delete_older_than_batches_through_the_whole_backlog() {
+        let pool = pool().await;
+        let (project_id, issue_id) = seed(&pool).await;
+        let repo = SqliteEventRepository::new(pool).with_write_policy(WritePolicy {
+            delete_batch: 2,
+            ..WritePolicy::default()
+        });
+
+        let base = chrono::Utc::now();
+        for i in 0..9 {
+            let at = base + chrono::Duration::seconds(i);
+            repo.insert(new_event(project_id, issue_id, at))
+                .await
+                .unwrap();
+        }
+
+        let cutoff = base + chrono::Duration::seconds(7);
+        let deleted = repo.delete_older_than(project_id, cutoff).await.unwrap();
+        assert_eq!(deleted, 7, "seconds 0..6 are older than the cutoff");
+        assert_eq!(repo.count_for_project(project_id).await.unwrap(), 2);
     }
 
     #[tokio::test]

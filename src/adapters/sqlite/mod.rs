@@ -19,12 +19,14 @@ mod session;
 mod settings;
 mod team;
 mod user;
+mod write;
 
 #[cfg(test)]
 pub(crate) mod tests;
 
 pub(crate) use convert::*;
 pub use convert::{Db, backfill_short_ids};
+pub(crate) use write::{begin_write, retry_write};
 
 pub use event::SqliteEventRepository;
 pub use favorite::SqliteFavoriteRepository;

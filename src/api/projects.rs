@@ -108,6 +108,9 @@ pub fn error_response(err: Error) -> Response {
         Error::Forbidden(_) => StatusCode::FORBIDDEN,
         Error::Conflict(_) => StatusCode::CONFLICT,
         Error::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+        // A locked database is transient, not a fault of this request: answer
+        // `503` so the caller (or the SPA) can simply try again.
+        Error::DbBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
         Error::Db(_) | Error::Mail(_) | Error::Template(_) | Error::Internal(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }

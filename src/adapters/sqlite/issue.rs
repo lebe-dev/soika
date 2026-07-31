@@ -10,7 +10,8 @@
 //! event on a `resolved` issue flips it back to `unresolved` (regression).
 //! SQL is ANSI-friendly; the only SQLite-specific bit is TEXT row decoding.
 
-use super::Db;
+use super::{Db, begin_write, retry_write};
+use crate::config::WritePolicy;
 use crate::domain::{Id, Issue, IssueStatus, MuteSpec, Timestamp};
 use crate::error::{Error, Result};
 use crate::ports::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
@@ -22,104 +23,39 @@ use std::str::FromStr;
 #[derive(Clone)]
 pub struct SqliteIssueRepository {
     db: Db,
+    write: WritePolicy,
 }
 
 impl SqliteIssueRepository {
     pub fn new(db: Db) -> Self {
-        SqliteIssueRepository { db }
-    }
-}
-
-const ISSUE_COLS: &str = "id, short_id, project_id, fingerprint, title, culprit, level, \
-     environment, release, status, \
-     muted_at, muted_until, mute_threshold, mute_window_seconds, \
-     first_seen, last_seen, event_count, created_at, updated_at";
-
-fn row_to_issue(row: &sqlx::sqlite::SqliteRow) -> Result<Issue> {
-    let status: String = row.try_get("status")?;
-    Ok(Issue {
-        id: parse_id(row.try_get::<String, _>("id")?)?,
-        short_id: row.try_get("short_id")?,
-        project_id: parse_id(row.try_get::<String, _>("project_id")?)?,
-        fingerprint: row.try_get("fingerprint")?,
-        title: row.try_get("title")?,
-        culprit: row.try_get("culprit")?,
-        level: row.try_get("level")?,
-        environment: row.try_get("environment")?,
-        release: row.try_get("release")?,
-        status: IssueStatus::from_str(&status)?,
-        muted_at: parse_ts_opt(row.try_get::<Option<String>, _>("muted_at")?)?,
-        muted_until: parse_ts_opt(row.try_get::<Option<String>, _>("muted_until")?)?,
-        mute_threshold: row.try_get("mute_threshold")?,
-        mute_window_seconds: row.try_get("mute_window_seconds")?,
-        first_seen: parse_ts(row.try_get::<String, _>("first_seen")?)?,
-        last_seen: parse_ts(row.try_get::<String, _>("last_seen")?)?,
-        event_count: row.try_get("event_count")?,
-        created_at: parse_ts(row.try_get::<String, _>("created_at")?)?,
-        updated_at: parse_ts(row.try_get::<String, _>("updated_at")?)?,
-    })
-}
-
-fn parse_id(s: String) -> Result<Id> {
-    Id::parse_str(&s).map_err(|e| Error::internal(format!("invalid uuid in db: {e}")))
-}
-
-fn parse_ts(s: String) -> Result<Timestamp> {
-    chrono::DateTime::parse_from_rfc3339(&s)
-        .map(|dt| dt.with_timezone(&chrono::Utc))
-        .map_err(|e| Error::internal(format!("invalid timestamp in db: {e}")))
-}
-
-/// Decode a nullable timestamp column (`None` → `None`).
-fn parse_ts_opt(s: Option<String>) -> Result<Option<Timestamp>> {
-    s.map(parse_ts).transpose()
-}
-
-#[async_trait]
-impl IssueRepository for SqliteIssueRepository {
-    async fn find_by_id(&self, id: Id) -> Result<Option<Issue>> {
-        let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
-        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(id.to_string())
-            .fetch_optional(&self.db)
-            .await?;
-        row.as_ref().map(row_to_issue).transpose()
+        SqliteIssueRepository {
+            db,
+            write: WritePolicy::default(),
+        }
     }
 
-    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>> {
-        let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE short_id = ?");
-        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(short_id)
-            .fetch_optional(&self.db)
-            .await?;
-        row.as_ref().map(row_to_issue).transpose()
+    /// Override the write retry policy (wired from `DB_WRITE_*` in
+    /// `soika::build_state`); [`new`](Self::new) uses the defaults.
+    pub fn with_write_policy(mut self, write: WritePolicy) -> Self {
+        self.write = write;
+        self
     }
 
-    async fn find_by_fingerprint(
-        &self,
-        project_id: Id,
-        fingerprint: &str,
-    ) -> Result<Option<Issue>> {
-        let sql =
-            format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = ? AND fingerprint = ?");
-        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id.to_string())
-            .bind(fingerprint)
-            .fetch_optional(&self.db)
-            .await?;
-        row.as_ref().map(row_to_issue).transpose()
-    }
-
-    async fn upsert_by_fingerprint(&self, upsert: IssueUpsert) -> Result<UpsertOutcome> {
+    /// One attempt at [`IssueRepository::upsert_by_fingerprint`] — the whole
+    /// read-then-write in a single `BEGIN IMMEDIATE` transaction, so
+    /// [`retry_write`] can simply re-run it on a lock conflict.
+    async fn upsert_once(&self, upsert: &IssueUpsert) -> Result<UpsertOutcome> {
         // Allocate the short id up front, before opening the transaction: the
         // uniqueness pre-check borrows a pooled connection, and the test pool is
         // pinned to a single connection — doing it while the tx holds that
         // connection would deadlock. Only the new-issue branch consumes it.
         let short_id = super::unique_short_id(&self.db, "issues").await?;
 
-        // Run in a transaction so the read-then-write is consistent under
-        // concurrent ingestion of the same fingerprint.
-        let mut tx = self.db.begin().await?;
+        // The read-then-write must be consistent under concurrent ingestion of
+        // the same fingerprint, and it must announce itself as a writer: a
+        // deferred `BEGIN` would start as a reader and fail outright (SQLITE_BUSY,
+        // busy_timeout not applicable) when it later tried to upgrade.
+        let mut tx = begin_write(&self.db).await?;
         let seen = upsert.seen_at.to_rfc3339();
 
         let existing_sql =
@@ -207,6 +143,206 @@ impl IssueRepository for SqliteIssueRepository {
             is_new: true,
             is_regression: false,
         })
+    }
+
+    /// One attempt at [`IssueRepository::override_fingerprint`]: a single
+    /// `BEGIN IMMEDIATE` transaction, re-runnable by [`retry_write`].
+    async fn override_fingerprint_once(
+        &self,
+        issue_id: Id,
+        new_fingerprint: &str,
+    ) -> Result<Issue> {
+        // One write transaction so the collision check + merge/rename is atomic
+        // and respects the unique (project_id, fingerprint) index under
+        // concurrency. `BEGIN IMMEDIATE`, not a deferred `BEGIN`: the read-then-
+        // write would otherwise fail outright once another writer commits.
+        let mut tx = begin_write(&self.db).await?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // 1. Load the target issue (the row identified by `issue_id` always
+        //    survives — a merge deletes the *other* colliding row).
+        let target_sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
+        let target_row = sqlx::query(sqlx::AssertSqlSafe(&*target_sql))
+            .bind(issue_id.to_string())
+            .fetch_optional(&mut *tx)
+            .await?;
+        let target = match target_row {
+            Some(row) => row_to_issue(&row)?,
+            None => return Err(Error::not_found(format!("issue {issue_id}"))),
+        };
+
+        // 2. No-op: the fingerprint is unchanged. Avoid a pointless UPDATE and
+        //    any same-row collision logic.
+        if target.fingerprint == new_fingerprint {
+            tx.commit().await?;
+            return Ok(target);
+        }
+
+        // 3. Look for a colliding issue in the same project (the merge source).
+        let collision_sql = format!(
+            "SELECT {ISSUE_COLS} FROM issues \
+             WHERE project_id = ? AND fingerprint = ? AND id <> ?"
+        );
+        let collision_row = sqlx::query(sqlx::AssertSqlSafe(&*collision_sql))
+            .bind(target.project_id.to_string())
+            .bind(new_fingerprint)
+            .bind(issue_id.to_string())
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        let updated_row = if let Some(row) = collision_row {
+            // --- MERGE branch ------------------------------------------------
+            let source = row_to_issue(&row)?;
+
+            // Fold aggregates in Rust (earliest first_seen, latest last_seen).
+            let first_seen = target.first_seen.min(source.first_seen);
+            let last_seen = target.last_seen.max(source.last_seen);
+            let event_count = target.event_count + source.event_count;
+
+            // (a) Re-point the source's events onto the target FIRST, so the
+            //     subsequent DELETE does not CASCADE-delete them.
+            sqlx::query("UPDATE events SET issue_id = ? WHERE issue_id = ?")
+                .bind(target.id.to_string())
+                .bind(source.id.to_string())
+                .execute(&mut *tx)
+                .await?;
+
+            // (b) Delete the source BEFORE assigning its fingerprint to the
+            //     target, otherwise the unique index would transiently see two
+            //     rows holding `new_fingerprint`.
+            sqlx::query("DELETE FROM issues WHERE id = ?")
+                .bind(source.id.to_string())
+                .execute(&mut *tx)
+                .await?;
+
+            // (c) Fold the aggregates onto the surviving target and adopt the
+            //     new fingerprint.
+            let update_sql = format!(
+                "UPDATE issues SET \
+                    fingerprint = ?, \
+                    event_count = ?, \
+                    first_seen = ?, \
+                    last_seen = ?, \
+                    updated_at = ? \
+                 WHERE id = ? RETURNING {ISSUE_COLS}"
+            );
+            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
+                .bind(new_fingerprint)
+                .bind(event_count)
+                .bind(first_seen.to_rfc3339())
+                .bind(last_seen.to_rfc3339())
+                .bind(&now)
+                .bind(target.id.to_string())
+                .fetch_one(&mut *tx)
+                .await?
+        } else {
+            // --- RENAME branch (split) --------------------------------------
+            let update_sql = format!(
+                "UPDATE issues SET fingerprint = ?, updated_at = ? \
+                 WHERE id = ? RETURNING {ISSUE_COLS}"
+            );
+            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
+                .bind(new_fingerprint)
+                .bind(&now)
+                .bind(target.id.to_string())
+                .fetch_one(&mut *tx)
+                .await?
+        };
+
+        let issue = row_to_issue(&updated_row)?;
+        tx.commit().await?;
+        Ok(issue)
+    }
+}
+
+const ISSUE_COLS: &str = "id, short_id, project_id, fingerprint, title, culprit, level, \
+     environment, release, status, \
+     muted_at, muted_until, mute_threshold, mute_window_seconds, \
+     first_seen, last_seen, event_count, created_at, updated_at";
+
+fn row_to_issue(row: &sqlx::sqlite::SqliteRow) -> Result<Issue> {
+    let status: String = row.try_get("status")?;
+    Ok(Issue {
+        id: parse_id(row.try_get::<String, _>("id")?)?,
+        short_id: row.try_get("short_id")?,
+        project_id: parse_id(row.try_get::<String, _>("project_id")?)?,
+        fingerprint: row.try_get("fingerprint")?,
+        title: row.try_get("title")?,
+        culprit: row.try_get("culprit")?,
+        level: row.try_get("level")?,
+        environment: row.try_get("environment")?,
+        release: row.try_get("release")?,
+        status: IssueStatus::from_str(&status)?,
+        muted_at: parse_ts_opt(row.try_get::<Option<String>, _>("muted_at")?)?,
+        muted_until: parse_ts_opt(row.try_get::<Option<String>, _>("muted_until")?)?,
+        mute_threshold: row.try_get("mute_threshold")?,
+        mute_window_seconds: row.try_get("mute_window_seconds")?,
+        first_seen: parse_ts(row.try_get::<String, _>("first_seen")?)?,
+        last_seen: parse_ts(row.try_get::<String, _>("last_seen")?)?,
+        event_count: row.try_get("event_count")?,
+        created_at: parse_ts(row.try_get::<String, _>("created_at")?)?,
+        updated_at: parse_ts(row.try_get::<String, _>("updated_at")?)?,
+    })
+}
+
+fn parse_id(s: String) -> Result<Id> {
+    Id::parse_str(&s).map_err(|e| Error::internal(format!("invalid uuid in db: {e}")))
+}
+
+fn parse_ts(s: String) -> Result<Timestamp> {
+    chrono::DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| Error::internal(format!("invalid timestamp in db: {e}")))
+}
+
+/// Decode a nullable timestamp column (`None` → `None`).
+fn parse_ts_opt(s: Option<String>) -> Result<Option<Timestamp>> {
+    s.map(parse_ts).transpose()
+}
+
+#[async_trait]
+impl IssueRepository for SqliteIssueRepository {
+    async fn find_by_id(&self, id: Id) -> Result<Option<Issue>> {
+        let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+            .bind(id.to_string())
+            .fetch_optional(&self.db)
+            .await?;
+        row.as_ref().map(row_to_issue).transpose()
+    }
+
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Issue>> {
+        let sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE short_id = ?");
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+            .bind(short_id)
+            .fetch_optional(&self.db)
+            .await?;
+        row.as_ref().map(row_to_issue).transpose()
+    }
+
+    async fn find_by_fingerprint(
+        &self,
+        project_id: Id,
+        fingerprint: &str,
+    ) -> Result<Option<Issue>> {
+        let sql =
+            format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = ? AND fingerprint = ?");
+        let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+            .bind(project_id.to_string())
+            .bind(fingerprint)
+            .fetch_optional(&self.db)
+            .await?;
+        row.as_ref().map(row_to_issue).transpose()
+    }
+
+    async fn upsert_by_fingerprint(&self, upsert: IssueUpsert) -> Result<UpsertOutcome> {
+        // This is the hottest write in the system (one per ingested event) and
+        // the one that contends with every other writer, so it is retried as a
+        // whole: `upsert_once` is a single transaction, hence safe to re-run.
+        retry_write(&self.write, "upsert issue by fingerprint", || {
+            self.upsert_once(&upsert)
+        })
+        .await
     }
 
     async fn set_status(&self, issue_id: Id, status: IssueStatus) -> Result<Issue> {
@@ -391,104 +527,10 @@ impl IssueRepository for SqliteIssueRepository {
     }
 
     async fn override_fingerprint(&self, issue_id: Id, new_fingerprint: String) -> Result<Issue> {
-        // One transaction so the collision check + merge/rename is atomic and
-        // respects the unique (project_id, fingerprint) index under concurrency.
-        let mut tx = self.db.begin().await?;
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // 1. Load the target issue (the row identified by `issue_id` always
-        //    survives — a merge deletes the *other* colliding row).
-        let target_sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE id = ?");
-        let target_row = sqlx::query(sqlx::AssertSqlSafe(&*target_sql))
-            .bind(issue_id.to_string())
-            .fetch_optional(&mut *tx)
-            .await?;
-        let target = match target_row {
-            Some(row) => row_to_issue(&row)?,
-            None => return Err(Error::not_found(format!("issue {issue_id}"))),
-        };
-
-        // 2. No-op: the fingerprint is unchanged. Avoid a pointless UPDATE and
-        //    any same-row collision logic.
-        if target.fingerprint == new_fingerprint {
-            tx.commit().await?;
-            return Ok(target);
-        }
-
-        // 3. Look for a colliding issue in the same project (the merge source).
-        let collision_sql = format!(
-            "SELECT {ISSUE_COLS} FROM issues \
-             WHERE project_id = ? AND fingerprint = ? AND id <> ?"
-        );
-        let collision_row = sqlx::query(sqlx::AssertSqlSafe(&*collision_sql))
-            .bind(target.project_id.to_string())
-            .bind(&new_fingerprint)
-            .bind(issue_id.to_string())
-            .fetch_optional(&mut *tx)
-            .await?;
-
-        let updated_row = if let Some(row) = collision_row {
-            // --- MERGE branch ------------------------------------------------
-            let source = row_to_issue(&row)?;
-
-            // Fold aggregates in Rust (earliest first_seen, latest last_seen).
-            let first_seen = target.first_seen.min(source.first_seen);
-            let last_seen = target.last_seen.max(source.last_seen);
-            let event_count = target.event_count + source.event_count;
-
-            // (a) Re-point the source's events onto the target FIRST, so the
-            //     subsequent DELETE does not CASCADE-delete them.
-            sqlx::query("UPDATE events SET issue_id = ? WHERE issue_id = ?")
-                .bind(target.id.to_string())
-                .bind(source.id.to_string())
-                .execute(&mut *tx)
-                .await?;
-
-            // (b) Delete the source BEFORE assigning its fingerprint to the
-            //     target, otherwise the unique index would transiently see two
-            //     rows holding `new_fingerprint`.
-            sqlx::query("DELETE FROM issues WHERE id = ?")
-                .bind(source.id.to_string())
-                .execute(&mut *tx)
-                .await?;
-
-            // (c) Fold the aggregates onto the surviving target and adopt the
-            //     new fingerprint.
-            let update_sql = format!(
-                "UPDATE issues SET \
-                    fingerprint = ?, \
-                    event_count = ?, \
-                    first_seen = ?, \
-                    last_seen = ?, \
-                    updated_at = ? \
-                 WHERE id = ? RETURNING {ISSUE_COLS}"
-            );
-            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
-                .bind(&new_fingerprint)
-                .bind(event_count)
-                .bind(first_seen.to_rfc3339())
-                .bind(last_seen.to_rfc3339())
-                .bind(&now)
-                .bind(target.id.to_string())
-                .fetch_one(&mut *tx)
-                .await?
-        } else {
-            // --- RENAME branch (split) --------------------------------------
-            let update_sql = format!(
-                "UPDATE issues SET fingerprint = ?, updated_at = ? \
-                 WHERE id = ? RETURNING {ISSUE_COLS}"
-            );
-            sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
-                .bind(&new_fingerprint)
-                .bind(&now)
-                .bind(target.id.to_string())
-                .fetch_one(&mut *tx)
-                .await?
-        };
-
-        let issue = row_to_issue(&updated_row)?;
-        tx.commit().await?;
-        Ok(issue)
+        retry_write(&self.write, "override issue fingerprint", || {
+            self.override_fingerprint_once(issue_id, &new_fingerprint)
+        })
+        .await
     }
 
     async fn delete(&self, id: Id) -> Result<()> {

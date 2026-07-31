@@ -565,6 +565,7 @@ mod tests {
         Config {
             organization_name: "soika".into(),
             database_url: "sqlite::memory:".into(),
+            db: crate::config::DbConfig::default(),
             bind_addr: "127.0.0.1:0".into(),
             base_url,
             secret_key: "secret".into(),

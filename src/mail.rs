@@ -360,6 +360,7 @@ mod tests {
         Config {
             organization_name: "Acme".to_string(),
             database_url: "sqlite::memory:".to_string(),
+            db: crate::config::DbConfig::default(),
             bind_addr: "0.0.0.0:8080".to_string(),
             base_url: "https://errors.example.com/".to_string(),
             secret_key: "secret".to_string(),
