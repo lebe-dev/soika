@@ -20,12 +20,21 @@ pub mod invite_token;
 pub mod lockout;
 pub mod oidc;
 pub mod oidc_handlers;
+pub mod passkey;
+pub mod passkey_handlers;
 pub mod password;
 pub mod session;
 pub mod signing;
 
 // --- Router-facing handler surface (referenced by `crate::router`) -----------
 pub use handlers::{accept_invite, get_invite, login, logout, register, setup};
+
+// --- Passkey handler surface (referenced by `crate::router`) -----------------
+pub use passkey_handlers::{
+    delete as passkey_delete, list as passkey_list, login_options as passkey_login_options,
+    login_verify as passkey_login, register_options as passkey_register_options,
+    register_verify as passkey_register, rename as passkey_rename,
+};
 
 // --- OIDC handler surface (referenced by `crate::router`) ---------
 pub use oidc_handlers::{AuthConfig, auth_config, oidc_callback, oidc_login};

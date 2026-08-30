@@ -577,6 +577,7 @@ mod tests {
             // independently of SMTP configuration.
             smtp: None,
             oidc: None,
+            passkey: None,
             sentry: None,
             lockout: Default::default(),
             timezone: "UTC".to_string(),

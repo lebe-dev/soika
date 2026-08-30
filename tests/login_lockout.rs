@@ -156,6 +156,7 @@ fn test_config(lockout: LockoutConfig) -> Config {
         retention_cron: "0 0 * * * *".into(),
         smtp: None,
         oidc: None,
+        passkey: None,
         sentry: None,
         lockout,
         timezone: "UTC".to_string(),

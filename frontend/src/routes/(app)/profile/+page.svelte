@@ -1,7 +1,12 @@
 <script lang="ts">
   // Profile — change display name, notifications toggle, change password
   // Wires to GET/PATCH /profile via the shared API client.
-  import { profile as profileApi, errorMessage } from '$lib/api';
+  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { passkeys as passkeysApi, profile as profileApi, errorMessage } from '$lib/api';
+  import type { Passkey } from '$lib/api';
+  import { isCeremonyCancelled, passkeysSupported, registerPasskey } from '$lib/passkey';
+  import { formatDateTime } from '$lib/format';
   import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -70,6 +75,74 @@
       reportUnexpected(err);
     } finally {
       togglingNotifications = false;
+    }
+  }
+
+  // --- Passkeys ---
+  //
+  // The section is rendered only when the instance has the feature enabled
+  // (`/auth/config`) — the routes are `404` otherwise, so there is nothing to
+  // manage. Browser support is checked separately: an unsupported browser can
+  // still see and delete keys registered elsewhere, it just cannot add one.
+  const passkeyEnabled = $derived($page.data.config?.passkey_enabled ?? false);
+  const timezone = $derived($page.data.telemetry?.timezone ?? null);
+
+  let passkeyList = $state<Passkey[]>([]);
+  let loadingPasskeys = $state(false);
+  let addingPasskey = $state(false);
+  let passkeySupported = $state(false);
+  let newPasskeyName = $state('');
+  let busyPasskeyId = $state<string | null>(null);
+
+  // The layout's bootstrap load has already resolved by the time this mounts,
+  // so the feature flag is known here — no reactive re-fetch loop needed.
+  onMount(() => {
+    passkeySupported = passkeysSupported();
+    if (passkeyEnabled) loadPasskeys();
+  });
+
+  async function loadPasskeys() {
+    loadingPasskeys = true;
+    try {
+      passkeyList = await passkeysApi.list();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to load passkeys'));
+      reportUnexpected(err);
+    } finally {
+      loadingPasskeys = false;
+    }
+  }
+
+  async function addPasskey(event: SubmitEvent) {
+    event.preventDefault();
+    addingPasskey = true;
+    try {
+      const created = await registerPasskey(newPasskeyName.trim());
+      passkeyList = [created, ...passkeyList];
+      newPasskeyName = '';
+      toast.success('Passkey added');
+    } catch (err) {
+      // A dismissed system dialog is a deliberate choice, not a failure.
+      if (!isCeremonyCancelled(err)) {
+        toast.error(errorMessage(err, 'Failed to add the passkey'));
+        reportUnexpected(err);
+      }
+    } finally {
+      addingPasskey = false;
+    }
+  }
+
+  async function removePasskey(key: Passkey) {
+    busyPasskeyId = key.id;
+    try {
+      await passkeysApi.remove(key.id);
+      passkeyList = passkeyList.filter((k) => k.id !== key.id);
+      toast.success('Passkey removed');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to remove the passkey'));
+      reportUnexpected(err);
+    } finally {
+      busyPasskeyId = null;
     }
   }
 
@@ -193,6 +266,73 @@
       </div>
     </Card.Content>
   </Card.Root>
+
+  <!-- Passkeys -->
+  {#if passkeyEnabled}
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Passkeys</Card.Title>
+        <Card.Description>
+          Sign in with Touch ID, Windows Hello, or a security key instead of your password.
+        </Card.Description>
+      </Card.Header>
+      <Card.Content class="space-y-4">
+        {#if loadingPasskeys && passkeyList.length === 0}
+          <p class="text-muted-foreground text-sm">Loading…</p>
+        {:else if passkeyList.length === 0}
+          <p class="text-muted-foreground text-sm">No passkeys registered yet.</p>
+        {:else}
+          <ul class="divide-border divide-y">
+            {#each passkeyList as key (key.id)}
+              <li class="flex items-center justify-between gap-4 py-3">
+                <div class="min-w-0 space-y-0.5">
+                  <p class="truncate text-sm font-medium">{key.name}</p>
+                  <p class="text-muted-foreground text-xs">
+                    Added {formatDateTime(key.created_at, timezone)}
+                    {#if key.last_used_at}
+                      · last used {formatDateTime(key.last_used_at, timezone)}
+                    {:else}
+                      · never used
+                    {/if}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busyPasskeyId === key.id}
+                  onclick={() => removePasskey(key)}
+                >
+                  {busyPasskeyId === key.id ? 'Removing…' : 'Remove'}
+                </Button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        {#if passkeySupported}
+          <form onsubmit={addPasskey} class="flex items-end gap-2">
+            <div class="flex-1 space-y-2">
+              <label for="passkey-name" class="text-sm font-medium">Name</label>
+              <Input
+                id="passkey-name"
+                type="text"
+                placeholder="MacBook Touch ID"
+                bind:value={newPasskeyName}
+              />
+            </div>
+            <Button type="submit" disabled={addingPasskey}>
+              {addingPasskey ? 'Waiting…' : 'Add passkey'}
+            </Button>
+          </form>
+        {:else}
+          <p class="text-muted-foreground text-sm">
+            This browser cannot create passkeys. Keys added elsewhere still work here.
+          </p>
+        {/if}
+      </Card.Content>
+    </Card.Root>
+  {/if}
 
   <!-- Change password -->
   {#if canChangePassword}

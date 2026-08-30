@@ -4,6 +4,7 @@
   import { page } from '$app/stores';
   import { auth, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { isCeremonyCancelled, passkeysSupported, signInWithPasskey } from '$lib/passkey';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import * as Card from '$lib/components/ui/card';
@@ -41,6 +42,10 @@
   let email = $state('');
   let password = $state('');
   let submitting = $state(false);
+  let passkeySubmitting = $state(false);
+  // Feature detection runs in the browser only (onMount), so SSR/prerender
+  // never renders a button the visitor's browser cannot honour.
+  let passkeySupported = $state(false);
   let emailInput = $state<HTMLInputElement | null>(null);
   let passwordInput = $state<HTMLInputElement | null>(null);
 
@@ -55,6 +60,10 @@
   // the built-in admin (and any account allowed to use a password) signs in here,
   // while SSO is offered as an additional button rather than replacing the form.
   const showSso = $derived(config?.oauth_enabled ?? false);
+
+  // Passkeys are offered alongside the password form whenever the instance has
+  // the feature on and the browser supports WebAuthn.
+  const showPasskey = $derived((config?.passkey_enabled ?? false) && passkeySupported);
 
   // Open-redirect guard mirroring the backend `validated_next`: only a
   // site-relative path (starts with `/`, not `//`, no backslash — browsers
@@ -84,6 +93,8 @@
   });
 
   onMount(() => {
+    passkeySupported = passkeysSupported();
+
     const savedEmail = readStoredEmail();
     if (savedEmail) email = savedEmail;
 
@@ -93,6 +104,22 @@
       passwordInput?.focus();
     }
   });
+
+  // Usernameless sign-in: no email is submitted — the browser picks the
+  // credential and the backend resolves the account from its user handle.
+  async function signInWithPasskeyClicked() {
+    passkeySubmitting = true;
+    try {
+      const user = await signInWithPasskey();
+      authStore.set(user);
+      await goto(safeNext($page.url.searchParams.get('next')) ?? '/');
+    } catch (err) {
+      // A dismissed system dialog is a deliberate choice, not a failure.
+      if (!isCeremonyCancelled(err)) toast.error(errorMessage(err, 'Passkey sign-in failed'));
+    } finally {
+      passkeySubmitting = false;
+    }
+  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -155,6 +182,23 @@
               Register
             </a>
           </p>
+        {/if}
+
+        {#if showPasskey}
+          <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
+            <span class="bg-border h-px flex-1"></span>
+            or
+            <span class="bg-border h-px flex-1"></span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            class="w-full"
+            disabled={passkeySubmitting}
+            onclick={signInWithPasskeyClicked}
+          >
+            {passkeySubmitting ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
+          </Button>
         {/if}
 
         {#if showSso}

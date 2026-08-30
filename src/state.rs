@@ -12,9 +12,10 @@ use crate::ingest::RateLimiter;
 use crate::mail::Templates;
 use crate::ports::{
     Clock, EventRepository, FavoriteRepository, InviteRepository, IssueRepository, Mailer,
-    ProjectRepository, SessionRepository, SettingsRepository, TagMuteRuleRepository,
-    TeamRepository, UserRepository,
+    PasskeyRepository, ProjectRepository, SessionRepository, SettingsRepository,
+    TagMuteRuleRepository, TeamRepository, UserRepository,
 };
+use webauthn_rs::Webauthn;
 
 /// Application state shared across all handlers (cheaply cloneable).
 #[derive(Clone)]
@@ -30,6 +31,8 @@ pub struct AppState {
     /// Project-level "mute by tags" rules (notification suppression).
     pub mute_rules: Arc<dyn TagMuteRuleRepository>,
     pub invites: Arc<dyn InviteRepository>,
+    /// WebAuthn credentials (passkeys) registered by users.
+    pub passkeys: Arc<dyn PasskeyRepository>,
     pub settings: Arc<dyn SettingsRepository>,
     pub mailer: Arc<dyn Mailer>,
     /// Tera templates for outbound email (loaded once at startup).
@@ -44,6 +47,10 @@ pub struct AppState {
     /// OIDC provider, present only when SSO is enabled. Built once at
     /// startup via discovery (fail-fast); `None` keeps password login unchanged.
     pub oidc: Option<Arc<dyn OidcProvider>>,
+    /// WebAuthn relying party, present only when passkeys are enabled
+    /// (`PASSKEY_ENABLED`). Built once at startup from `Config::passkey`;
+    /// `None` makes every `/auth/passkey/*` and `/api/passkeys*` route a `404`.
+    pub webauthn: Option<Arc<Webauthn>>,
 }
 
 impl AppState {

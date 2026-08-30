@@ -89,9 +89,9 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
     use adapters::mailer::{NoopMailer, SmtpMailer};
     use adapters::sqlite::{
         SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
-        SqliteIssueRepository, SqliteProjectRepository, SqliteSessionRepository,
-        SqliteSettingsRepository, SqliteTagMuteRuleRepository, SqliteTeamRepository,
-        SqliteUserRepository,
+        SqliteIssueRepository, SqlitePasskeyRepository, SqliteProjectRepository,
+        SqliteSessionRepository, SqliteSettingsRepository, SqliteTagMuteRuleRepository,
+        SqliteTeamRepository, SqliteUserRepository,
     };
     use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
@@ -105,6 +105,16 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
     let templates = Arc::new(mail::Templates::load(&mail::templates_dir())?);
 
     let login_guard = Arc::new(LoginGuard::new(config.lockout.clone()));
+
+    // The WebAuthn relying party is built here (not lazily per request) so a
+    // misconfigured `PASSKEY_RP_ID` / origin fails at startup instead of on a
+    // user's first sign-in attempt.
+    let webauthn = config
+        .passkey
+        .as_ref()
+        .map(auth::passkey::build_webauthn)
+        .transpose()?
+        .map(Arc::new);
 
     // Read before `config` is moved into the state below. The write policy is
     // only wired into the repositories on the ingest / retention hot path —
@@ -124,6 +134,7 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
         events: Arc::new(SqliteEventRepository::new(pool.clone()).with_write_policy(write_policy)),
         mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
+        passkeys: Arc::new(SqlitePasskeyRepository::new(pool.clone())),
         settings: Arc::new(SqliteSettingsRepository::new(pool)),
         mailer,
         templates,
@@ -133,5 +144,6 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
         // The OIDC provider (if any) is wired separately after startup discovery
         // (fail-fast) via [`AppState::with_oidc`].
         oidc: None,
+        webauthn,
     })
 }

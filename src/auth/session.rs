@@ -209,6 +209,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".into(),
             smtp: None,
             oidc: None,
+            passkey: None,
             sentry: None,
             lockout: Default::default(),
             timezone: "UTC".to_string(),

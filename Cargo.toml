@@ -1,6 +1,6 @@
 [package]
 name = "soika"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Lightweight, Sentry-compatible error tracking system written in Rust"
@@ -117,6 +117,17 @@ base64 = "0.22.1"
 flate2 = "1.1.9"
 croner = "3.0.1"
 async-trait = "0.1.89"
+# Passkeys / WebAuthn. Pinned to the 0.6 pre-release line because 0.5 depends on
+# `openssl`, which would break the musl/Alpine release build; 0.6 is pure
+# RustCrypto. `webauthn-rs-core` is pulled in directly only for the protocol
+# enums the façade does not re-export (`ResidentKeyRequirement`).
+webauthn-rs = { version = "=0.6.1-dev", default-features = false, features = [
+    # Serialize the ceremony state so it can live in the signed challenge cookie.
+    "danger-allow-state-serialisation",
+    # Discoverable ("usernameless") credentials — the sign-in flow.
+    "conditional-ui",
+] }
+webauthn-rs-core = { version = "=0.6.1-dev", default-features = false }
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }

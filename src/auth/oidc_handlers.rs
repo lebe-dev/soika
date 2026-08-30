@@ -64,6 +64,10 @@ pub struct AuthConfig {
     pub oauth_enabled: bool,
     pub oauth_provider_name: String,
     pub password_login_enabled: bool,
+    /// Whether passkey (WebAuthn) sign-in is configured on this instance
+    /// (`PASSKEY_ENABLED`). Drives the "Sign in with a passkey" button and the
+    /// passkey section of the profile page.
+    pub passkey_enabled: bool,
     pub allow_signup: bool,
     /// Whether the instance admin has been provisioned. When `false` the
     /// SPA routes the operator to `/setup`; when `true`, `/setup` bounces to login.
@@ -100,6 +104,7 @@ pub async fn auth_config(
     OptionalAuthUser(current_user): OptionalAuthUser,
 ) -> Json<AuthConfig> {
     let oauth_enabled = state.oidc.is_some();
+    let passkey_enabled = state.webauthn.is_some();
     let oauth_provider_name = state
         .oidc
         .as_ref()
@@ -146,6 +151,7 @@ pub async fn auth_config(
         oauth_enabled,
         oauth_provider_name,
         password_login_enabled: !oauth_enabled,
+        passkey_enabled,
         allow_signup,
         initialized,
         user,

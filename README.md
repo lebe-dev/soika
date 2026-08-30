@@ -171,6 +171,59 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
   keeps password login, so the instance remains accessible if SSO is
   misconfigured.
 
+## Passkeys (WebAuthn)
+
+Passkeys let a user sign in with Touch ID / Face ID / Windows Hello or a
+security key instead of a password. The feature is **off by default**
+(`PASSKEY_ENABLED=false`); enabling it changes nothing for accounts that do not
+register a key.
+
+### 1. Enable it
+
+Everything is derived from `BASE_URL`, so a standard deployment needs one line:
+
+```env
+BASE_URL=https://errors.example.com
+PASSKEY_ENABLED=true
+```
+
+That binds credentials to the relying party id `errors.example.com` and accepts
+assertions from the origin `https://errors.example.com`. Override
+`PASSKEY_RP_ID`, `PASSKEY_RP_NAME`, `PASSKEY_RP_ORIGIN`,
+`PASSKEY_EXTRA_ORIGINS`, `PASSKEY_ALLOW_SUBDOMAINS`, `PASSKEY_TIMEOUT_SECONDS`,
+`PASSKEY_CHALLENGE_TTL_SECONDS` or `PASSKEY_MAX_PER_USER` only when the defaults
+do not fit — `.env.example` documents each one.
+
+> **`PASSKEY_RP_ID` is permanent.** Credentials are cryptographically bound to
+> it, so changing it (or moving the instance to another domain) invalidates
+> every registered passkey and users must register again.
+
+WebAuthn only works in a *secure context*: `https://`, or `http://localhost` for
+local development. Behind a proxy, set `BASE_URL` to the externally reachable
+`https://` URL.
+
+### 2. Register a key
+
+A signed-in user opens **Profile → Passkeys**, names the key, and confirms the
+browser prompt. Keys can be removed there at any time; each user may register up
+to `PASSKEY_MAX_PER_USER` of them.
+
+### 3. Sign in
+
+The login page shows **"Sign in with a passkey"** whenever the feature is on and
+the browser supports WebAuthn. No email is typed: the browser offers the
+credentials it holds for this site, and soika resolves the account from the
+credential itself — so the sign-in form leaks nothing about which accounts
+exist.
+
+Passkey sign-in shares the brute-force guard with password login (keyed per
+client IP) and honours the same account gates: a `pending` account still has to
+be approved by an instance admin before it receives a session.
+
+Passkeys coexist with everything else: password login and SSO keep working, and
+an account with no registered key is unaffected. Deleting a user deletes their
+credentials with them.
+
 ## Database & write concurrency (SQLite)
 
 soika stores everything in one SQLite file. SQLite allows **many readers but

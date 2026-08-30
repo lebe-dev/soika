@@ -110,6 +110,16 @@ pub fn build(state: AppState) -> Router {
             get(api::invites::list).post(api::invites::create),
         )
         .route("/teams/{id}/invites/{token}", delete(api::invites::revoke))
+        // --- Passkeys (WebAuthn credential management for the caller) ---
+        .route(
+            "/passkeys",
+            get(auth::passkey_list).post(auth::passkey_register),
+        )
+        .route("/passkeys/options", post(auth::passkey_register_options))
+        .route(
+            "/passkeys/{id}",
+            patch(auth::passkey_rename).delete(auth::passkey_delete),
+        )
         // --- Profile ---
         // Read goes through the bootstrap `/auth/config` (which embeds the
         // current user); only the update verb lives here.
@@ -145,6 +155,12 @@ pub fn build(state: AppState) -> Router {
         // OIDC / SSO — browser navigations, not JSON.
         .route("/auth/oidc/login", get(auth::oidc_login))
         .route("/auth/oidc/callback", get(auth::oidc_callback))
+        // Passkey sign-in — usernameless WebAuthn, no email submitted.
+        .route(
+            "/auth/passkey/login/options",
+            post(auth::passkey_login_options),
+        )
+        .route("/auth/passkey/login", post(auth::passkey_login))
         .route("/auth/config", get(auth::auth_config));
 
     Router::new()

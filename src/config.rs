@@ -157,6 +157,40 @@ impl std::fmt::Debug for OidcConfig {
     }
 }
 
+/// Optional passkey (WebAuthn) configuration. When `None`, passkey sign-in and
+/// registration are disabled and every `/auth/passkey/*` route answers `404`.
+///
+/// WebAuthn binds credentials to a *relying party id* (`rp_id`) — an effective
+/// domain — and validates the browser-reported `origin` against a fixed list.
+/// Both are derived from `BASE_URL` by default, so a standard deployment only
+/// has to set `PASSKEY_ENABLED=true`.
+#[derive(Debug, Clone)]
+pub struct PasskeyConfig {
+    /// Relying party id (`PASSKEY_RP_ID`): the effective domain credentials are
+    /// bound to, e.g. `errors.example.com`. Defaults to the host of `BASE_URL`.
+    /// Changing it invalidates every registered credential.
+    pub rp_id: String,
+    /// Human-readable relying party name shown by the authenticator
+    /// (`PASSKEY_RP_NAME`); defaults to `ORGANIZATION_NAME`.
+    pub rp_name: String,
+    /// Origin the SPA is served from (`PASSKEY_RP_ORIGIN`); defaults to `BASE_URL`.
+    pub rp_origin: String,
+    /// Additional accepted origins (`PASSKEY_EXTRA_ORIGINS`, comma-separated),
+    /// e.g. the vite dev server during local development.
+    pub extra_origins: Vec<String>,
+    /// Accept origins on subdomains of `rp_id` (`PASSKEY_ALLOW_SUBDOMAINS`).
+    pub allow_subdomains: bool,
+    /// How long the browser is given to complete a ceremony
+    /// (`PASSKEY_TIMEOUT_SECONDS`), passed to the authenticator as a hint.
+    pub timeout: Duration,
+    /// Lifetime of the signed challenge cookie holding the ceremony state
+    /// (`PASSKEY_CHALLENGE_TTL_SECONDS`). Bounds how long an unfinished
+    /// registration/authentication remains completable.
+    pub challenge_ttl: Duration,
+    /// Maximum credentials one user may register (`PASSKEY_MAX_PER_USER`).
+    pub max_per_user: i64,
+}
+
 /// How durably SQLite flushes each commit (`PRAGMA synchronous`).
 ///
 /// Under WAL, `Normal` is the documented safe choice: a commit is not fsynced
@@ -297,6 +331,8 @@ pub struct Config {
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
     pub oidc: Option<OidcConfig>,
+    /// Optional passkey / WebAuthn settings (`PASSKEY_*`); `None` when disabled.
+    pub passkey: Option<PasskeyConfig>,
     /// Optional Sentry telemetry settings (`SENTRY_*`); `None` when disabled.
     pub sentry: Option<SentryConfig>,
     /// Brute-force protection for password logins (`LOGIN_LOCKOUT_*`).
@@ -323,6 +359,7 @@ impl std::fmt::Debug for Config {
             .field("retention_cron", &self.retention_cron)
             .field("smtp", &self.smtp)
             .field("oidc", &self.oidc)
+            .field("passkey", &self.passkey)
             .field("sentry", &self.sentry)
             .field("lockout", &self.lockout)
             .field("timezone", &self.timezone)
@@ -363,6 +400,7 @@ impl Config {
 
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
+        let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
         let sentry = Self::sentry_from_env();
         let lockout = Self::lockout_from_env()?;
         let timezone = env_or("TIMEZONE", "UTC");
@@ -380,6 +418,7 @@ impl Config {
             retention_cron,
             smtp,
             oidc,
+            passkey,
             sentry,
             lockout,
             timezone,
@@ -595,6 +634,94 @@ impl Config {
             require_approval,
         }))
     }
+
+    /// Build the optional passkey config; returns `Ok(None)` when
+    /// `PASSKEY_ENABLED` is not truthy.
+    ///
+    /// Everything defaults off `BASE_URL`: the relying party id is its host and
+    /// the accepted origin is the base URL itself, so enabling passkeys on a
+    /// correctly-configured deployment needs no further variables. A blank
+    /// host (a malformed `BASE_URL`) fails fast rather than producing an
+    /// unusable relying party.
+    fn passkey_from_env(base_url: &str, organization_name: &str) -> Result<Option<PasskeyConfig>> {
+        if !parse_bool(&env_or("PASSKEY_ENABLED", "false")) {
+            return Ok(None);
+        }
+
+        let rp_id = match env_opt("PASSKEY_RP_ID") {
+            Some(value) => value.trim().to_string(),
+            None => host_from_url(base_url).ok_or_else(|| {
+                Error::validation(
+                    "PASSKEY_RP_ID could not be derived from BASE_URL; set it explicitly",
+                )
+            })?,
+        };
+        if rp_id.is_empty() {
+            return Err(Error::validation("PASSKEY_RP_ID must not be empty"));
+        }
+
+        let rp_name = env_or("PASSKEY_RP_NAME", organization_name);
+        let rp_origin = env_opt("PASSKEY_RP_ORIGIN")
+            .unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
+        let extra_origins = split_list(&env_opt("PASSKEY_EXTRA_ORIGINS").unwrap_or_default(), ',');
+        let allow_subdomains = parse_bool(&env_or("PASSKEY_ALLOW_SUBDOMAINS", "false"));
+
+        let timeout = env_secs("PASSKEY_TIMEOUT_SECONDS", 60)?;
+        if timeout.is_zero() {
+            return Err(Error::validation(
+                "PASSKEY_TIMEOUT_SECONDS must be greater than 0",
+            ));
+        }
+
+        let challenge_ttl = env_secs("PASSKEY_CHALLENGE_TTL_SECONDS", 300)?;
+        if challenge_ttl.is_zero() {
+            return Err(Error::validation(
+                "PASSKEY_CHALLENGE_TTL_SECONDS must be greater than 0",
+            ));
+        }
+
+        let max_per_user = env_or("PASSKEY_MAX_PER_USER", "10")
+            .parse::<i64>()
+            .map_err(|e| Error::validation(format!("PASSKEY_MAX_PER_USER: {e}")))?;
+        if max_per_user < 1 {
+            return Err(Error::validation("PASSKEY_MAX_PER_USER must be at least 1"));
+        }
+
+        Ok(Some(PasskeyConfig {
+            rp_id,
+            rp_name,
+            rp_origin,
+            extra_origins,
+            allow_subdomains,
+            timeout,
+            challenge_ttl,
+            max_per_user,
+        }))
+    }
+}
+
+/// Extract the host of an absolute URL (no scheme, userinfo or port).
+///
+/// Deliberately hand-rolled: `config` stays free of URL/WebAuthn dependencies,
+/// and the only shapes it must handle are the `BASE_URL` values an operator
+/// writes. Returns `None` when no host can be found.
+fn host_from_url(url: &str) -> Option<String> {
+    let without_scheme = url.trim().split_once("://").map(|(_, rest)| rest)?;
+    let authority = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    // Drop userinfo (`user:pass@host`) and the port.
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = match host.strip_prefix('[') {
+        // IPv6 literal: keep the brackets' contents, port follows the `]`.
+        Some(rest) => rest.split(']').next().unwrap_or_default(),
+        None => host.split(':').next().unwrap_or_default(),
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some(host.to_ascii_lowercase())
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -795,6 +922,138 @@ mod tests {
         for k in OAUTH_KEYS {
             unsafe { std::env::remove_var(k) };
         }
+    }
+
+    const PASSKEY_KEYS: &[&str] = &[
+        "PASSKEY_ENABLED",
+        "PASSKEY_RP_ID",
+        "PASSKEY_RP_NAME",
+        "PASSKEY_RP_ORIGIN",
+        "PASSKEY_EXTRA_ORIGINS",
+        "PASSKEY_ALLOW_SUBDOMAINS",
+        "PASSKEY_TIMEOUT_SECONDS",
+        "PASSKEY_CHALLENGE_TTL_SECONDS",
+        "PASSKEY_MAX_PER_USER",
+    ];
+
+    fn clear_passkey_env() {
+        for k in PASSKEY_KEYS {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn passkey_disabled_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_passkey_env();
+
+        let passkey = Config::passkey_from_env("https://errors.example.com", "soika").unwrap();
+        assert!(passkey.is_none());
+
+        unsafe { std::env::set_var("PASSKEY_ENABLED", "false") };
+        let passkey = Config::passkey_from_env("https://errors.example.com", "soika").unwrap();
+        assert!(passkey.is_none());
+
+        clear_passkey_env();
+    }
+
+    #[test]
+    fn passkey_enabled_defaults_derive_from_base_url() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_passkey_env();
+        unsafe { std::env::set_var("PASSKEY_ENABLED", "true") };
+
+        let passkey = Config::passkey_from_env("https://errors.example.com/", "Acme")
+            .unwrap()
+            .expect("passkey should be Some when enabled");
+
+        assert_eq!(passkey.rp_id, "errors.example.com");
+        assert_eq!(passkey.rp_origin, "https://errors.example.com");
+        assert_eq!(passkey.rp_name, "Acme");
+        assert!(passkey.extra_origins.is_empty());
+        assert!(!passkey.allow_subdomains);
+        assert_eq!(passkey.timeout, Duration::from_secs(60));
+        assert_eq!(passkey.challenge_ttl, Duration::from_secs(300));
+        assert_eq!(passkey.max_per_user, 10);
+
+        clear_passkey_env();
+    }
+
+    #[test]
+    fn passkey_enabled_honours_overrides() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_passkey_env();
+        unsafe { std::env::set_var("PASSKEY_ENABLED", "true") };
+        unsafe { std::env::set_var("PASSKEY_RP_ID", "example.com") };
+        unsafe { std::env::set_var("PASSKEY_RP_NAME", "Soika SSO") };
+        unsafe { std::env::set_var("PASSKEY_RP_ORIGIN", "https://app.example.com") };
+        unsafe {
+            std::env::set_var(
+                "PASSKEY_EXTRA_ORIGINS",
+                "http://localhost:4200, http://localhost:8080",
+            )
+        };
+        unsafe { std::env::set_var("PASSKEY_ALLOW_SUBDOMAINS", "true") };
+        unsafe { std::env::set_var("PASSKEY_MAX_PER_USER", "3") };
+
+        let passkey = Config::passkey_from_env("https://errors.example.com", "soika")
+            .unwrap()
+            .expect("passkey should be Some when enabled");
+
+        assert_eq!(passkey.rp_id, "example.com");
+        assert_eq!(passkey.rp_name, "Soika SSO");
+        assert_eq!(passkey.rp_origin, "https://app.example.com");
+        assert_eq!(
+            passkey.extra_origins,
+            vec!["http://localhost:4200", "http://localhost:8080"]
+        );
+        assert!(passkey.allow_subdomains);
+        assert_eq!(passkey.max_per_user, 3);
+
+        clear_passkey_env();
+    }
+
+    #[test]
+    fn passkey_rejects_invalid_quota() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_passkey_env();
+        unsafe { std::env::set_var("PASSKEY_ENABLED", "true") };
+        unsafe { std::env::set_var("PASSKEY_MAX_PER_USER", "0") };
+
+        let err = Config::passkey_from_env("https://errors.example.com", "soika").unwrap_err();
+        assert!(matches!(err, Error::Validation(_)), "got {err:?}");
+
+        clear_passkey_env();
+    }
+
+    #[test]
+    fn passkey_without_derivable_host_is_a_validation_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_passkey_env();
+        unsafe { std::env::set_var("PASSKEY_ENABLED", "true") };
+
+        let err = Config::passkey_from_env("not-a-url", "soika").unwrap_err();
+        assert!(matches!(err, Error::Validation(_)), "got {err:?}");
+
+        clear_passkey_env();
+    }
+
+    #[test]
+    fn host_from_url_handles_ports_userinfo_and_ipv6() {
+        assert_eq!(
+            host_from_url("https://errors.example.com/path?x=1"),
+            Some("errors.example.com".to_string())
+        );
+        assert_eq!(
+            host_from_url("http://localhost:8080"),
+            Some("localhost".to_string())
+        );
+        assert_eq!(
+            host_from_url("https://user:pass@Errors.Example.COM:8443/"),
+            Some("errors.example.com".to_string())
+        );
+        assert_eq!(host_from_url("http://[::1]:8080/"), Some("::1".to_string()));
+        assert_eq!(host_from_url("localhost:8080"), None);
     }
 
     #[test]

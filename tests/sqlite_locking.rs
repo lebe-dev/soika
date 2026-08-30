@@ -305,6 +305,7 @@ fn test_config(database_url: &str, db: DbConfig) -> Config {
         retention_cron: "0 0 * * * *".into(),
         smtp: None,
         oidc: None,
+        passkey: None,
         sentry: None,
         lockout: Default::default(),
         timezone: "UTC".to_string(),

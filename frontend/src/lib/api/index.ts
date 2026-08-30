@@ -24,10 +24,13 @@ import type {
   IssueListQuery,
   LoginRequest,
   MuteRequest,
+  Passkey,
   Profile,
   Project,
   ProjectDetail,
+  RegisterPasskeyRequest,
   RegisterRequest,
+  RenamePasskeyRequest,
   SdkSetup,
   ServiceSettings,
   SetupRequest,
@@ -65,7 +68,28 @@ export const auth = {
     http.post<User>('/auth/register', { body, fetch: ctx?.fetch }),
   /** First-run admin provisioning; only succeeds while uninitialized. */
   setup: (body: SetupRequest, ctx?: Ctx) =>
-    http.post<User>('/auth/setup', { body, fetch: ctx?.fetch })
+    http.post<User>('/auth/setup', { body, fetch: ctx?.fetch }),
+  /**
+   * Start a usernameless passkey sign-in: returns the WebAuthn request options
+   * and sets the signed challenge cookie the verification step consumes.
+   */
+  passkeyLoginOptions: (ctx?: Ctx) =>
+    http.post<{ publicKey: unknown }>('/auth/passkey/login/options', { fetch: ctx?.fetch }),
+  /** Finish a passkey sign-in with the browser's assertion; starts the session. */
+  passkeyLogin: (credential: unknown, ctx?: Ctx) =>
+    http.post<User>('/auth/passkey/login', { body: credential, fetch: ctx?.fetch })
+};
+
+export const passkeys = {
+  list: (ctx?: Ctx) => http.get<Passkey[]>('/passkeys', { fetch: ctx?.fetch }),
+  /** Start registering a new credential for the signed-in user. */
+  registerOptions: (ctx?: Ctx) =>
+    http.post<{ publicKey: unknown }>('/passkeys/options', { fetch: ctx?.fetch }),
+  register: (body: RegisterPasskeyRequest, ctx?: Ctx) =>
+    http.post<Passkey>('/passkeys', { body, fetch: ctx?.fetch }),
+  rename: (id: Id, body: RenamePasskeyRequest, ctx?: Ctx) =>
+    http.patch<Passkey>(`/passkeys/${id}`, { body, fetch: ctx?.fetch }),
+  remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/passkeys/${id}`, { fetch: ctx?.fetch })
 };
 
 export const invites = {
@@ -187,6 +211,7 @@ export const admin = {
 export const api = {
   auth,
   invites,
+  passkeys,
   profile,
   projects,
   issues,

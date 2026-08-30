@@ -641,6 +641,7 @@ fn test_config() -> Config {
         retention_cron: "0 0 * * * *".into(),
         smtp: None,
         oidc: None,
+        passkey: None,
         sentry: None,
         lockout: LockoutConfig {
             enabled: false,

@@ -74,6 +74,12 @@ export interface AuthConfig {
   oauth_enabled: boolean;
   oauth_provider_name: string;
   password_login_enabled: boolean;
+  /**
+   * Whether passkey (WebAuthn) sign-in is configured on this instance
+   * (`PASSKEY_ENABLED`). Drives the passkey button on the login page and the
+   * passkey section of the profile.
+   */
+  passkey_enabled: boolean;
   allow_signup: boolean;
   /**
    * Whether the instance Owner has been provisioned. When `false` the SPA
@@ -124,6 +130,27 @@ export type Profile = User;
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+// --- Passkeys (src/auth/passkey_handlers.rs) ---
+
+/** `PasskeyView` — a registered WebAuthn credential; never carries key material. */
+export interface Passkey {
+  id: Id;
+  name: string;
+  created_at: Timestamp;
+  /** Last successful sign-in with this key; `null` until first used. */
+  last_used_at: Timestamp | null;
+}
+
+/** `POST /passkeys` body: the browser's attestation response plus a label. */
+export interface RegisterPasskeyRequest {
+  name?: string;
+  credential: unknown;
+}
+
+export interface RenamePasskeyRequest {
+  name: string;
 }
 
 export interface RegisterRequest {
