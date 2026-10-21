@@ -116,6 +116,11 @@ stop-env:
 docker-push:
     docker push {{ IMAGE }}:{{ TAG }}
 
+# Scan the latest image from Docker Hub and save the report.
+trivy:
+    mkdir -p docs
+    trivy image --image-src remote --format table --output docs/trivy-scan-report.txt {{ IMAGE }}:latest
+
 # Remove build artifacts.
 clean:
     cargo clean
