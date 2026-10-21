@@ -1,11 +1,11 @@
 # Soika Helm chart
 
-This chart deploys the single-binary Soika image with a persistent SQLite volume.
-It uses one replica and a `Recreate` deployment strategy so upgrades do not run
-two processes against the same database. The application runs migrations at
-startup; no migration Job is needed.
+This chart deploys the single-binary Soika image with SQLite or PostgreSQL 15+.
+It uses one replica and a `Recreate` deployment strategy: the retention scheduler,
+ingestion rate limiter, and login lockout are per process. The application runs
+the selected database's migrations at startup; no migration Job is needed.
 
-## Install
+## SQLite install (default)
 
 Create a local values file with a public URL and a persistent secret key:
 
@@ -54,16 +54,39 @@ match the external URL for DSNs, email links, secure cookies, and passkeys.
 Enable either `ingress` or `httpRoute` for public access. HTTPRoute requires
 the Gateway API CRDs and a configured Gateway.
 
-The chart creates a `ReadWriteOnce` PVC at `/app/data`. Use a storage class
+For SQLite, the chart creates a `ReadWriteOnce` PVC at `/app/data`. Use a storage class
 with working SQLite file locks; avoid NFS and SMB. Set
 `persistence.existingClaim` to reuse a claim. The created PVC has Helm's
 `keep` annotation so uninstall does not delete the database. Disabling
 `persistence` uses an `emptyDir`, which loses data when the Pod is replaced.
 The application also uses a writable temporary directory at `/tmp`.
 
-To store data in PostgreSQL 15+ instead, put a `postgres://` URL in
-`secrets.envs` as `DATABASE_URL` (it carries the password) and remove the
-SQLite `DATABASE_URL` from `envs`. The database must already exist; Soika
-creates its tables at startup. The PVC then only backs `/app/data` and can be
-disabled with `persistence.enabled: false`. Keep one replica: the retention
-scheduler, rate limiter and login lockout are per process.
+## PostgreSQL install
+
+Create a PostgreSQL 15+ database separately. Set its URL in a Secret because it
+contains a password; replace the default SQLite `DATABASE_URL` in `envs` by
+specifying the full list without it:
+
+```yaml
+envs:
+  - name: BIND_ADDR
+    value: "0.0.0.0:8080"
+  - name: BASE_URL
+    value: "https://errors.example.com"
+secrets:
+  envs:
+    - name: SECRET_KEY
+      value: "replace-with-a-random-secret"
+    - name: DATABASE_URL
+      value: "postgres://soika:password@postgres.example.com:5432/soika?sslmode=require"
+persistence:
+  enabled: false
+```
+
+You can also set `secrets.create: false` and `secrets.existingSecret` to a
+preexisting Secret containing both `SECRET_KEY` and `DATABASE_URL`. With
+`persistence.enabled: false`, the chart creates no PVC; the `/app/data` mount
+is an ephemeral `emptyDir` and does not hold application data on PostgreSQL.
+The PostgreSQL database must exist before Soika starts; Soika creates its tables.
+Switching from SQLite to PostgreSQL does not copy existing data. Ensure the
+selected Soika image includes PostgreSQL support.

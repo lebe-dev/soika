@@ -1,5 +1,5 @@
 {{- if ne (int .Values.replicaCount) 1 -}}
-{{- fail "Soika uses a single SQLite database; replicaCount must be 1" -}}
+{{- fail "Soika requires replicaCount=1 on both SQLite and PostgreSQL because its scheduler and rate limits are per process" -}}
 {{- end -}}
 apiVersion: apps/v1
 kind: Deployment

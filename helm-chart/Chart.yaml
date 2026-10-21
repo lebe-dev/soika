@@ -1,6 +1,6 @@
 apiVersion: v2
 name: soika
-description: Lightweight Sentry-compatible error tracker with embedded SQLite storage
+description: Lightweight Sentry-compatible error tracker with SQLite or PostgreSQL storage
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "0.7.0"

@@ -1,4 +1,5 @@
-# Soika uses one SQLite database and runs migrations at startup. Keep one replica.
+# Keep one replica on either database: scheduler and rate limits are per process.
+# Soika runs the selected database's migrations at startup.
 replicaCount: 1
 revisionHistoryLimit: 2
 
@@ -97,7 +98,8 @@ httpRoute:
             type: PathPrefix
             value: /
 
-# Use a block-storage volume that supports SQLite file locking. Avoid NFS/SMB.
+# SQLite: use block storage with working file locks (not NFS/SMB).
+# PostgreSQL: set enabled: false; the external database holds persistent data.
 # If existingClaim is set, the chart does not create a PVC.
 persistence:
   enabled: true
