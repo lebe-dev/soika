@@ -31,5 +31,6 @@ node_modules
 !/docs/**/*.md
 !README.md
 !DEV.md
+!LICENSE.md
 
 /data
