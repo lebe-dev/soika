@@ -81,9 +81,6 @@ test-postgres name="":
     trap 'docker rm -f soika-test-postgres >/dev/null 2>&1 || true' EXIT
     SOIKA_TEST_DB=postgres cargo test {{ name }}
 
-# Everything: backend on SQLite, frontend, then backend on PostgreSQL.
-test-all: test && test-postgres
-
 # Run the backend tests with an LCOV coverage report (read by SonarQube via
 # `sonar.rust.lcov.reportPaths`). Requires `cargo install cargo-llvm-cov`.
 # `--remap-path-prefix` makes source paths workspace-relative so they resolve
@@ -99,7 +96,8 @@ test-frontend-coverage:
     cd frontend && yarn vitest run --coverage
     sed -i.bak 's#^SF:#SF:frontend/#' frontend/coverage/lcov.info && rm -f frontend/coverage/lcov.info.bak
 
-test: test-backend && test-frontend
+# Every test: backend on SQLite, frontend, then backend on PostgreSQL (needs Docker).
+test: test-backend && test-frontend test-postgres
 
 # Lint with clippy, denying warnings.
 lint: fmt

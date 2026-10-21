@@ -188,7 +188,7 @@ the unique index and row locks instead of a database-wide lock:
 ```sh
 just test-backend [name]    # SQLite
 just test-postgres [name]   # PostgreSQL 15 (Docker)
-just test-all               # SQLite + frontend + PostgreSQL
+just test                   # everything: SQLite + frontend + PostgreSQL
 ```
 
 ## Adding a table or repository

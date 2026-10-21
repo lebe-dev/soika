@@ -103,7 +103,7 @@ Common checks:
 just test-backend              # all backend tests (SQLite)
 just test-backend <name>       # focused backend test
 just test-postgres [name]      # backend tests on PostgreSQL 15 (Docker)
-just test-all                  # SQLite + frontend + PostgreSQL
+just test                      # everything: SQLite, frontend, PostgreSQL
 just test-frontend             # all frontend tests
 just lint                      # backend lint (also formats)
 just lint-frontend             # Prettier and Svelte checks
