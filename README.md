@@ -14,7 +14,7 @@ docker run -d \
   -p 8080:8080 \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -v soika-data:/app/data \
-  tinyops/soika:latest
+  tinyops/soika:0.7.0
 ```
 
 Open [http://localhost:8080](http://localhost:8080) and create the initial
