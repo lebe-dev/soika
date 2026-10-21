@@ -51,6 +51,9 @@ API CORS separate from the permissive DSN-authenticated ingestion routes.
 
 ## Database changes
 
+The backends, data model, migrations and write-concurrency rules are described
+in [Database architecture](docs/DATABASE.md).
+
 Every schema change is a new numbered SQL file in **both** `migrations/sqlite/`
 and `migrations/postgres/`; never edit a migration that has already been
 applied. The histories are numbered independently (PostgreSQL starts from one
