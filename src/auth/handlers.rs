@@ -103,6 +103,7 @@ pub struct UserView {
     /// Instance-wide role (`owner | manager | member`).
     pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
+    pub locale: Option<crate::domain::Locale>,
     /// Account origin: `"local"` or `"oidc"` (lets the UI hide "change password").
     pub auth_provider: crate::domain::AuthProvider,
 }
@@ -115,6 +116,7 @@ impl From<User> for UserView {
             display_name: u.display_name,
             instance_role: u.instance_role,
             notifications_enabled: u.notifications_enabled,
+            locale: u.locale,
             auth_provider: u.auth_provider,
         }
     }

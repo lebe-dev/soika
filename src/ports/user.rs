@@ -1,6 +1,6 @@
 //! User repository port.
 
-use crate::domain::{AuthProvider, Id, InstanceRole, User, UserStatus};
+use crate::domain::{AuthProvider, Id, InstanceRole, Locale, User, UserStatus};
 use crate::error::Result;
 use async_trait::async_trait;
 
@@ -26,6 +26,9 @@ pub struct UserUpdate {
     pub display_name: Option<String>,
     pub password_hash: Option<String>,
     pub notifications_enabled: Option<bool>,
+    pub locale: Option<Locale>,
+    /// Set only if no preference has been saved, atomically.
+    pub initial_locale: Option<Locale>,
     /// Activation status; used to approve a pending account.
     pub status: Option<UserStatus>,
 }

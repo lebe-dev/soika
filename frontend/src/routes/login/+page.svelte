@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
@@ -32,12 +33,12 @@
   }
 
   // Maps callback `?error=<slug>` values to user-facing messages.
-  const ERROR_MESSAGES: Record<string, string> = {
-    forbidden: 'Your account is not allowed to sign in.',
-    auth_failed: 'Sign-in failed. Please try again.',
-    invalid_request: 'The sign-in request was invalid. Please try again.',
-    sso_failed: 'Single sign-on failed. Please try again.'
-  };
+  const ERROR_MESSAGES: Record<string, string> = $derived({
+    forbidden: $t('your_account_is_not_allowed_to_sign_in'),
+    auth_failed: $t('sign_in_failed_please_try_again'),
+    invalid_request: $t('the_sign_in_request_was_invalid_please_try_again'),
+    sso_failed: $t('single_sign_on_failed_please_try_again')
+  });
 
   let email = $state('');
   let password = $state('');
@@ -81,7 +82,7 @@
 
   $effect(() => {
     const slug = $page.url.searchParams.get('error');
-    if (slug) toast.error(ERROR_MESSAGES[slug] ?? 'Sign-in failed.');
+    if (slug) toast.error(ERROR_MESSAGES[slug] ?? $t('sign_in_failed'));
   });
 
   // The layout sets `data.config` to `null` only when the bootstrap fetch
@@ -89,7 +90,7 @@
   // non-blocking toast so a hard-down backend is visible instead of the form
   // silently rendering empty. The password form still works as a fallback.
   $effect(() => {
-    if (config === null) toast.error('Could not reach the server');
+    if (config === null) toast.error($t('could_not_reach_the_server'));
   });
 
   onMount(() => {
@@ -115,7 +116,7 @@
       await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
       // A dismissed system dialog is a deliberate choice, not a failure.
-      if (!isCeremonyCancelled(err)) toast.error(errorMessage(err, 'Passkey sign-in failed'));
+      if (!isCeremonyCancelled(err)) toast.error(errorMessage(err, $t('passkey_sign_in_failed')));
     } finally {
       passkeySubmitting = false;
     }
@@ -130,26 +131,26 @@
       authStore.set(user);
       await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
-      toast.error(errorMessage(err, 'Login failed'));
+      toast.error(errorMessage(err, $t('login_failed')));
     } finally {
       submitting = false;
     }
   }
 </script>
 
-<PageTitle title="Sign in" />
+<PageTitle title={$t('sign_in')} />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
     <Card.Header>
-      <Card.Title>Sign in to soika</Card.Title>
-      <Card.Description>Enter your credentials to continue.</Card.Description>
+      <Card.Title>{$t('sign_in_to_soika')}</Card.Title>
+      <Card.Description>{$t('enter_your_credentials_to_continue')}</Card.Description>
     </Card.Header>
 
     <form onsubmit={submit} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
-          <label for="email" class="text-sm font-medium">Email</label>
+          <label for="email" class="text-sm font-medium">{$t('email')}</label>
           <Input
             id="email"
             type="email"
@@ -160,7 +161,7 @@
           />
         </div>
         <div class="space-y-2">
-          <label for="password" class="text-sm font-medium">Password</label>
+          <label for="password" class="text-sm font-medium">{$t('password')}</label>
           <Input
             id="password"
             type="password"
@@ -173,13 +174,13 @@
       </Card.Content>
       <Card.Footer class="flex-col items-stretch gap-3">
         <Button type="submit" disabled={submitting || !canSubmit}>
-          {submitting ? 'Signing in…' : 'Sign in'}
+          {submitting ? $t('signing_in') : $t('sign_in')}
         </Button>
         {#if config?.allow_signup ?? true}
           <p class="text-muted-foreground text-center text-sm">
-            No account?
+            {$t('no_account')}
             <a href="/register" class="text-foreground underline-offset-4 hover:underline">
-              Register
+              {$t('register')}
             </a>
           </p>
         {/if}
@@ -187,7 +188,7 @@
         {#if showPasskey}
           <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
             <span class="bg-border h-px flex-1"></span>
-            or
+            {$t('or')}
             <span class="bg-border h-px flex-1"></span>
           </div>
           <Button
@@ -197,7 +198,7 @@
             disabled={passkeySubmitting}
             onclick={signInWithPasskeyClicked}
           >
-            {passkeySubmitting ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
+            {passkeySubmitting ? $t('waiting_for_your_passkey') : $t('sign_in_with_a_passkey')}
           </Button>
         {/if}
 
@@ -206,11 +207,12 @@
                password form (the built-in admin always needs the password path). -->
           <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
             <span class="bg-border h-px flex-1"></span>
-            or
+            {$t('or')}
             <span class="bg-border h-px flex-1"></span>
           </div>
           <Button variant="outline" href={ssoHref} class="w-full" data-sveltekit-reload>
-            Sign in with {config?.oauth_provider_name || 'SSO'}
+            {$t('sign_in_with')}
+            {config?.oauth_provider_name || 'SSO'}
           </Button>
         {/if}
       </Card.Footer>

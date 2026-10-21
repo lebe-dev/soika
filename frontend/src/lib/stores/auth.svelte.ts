@@ -5,6 +5,7 @@
 // without re-fetching. The root layout's `load` seeds it (see +layout.ts and
 // +layout.svelte), and login/logout flows update it directly.
 
+import { browserLocale, setLocale } from '$lib/i18n';
 import type { User } from '$lib/api';
 
 class AuthStore {
@@ -37,11 +38,12 @@ class AuthStore {
   /** Replace the cached user (e.g. after login, profile update, or layout load). */
   set(user: User | null) {
     this.user = user;
+    setLocale(user?.locale ?? browserLocale());
   }
 
   /** Clear the cached user (after logout). */
   clear() {
-    this.user = null;
+    this.set(null);
   }
 }
 

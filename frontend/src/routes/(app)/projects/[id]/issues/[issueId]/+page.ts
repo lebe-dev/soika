@@ -1,3 +1,4 @@
+import { translate } from '$lib/i18n';
 // Issue detail loader. Fetches the issue (with its latest event)
 // and the recent events list for event navigation in the stacktrace viewer.
 
@@ -14,8 +15,8 @@ export const load: PageLoad = async ({ params, fetch }) => {
     return { issue, events };
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.isNotFound) error(404, 'Issue not found');
-      if (err.isForbidden) error(403, 'You do not have access to this issue');
+      if (err.isNotFound) error(404, translate('issue_not_found'));
+      if (err.isForbidden) error(403, translate('no_issue_access'));
     }
     throw err;
   }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { goto } from '$app/navigation';
   import { teams as teamsApi, errorMessage, type TeamSummary } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
@@ -32,12 +33,12 @@
     creating = true;
     try {
       const team = await teamsApi.create({ name });
-      toast.success(`Team “${team.name}” created`);
+      toast.success($t('team_created', { values: { name: team.name } }));
       createOpen = false;
       newName = '';
       await goto(`/teams/${team.id}`);
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to create team'));
+      toast.error(errorMessage(err, $t('failed_to_create_team')));
       reportUnexpected(err);
     } finally {
       creating = false;
@@ -52,18 +53,18 @@
   const list = $derived<TeamSummary[]>(data.teams);
 </script>
 
-<PageTitle title="Teams" />
+<PageTitle title={$t('teams')} />
 
 <div class="space-y-6">
-  <PageHeader title="Teams">
+  <PageHeader title={$t('teams')}>
     {#snippet description()}
-      Groups of users that grant access to assigned projects.
+      {$t('groups_of_users_that_grant_access_to_assigned_projects')}
     {/snippet}
     {#snippet actions()}
       {#if canManageInstance}
         <Button onclick={openCreate} class="gap-1.5">
           <Plus class="size-4" />
-          New team
+          {$t('new_team')}
         </Button>
       {/if}
     {/snippet}
@@ -75,14 +76,14 @@
         <span class="bg-muted text-primary grid size-11 place-items-center rounded-xl">
           <Users class="size-5" />
         </span>
-        <p class="font-medium">No teams yet</p>
+        <p class="font-medium">{$t('no_teams_yet')}</p>
         <p class="text-muted-foreground max-w-xs text-sm">
-          Teams group users and grant them access to the team’s projects.
+          {$t('teams_group_users_and_grant_them_access_to_the_team_s_projects')}
         </p>
         {#if canManageInstance}
           <Button variant="outline" size="sm" onclick={openCreate} class="mt-3 gap-1.5">
             <Plus class="size-4" />
-            Create your first team
+            {$t('create_your_first_team')}
           </Button>
         {/if}
       </Card.Content>
@@ -95,18 +96,22 @@
 <Dialog.Root bind:open={createOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>New team</Dialog.Title>
-      <Dialog.Description>Give the team a name. You can add members afterwards.</Dialog.Description>
+      <Dialog.Title>{$t('new_team')}</Dialog.Title>
+      <Dialog.Description
+        >{$t('give_the_team_a_name_you_can_add_members_afterwards')}</Dialog.Description
+      >
     </Dialog.Header>
     <form onsubmit={createTeam} class="space-y-4">
       <div class="space-y-2">
-        <label for="team-name" class="text-sm font-medium">Name</label>
-        <Input id="team-name" bind:value={newName} placeholder="e.g. Backend" required />
+        <label for="team-name" class="text-sm font-medium">{$t('name')}</label>
+        <Input id="team-name" bind:value={newName} placeholder={$t('e_g_backend')} required />
       </div>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (createOpen = false)}>Cancel</Button>
+        <Button type="button" variant="outline" onclick={() => (createOpen = false)}
+          >{$t('cancel')}</Button
+        >
         <Button type="submit" disabled={creating || newName.trim().length === 0}>
-          {creating ? 'Creating…' : 'Create team'}
+          {creating ? $t('creating') : $t('create_team')}
         </Button>
       </Dialog.Footer>
     </form>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { untrack } from 'svelte';
   import { cn } from '$lib/utils';
   import { type Frame, frameFile, frameLocation, hasSourceContext, isInApp } from '$lib/stacktrace';
@@ -86,7 +87,7 @@
       <span
         class="bg-primary/10 text-primary shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase"
       >
-        in-app
+        {$t('in_app')}
       </span>
     {/if}
   </button>

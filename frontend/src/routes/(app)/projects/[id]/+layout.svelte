@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import type { Snippet } from 'svelte';
   import { page } from '$app/stores';
   import { cn } from '$lib/utils';
@@ -27,19 +28,19 @@
   const tabs = $derived<Tab[]>([
     {
       href: base,
-      label: 'Issues',
+      label: $t('issues'),
       icon: ListFilter,
       match: (p) => p === base || p.startsWith(`${base}/issues`)
     },
     {
       href: `${base}/setup`,
-      label: 'SDK Setup',
+      label: $t('sdk_setup'),
       icon: Terminal,
       match: (p) => p.startsWith(`${base}/setup`)
     },
     {
       href: `${base}/settings`,
-      label: 'Settings',
+      label: $t('settings'),
       icon: Settings,
       match: (p) => p.startsWith(`${base}/settings`)
     }
@@ -49,18 +50,22 @@
 </script>
 
 <div class="space-y-6">
-  <EntityHeader title={project.name} avatarId={project.id} back={{ href: '/', label: 'Projects' }}>
+  <EntityHeader
+    title={project.name}
+    avatarId={project.id}
+    back={{ href: '/', label: $t('projects') }}
+  >
     {#snippet pills()}
       <StatPill class="font-mono">{project.slug}</StatPill>
-      <StatPill>you’re <strong class="capitalize">{data.effectiveRole}</strong></StatPill>
+      <StatPill>{$t('you_re')} <strong class="capitalize">{data.effectiveRole}</strong></StatPill>
       {#if project.muted}
         <StatPill
           href={`${base}/settings`}
-          title="Notifications muted — open settings"
+          title={$t('notifications_muted_open_settings')}
           class="text-orange-600 dark:text-orange-400"
         >
           <BellOff />
-          Muted
+          {$t('status_muted')}
         </StatPill>
       {/if}
     {/snippet}

@@ -1,3 +1,4 @@
+import { translate } from '$lib/i18n';
 // Project area loader. Loads everything the project area needs in one shot when
 // the project page is opened: the project (with its embedded default issue
 // list) plus the caller's *effective* role for the project. Child tabs (Issues,
@@ -46,8 +47,8 @@ export const load: LayoutLoad = async ({ params, parent, fetch }) => {
     return { project, issues: project.issues, effectiveRole };
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.isNotFound) error(404, 'Project not found');
-      if (err.isForbidden) error(403, 'You do not have access to this project');
+      if (err.isNotFound) error(404, translate('project_not_found'));
+      if (err.isForbidden) error(403, translate('no_project_access'));
     }
     throw err;
   }

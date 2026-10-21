@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import {
     projects as projectsApi,
     errorMessage,
@@ -67,12 +68,12 @@
 
     // Reject duplicate keys client-side (the backend enforces this too).
     const keys = new Set<string>();
-    for (const t of tags) {
-      if (keys.has(t.key)) {
-        toast.error(`Duplicate tag key: ${t.key}`);
+    for (const tag of tags) {
+      if (keys.has(tag.key)) {
+        toast.error($t('duplicate_tag_key', { values: { key: tag.key } }));
         return;
       }
-      keys.add(t.key);
+      keys.add(tag.key);
     }
 
     saving = true;
@@ -82,11 +83,11 @@
         name: trimmedName || undefined,
         tags
       });
-      toast.success('Tag-mute rule created');
+      toast.success($t('tag_mute_rule_created'));
       open = false;
       onCreated?.(rule);
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not create rule'));
+      toast.error(errorMessage(err, $t('could_not_create_rule')));
     } finally {
       saving = false;
     }
@@ -96,31 +97,30 @@
 <Dialog.Root bind:open>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Mute by tags</Dialog.Title>
+      <Dialog.Title>{$t('mute_by_tags')}</Dialog.Title>
       <Dialog.Description>
-        Suppress notifications for events whose tags match all of the pairs below. Events are still
-        ingested and counted — only alerts are silenced.
+        {$t('suppress_notifications_for_events_whose_tags_match_all_of_the_pairs_below_events')}
       </Dialog.Description>
     </Dialog.Header>
 
     <form onsubmit={submit} class="space-y-4">
       <div class="space-y-1">
-        <label for="rule-name" class="text-sm font-medium">Name (optional)</label>
-        <Input id="rule-name" bind:value={name} placeholder="e.g. staging noise" />
+        <label for="rule-name" class="text-sm font-medium">{$t('name_optional')}</label>
+        <Input id="rule-name" bind:value={name} placeholder={$t('e_g_staging_noise')} />
       </div>
 
       <div class="space-y-2">
-        <span class="text-sm font-medium">Tags (all must match)</span>
+        <span class="text-sm font-medium">{$t('tags_all_must_match')}</span>
         {#each rows as row (row.id)}
           <div class="flex items-center gap-2">
-            <Input bind:value={row.key} placeholder="key (e.g. environment)" class="flex-1" />
+            <Input bind:value={row.key} placeholder={$t('key_e_g_environment')} class="flex-1" />
             <span class="text-muted-foreground">=</span>
-            <Input bind:value={row.value} placeholder="value (e.g. staging)" class="flex-1" />
+            <Input bind:value={row.value} placeholder={$t('value_e_g_staging')} class="flex-1" />
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Remove tag"
+              aria-label={$t('remove_tag')}
               onclick={() => removeRow(row.id)}
             >
               <X class="size-4" />
@@ -129,14 +129,16 @@
         {/each}
         <Button type="button" variant="outline" size="sm" onclick={addRow} class="gap-2">
           <Plus class="size-4" />
-          Add tag
+          {$t('add_tag')}
         </Button>
       </div>
 
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (open = false)}>Cancel</Button>
+        <Button type="button" variant="outline" onclick={() => (open = false)}
+          >{$t('cancel')}</Button
+        >
         <Button type="submit" disabled={!canSubmit}>
-          {saving ? 'Creating…' : 'Create rule'}
+          {saving ? $t('creating') : $t('create_rule')}
         </Button>
       </Dialog.Footer>
     </form>

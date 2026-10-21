@@ -1,3 +1,4 @@
+import precompileIntl from 'svelte-intl-precompile/sveltekit-plugin';
 import { svelte, vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
@@ -14,9 +15,9 @@ import { defineConfig } from 'vitest/config';
 //     '@sveltejs/kit'` resolve — those are plain JS exports that run in Node.
 //
 // What this config does NOT provide is the SvelteKit virtual modules
-// (`$app/*`, `./$types`). No `.ts` source imports `$app/*` today; `./$types`
-// is type-only and erased at compile time. If a future test needs `$app/*`,
-// stub it via `vi.mock('$app/...')` rather than reaching for `sveltekit()`.
+// (`$app/*`, `./$types`). `./$types` is type-only and erased at compile time.
+// Component tests mock `$app/stores`; a test-only alias makes that virtual
+// module resolvable without loading the SvelteKit runtime.
 //
 // Environment: the default is `node` (fast, no DOM). Tests that genuinely need
 // a DOM must opt in per-file with a docblock at the very top of the file:
@@ -26,7 +27,7 @@ import { defineConfig } from 'vitest/config';
 // `$lib` is aliased to `src/lib` to mirror the SvelteKit alias in
 // `svelte.config.js`.
 export default defineConfig({
-  plugins: [svelte({ preprocess: vitePreprocess() })],
+  plugins: [precompileIntl('locales'), svelte({ preprocess: vitePreprocess() })],
   resolve: {
     alias: {
       $lib: fileURLToPath(new URL('./src/lib', import.meta.url))
@@ -36,6 +37,10 @@ export default defineConfig({
     conditions: ['browser']
   },
   test: {
+    alias: {
+      '$app/stores': fileURLToPath(new URL('./src/test/app-module.ts', import.meta.url)),
+      '$app/navigation': fileURLToPath(new URL('./src/test/app-navigation.ts', import.meta.url))
+    },
     include: ['src/**/*.test.ts'],
     environment: 'node',
     coverage: {

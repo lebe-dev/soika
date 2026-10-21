@@ -1,3 +1,4 @@
+import { translate } from '$lib/i18n';
 // Team detail (Teams): members and assigned projects. Viewable by instance
 // managers (Owner | Manager) and by members of the team; rename/delete is
 // instance-manager only, while managing membership/roles/invites is allowed for
@@ -31,7 +32,7 @@ export const load: PageLoad = async ({ params, parent, url, fetch }) => {
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.isNotFound) error(404, 'Team not found');
-      if (err.isForbidden) error(403, 'You do not have access to this team');
+      if (err.isForbidden) error(403, translate('no_team_access'));
     }
     throw err;
   }

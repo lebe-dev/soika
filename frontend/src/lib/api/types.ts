@@ -57,6 +57,7 @@ export interface User {
   /** Instance-wide role (`owner | manager | member`). */
   instance_role: InstanceRole;
   notifications_enabled: boolean;
+  locale: import('$lib/locale').Locale | null;
   /** Account origin; `oidc` users sign in via SSO and have no local password. */
   auth_provider: AuthProvider;
 }
@@ -170,6 +171,8 @@ export interface SetupRequest {
 export interface UpdateProfileRequest {
   display_name?: string;
   notifications_enabled?: boolean;
+  locale?: import('$lib/locale').Locale;
+  initial_locale?: import('$lib/locale').Locale;
   current_password?: string;
   new_password?: string;
 }

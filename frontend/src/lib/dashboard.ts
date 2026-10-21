@@ -1,3 +1,5 @@
+import { translate } from './i18n';
+
 // Dashboard project-list helpers.
 //
 // Pure functions behind the project grid on the dashboard: which projects are
@@ -87,7 +89,7 @@ export function teamFilterOptions(
     if (options.has(project.team_id)) continue;
     options.set(project.team_id, {
       id: project.team_id,
-      name: byId.get(project.team_id) ?? 'Unknown team'
+      name: byId.get(project.team_id) ?? translate('unknown_team')
     });
   }
 

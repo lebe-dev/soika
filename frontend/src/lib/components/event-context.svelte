@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import * as Card from '$lib/components/ui/card';
   import { extractContext, isContextEmpty, type KeyValue } from '$lib/event-context';
   import Globe from '@lucide/svelte/icons/globe';
@@ -16,6 +17,16 @@
   let { payload }: { payload: unknown } = $props();
 
   const ctx = $derived(extractContext(payload));
+  const contextLabels: Record<string, string> = {
+    Browser: 'event_browser',
+    OS: 'event_os',
+    Device: 'event_device',
+    Runtime: 'event_runtime',
+    Server: 'event_server',
+    'IP address': 'event_ip_address',
+    Environment: 'environment',
+    Release: 'release'
+  };
 </script>
 
 {#if !isContextEmpty(ctx)}
@@ -40,7 +51,7 @@
           >
             <span
               class="text-muted-foreground text-[10px] leading-none font-medium tracking-wide uppercase"
-              >{chip.key}</span
+              >{contextLabels[chip.key] ? $t(contextLabels[chip.key]) : chip.key}</span
             >
             <span class="text-xs leading-none font-medium tracking-wide break-all"
               >{chip.value}</span
@@ -72,7 +83,7 @@
       {#if ctx.user.length > 0}
         <Card.Root>
           <Card.Content class="space-y-2 p-4">
-            {@render section('User', User)}
+            {@render section($t('user'), User)}
             {@render kvTable(ctx.user)}
           </Card.Content>
         </Card.Root>
@@ -81,7 +92,7 @@
       {#if ctx.tags.length > 0}
         <Card.Root>
           <Card.Content class="space-y-2 p-4">
-            {@render section('Tags', Tag)}
+            {@render section($t('tags'), Tag)}
             {@render kvTable(ctx.tags)}
           </Card.Content>
         </Card.Root>
@@ -90,7 +101,7 @@
       {#if ctx.request}
         <Card.Root>
           <Card.Content class="space-y-2 p-4">
-            {@render section('Request', Globe)}
+            {@render section($t('request'), Globe)}
             <dl class="divide-y text-sm">
               {#if ctx.request.url}
                 <div class="grid grid-cols-[minmax(7rem,auto)_1fr] gap-3 py-1.5">
@@ -102,7 +113,7 @@
               {/if}
               {#if ctx.request.query}
                 <div class="grid grid-cols-[minmax(7rem,auto)_1fr] gap-3 py-1.5">
-                  <dt class="text-muted-foreground">Query</dt>
+                  <dt class="text-muted-foreground">{$t('query')}</dt>
                   <dd class="font-mono text-xs break-all">{ctx.request.query}</dd>
                 </div>
               {/if}
@@ -120,11 +131,16 @@
       {#if ctx.contexts.length > 0}
         <Card.Root>
           <Card.Content class="space-y-2 p-4">
-            {@render section('Contexts', Layers)}
+            {@render section($t('contexts'), Layers)}
             <dl class="divide-y text-sm">
               {#each ctx.contexts as c (c.label)}
                 <div class="grid grid-cols-[minmax(7rem,auto)_1fr] gap-3 py-1.5">
-                  <dt class="text-muted-foreground truncate" title={c.label}>{c.label}</dt>
+                  <dt
+                    class="text-muted-foreground truncate"
+                    title={contextLabels[c.label] ? $t(contextLabels[c.label]) : c.label}
+                  >
+                    {contextLabels[c.label] ? $t(contextLabels[c.label]) : c.label}
+                  </dt>
                   <dd class="font-mono text-xs break-all">
                     {[c.name, c.version].filter(Boolean).join(' ')}
                   </dd>
@@ -147,7 +163,7 @@
       {#if ctx.additional.length > 0}
         <Card.Root>
           <Card.Content class="space-y-2 p-4">
-            {@render section('Additional data', Braces)}
+            {@render section($t('additional_data'), Braces)}
             {@render kvTable(ctx.additional)}
           </Card.Content>
         </Card.Root>
@@ -156,7 +172,7 @@
 
     {#if ctx.sdk}
       <p class="text-muted-foreground text-xs">
-        Reported by <span class="font-mono">{ctx.sdk}</span>
+        {$t('reported_by')} <span class="font-mono">{ctx.sdk}</span>
       </p>
     {/if}
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from '$lib/i18n';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { projects, errorMessage, type Issue, type IssueStatus } from '$lib/api';
@@ -22,12 +23,12 @@
   const projectId = $derived(data.project.id);
 
   type Filter = IssueStatus | 'all';
-  const filters: { value: Filter; label: string }[] = [
-    { value: 'unresolved', label: 'Unresolved' },
-    { value: 'resolved', label: 'Resolved' },
-    { value: 'muted', label: 'Muted' },
-    { value: 'all', label: 'All' }
-  ];
+  const filters: { value: Filter; label: string }[] = $derived([
+    { value: 'unresolved', label: $t('status_unresolved') },
+    { value: 'resolved', label: $t('status_resolved') },
+    { value: 'muted', label: $t('status_muted') },
+    { value: 'all', label: $t('all') }
+  ]);
 
   // Seed the active filter from the URL (?status=) so links/back are stable.
   const urlStatus = $derived(
@@ -35,10 +36,10 @@
   );
 
   type Sort = 'last_seen' | 'event_count';
-  const sorts: { value: Sort; label: string }[] = [
-    { value: 'last_seen', label: 'Recent' },
-    { value: 'event_count', label: 'Most frequent' }
-  ];
+  const sorts: { value: Sort; label: string }[] = $derived([
+    { value: 'last_seen', label: $t('recent') },
+    { value: 'event_count', label: $t('most_frequent') }
+  ]);
 
   // Seed the active sort from the URL (?sort=) the same way as the status filter.
   const urlSort = $derived(($page.url.searchParams.get('sort') as Sort | null) ?? 'last_seen');
@@ -46,14 +47,14 @@
   // First-class field filters (Stories 4.4 / 5.2). `level` is a small set of
   // known severities; environment/release are free-form so they use text inputs.
   type Level = 'all' | 'fatal' | 'error' | 'warning' | 'info' | 'debug';
-  const levels: { value: Level; label: string }[] = [
-    { value: 'all', label: 'All levels' },
-    { value: 'fatal', label: 'Fatal' },
-    { value: 'error', label: 'Error' },
-    { value: 'warning', label: 'Warning' },
-    { value: 'info', label: 'Info' },
-    { value: 'debug', label: 'Debug' }
-  ];
+  const levels: { value: Level; label: string }[] = $derived([
+    { value: 'all', label: $t('all_levels') },
+    { value: 'fatal', label: $t('fatal') },
+    { value: 'error', label: $t('error') },
+    { value: 'warning', label: $t('warning') },
+    { value: 'info', label: $t('info') },
+    { value: 'debug', label: $t('debug') }
+  ]);
 
   const urlLevel = $derived(($page.url.searchParams.get('level') as Level | null) ?? 'all');
   const urlEnvironment = $derived($page.url.searchParams.get('environment') ?? '');
@@ -170,7 +171,7 @@
       })
       .catch((err) => {
         if (!cancelled) {
-          loadError = errorMessage(err, 'Failed to load issues');
+          loadError = errorMessage(err, $t('failed_to_load_issues'));
           issues = [];
           loading = false;
         }
@@ -257,7 +258,7 @@
       value={urlLevel}
       onchange={(e) => selectLevel(e.currentTarget.value as Level)}
       class={urlLevel !== 'all' ? 'border-primary/50 ring-primary/15 ring-1' : ''}
-      aria-label="Filter by level"
+      aria-label={$t('filter_by_level')}
     >
       {#each levels as l (l.value)}
         <option value={l.value}>{l.label}</option>
@@ -268,8 +269,8 @@
       type="text"
       value={urlEnvironment}
       onchange={(e) => setParam('environment', e.currentTarget.value)}
-      placeholder="Environment"
-      aria-label="Filter by environment"
+      placeholder={$t('environment')}
+      aria-label={$t('filter_by_environment')}
       class={cn('w-40', urlEnvironment !== '' && 'border-primary/50 ring-primary/15 ring-1')}
     />
 
@@ -277,8 +278,8 @@
       type="text"
       value={urlRelease}
       onchange={(e) => setParam('release', e.currentTarget.value)}
-      placeholder="Release"
-      aria-label="Filter by release"
+      placeholder={$t('release')}
+      aria-label={$t('filter_by_release')}
       class={cn('w-40', urlRelease !== '' && 'border-primary/50 ring-primary/15 ring-1')}
     />
   </div>
@@ -286,7 +287,7 @@
   {#if loading}
     <Card.Root>
       <Card.Content class="text-muted-foreground py-12 text-center text-sm"
-        >Loading issues…</Card.Content
+        >{$t('loading_issues')}</Card.Content
       >
     </Card.Root>
   {:else if loadError}
@@ -298,11 +299,11 @@
       <Card.Content class="flex flex-col items-center gap-3 py-16 text-center">
         <Inbox class="text-muted-foreground size-10" />
         <div>
-          <p class="font-medium">No issues here</p>
+          <p class="font-medium">{$t('no_issues_here')}</p>
           <p class="text-muted-foreground text-sm">
             {urlStatus === 'unresolved'
-              ? 'No unresolved issues — nice and quiet.'
-              : 'No issues match this filter.'}
+              ? $t('no_unresolved_issues_nice_and_quiet')
+              : $t('no_issues_match_this_filter')}
           </p>
         </div>
       </Card.Content>
@@ -335,19 +336,22 @@
           </div>
 
           <div class="w-16 shrink-0 text-right">
-            <div class="text-sm font-semibold tabular-nums">{formatCount(issue.event_count)}</div>
-            <div class="text-muted-foreground text-[10px] tracking-wide uppercase">events</div>
+            <div class="text-sm font-semibold tabular-nums">
+              {formatCount(issue.event_count, $locale)}
+            </div>
+            <div class="text-muted-foreground text-[10px] tracking-wide uppercase">
+              {$t('events')}
+            </div>
           </div>
 
           <div class="text-muted-foreground hidden w-24 shrink-0 text-right text-xs md:block">
-            {formatRelative(issue.last_seen)}
+            {formatRelative(issue.last_seen, $locale)}
           </div>
         </a>
       {/each}
     </div>
     <p class="text-muted-foreground text-xs">
-      {issues.length}
-      {issues.length === 1 ? 'issue' : 'issues'}
+      {$t('issue_count', { values: { count: issues.length } })}
     </p>
   {/if}
 </div>

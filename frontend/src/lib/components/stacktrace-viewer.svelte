@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { toast } from '$lib/components/ui/sonner';
@@ -37,9 +38,9 @@
   async function copyAsText() {
     try {
       await navigator.clipboard.writeText(stacktraceToText(stacktrace));
-      toast.success('Copied stacktrace');
+      toast.success($t('copied_stacktrace'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not copy to clipboard'));
+      toast.error(errorMessage(err, $t('could_not_copy_to_clipboard')));
     }
   }
 </script>
@@ -48,10 +49,9 @@
   <div class="bg-muted/40 flex items-center justify-between gap-2 border-b px-3 py-2">
     <div class="flex items-center gap-2 text-sm font-medium">
       <Layers class="text-muted-foreground size-4" />
-      Stacktrace
+      {$t('stacktrace')}
       <span class="text-muted-foreground text-xs font-normal">
-        ({frames.length}
-        {frames.length === 1 ? 'frame' : 'frames'})
+        ({$t('frame_count', { values: { count: frames.length } })})
       </span>
     </div>
     <div class="flex items-center gap-1">
@@ -63,19 +63,21 @@
           onclick={() => (showSystem = !showSystem)}
         >
           <ChevronsUpDown class="size-3.5" />
-          {showSystem ? 'Hide' : 'Show'} system frames ({systemCount})
+          {$t(showSystem ? 'hide_system_frames' : 'show_system_frames', {
+            values: { count: systemCount }
+          })}
         </Button>
       {/if}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button variant="ghost" size="icon" class="size-7" aria-label="Stacktrace actions">
+          <Button variant="ghost" size="icon" class="size-7" aria-label={$t('stacktrace_actions')}>
             <EllipsisVertical class="size-3.5" />
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" class="w-40">
           <DropdownMenu.Item onclick={copyAsText} class="text-xs">
             <Copy class="size-3.5" />
-            Copy
+            {$t('copy')}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>

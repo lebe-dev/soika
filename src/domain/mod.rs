@@ -26,7 +26,7 @@ pub use settings::ServiceSettings;
 pub use stacktrace::{ExceptionValue, Frame, NormalizedEvent, Stacktrace};
 pub use team::{Team, TeamMember};
 pub use user::{
-    AuthProvider, InstanceRole, MIN_DISPLAY_NAME_LEN, Session, User, UserStatus,
+    AuthProvider, InstanceRole, Locale, MIN_DISPLAY_NAME_LEN, Session, User, UserStatus,
     normalize_display_name,
 };
 

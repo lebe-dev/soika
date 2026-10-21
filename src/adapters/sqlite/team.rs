@@ -49,6 +49,7 @@ struct MemberUserRow {
     password_hash: String,
     instance_role: String,
     notifications_enabled: i64,
+    locale: Option<String>,
     auth_provider: String,
     status: String,
     created_at: String,
@@ -65,6 +66,7 @@ impl MemberUserRow {
             password_hash: self.password_hash,
             instance_role: InstanceRole::from_db(&self.instance_role),
             notifications_enabled: bool_from_db(self.notifications_enabled),
+            locale: self.locale.as_deref().map(str::parse).transpose()?,
             auth_provider: AuthProvider::from_db(&self.auth_provider),
             status: UserStatus::from_db(&self.status),
             created_at: ts_from_db(&self.created_at)?,
@@ -249,7 +251,7 @@ impl TeamRepository for SqliteTeamRepository {
     async fn members(&self, team_id: Id) -> Result<Vec<(User, TeamRole)>> {
         let rows = sqlx::query_as::<_, MemberUserRow>(
             "SELECT u.id, u.email, u.display_name, u.password_hash, u.instance_role, \
-             u.notifications_enabled, u.auth_provider, u.status, u.created_at, u.updated_at, \
+             u.notifications_enabled, u.locale, u.auth_provider, u.status, u.created_at, u.updated_at, \
              m.role \
              FROM users u JOIN team_members m ON m.user_id = u.id \
              WHERE m.team_id = ? ORDER BY u.display_name",

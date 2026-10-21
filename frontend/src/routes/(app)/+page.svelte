@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { goto, invalidateAll } from '$app/navigation';
   import { projects as projectsApi, errorMessage } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
@@ -57,7 +58,7 @@
       await projectsApi.favorite(projectId, !wasFav);
     } catch (err) {
       favoritedIds = previous;
-      toast.error(errorMessage(err, 'Failed to update favorite'));
+      toast.error(errorMessage(err, $t('failed_to_update_favorite')));
       reportUnexpected(err);
     }
   }
@@ -160,13 +161,13 @@
     submitting = true;
     try {
       const project: Project = await projectsApi.create({ name: name.trim(), team_id: teamId });
-      toast.success(`Project "${project.name}" created`);
+      toast.success($t('project_created', { values: { name: project.name } }));
       createOpen = false;
       name = '';
       await invalidateAll();
       await goto(`/projects/${project.id}`);
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to create project'));
+      toast.error(errorMessage(err, $t('failed_to_create_project')));
       reportUnexpected(err);
     } finally {
       submitting = false;
@@ -174,26 +175,26 @@
   }
 </script>
 
-<PageTitle title="Dashboard" />
+<PageTitle title={$t('dashboard')} />
 
 <div class="space-y-6">
-  <PageHeader title="Projects">
+  <PageHeader title={$t('projects')}>
     {#snippet description()}
       {#if overviews.length === 0}
-        No projects yet — create your first to start capturing errors.
+        {$t('no_projects_yet_create_your_first_to_start_capturing_errors')}
       {:else if filtersActive}
-        Showing {filteredAndSorted.length} of {overviews.length}
-        {overviews.length === 1 ? 'project' : 'projects'}.
+        {$t('projects_filtered', {
+          values: { shown: filteredAndSorted.length, count: overviews.length }
+        })}
       {:else}
-        {overviews.length}
-        {overviews.length === 1 ? 'project' : 'projects'} in your workspace.
+        {$t('projects_workspace', { values: { count: overviews.length } })}
       {/if}
     {/snippet}
     {#snippet actions()}
       {#if canCreate}
         <Button onclick={() => (createOpen = true)} class="gap-1.5">
           <FolderPlus class="size-4" />
-          New project
+          {$t('new_project')}
         </Button>
       {/if}
     {/snippet}
@@ -202,24 +203,24 @@
   <Dialog.Root bind:open={createOpen}>
     <Dialog.Content class="sm:max-w-md">
       <Dialog.Header>
-        <Dialog.Title>Create project</Dialog.Title>
+        <Dialog.Title>{$t('create_project')}</Dialog.Title>
         <Dialog.Description>
-          A project owns a DSN and groups the errors your SDK sends.
+          {$t('a_project_owns_a_dsn_and_groups_the_errors_your_sdk_sends')}
         </Dialog.Description>
       </Dialog.Header>
 
       {#if !canCreate}
         <p class="text-muted-foreground text-sm">
-          You need a team before creating a project.
+          {$t('you_need_a_team_before_creating_a_project')}
           <a href="/teams" class="text-foreground underline-offset-4 hover:underline">
-            Create a team
+            {$t('create_a_team')}
           </a>
-          first.
+          {$t('first')}
         </p>
       {:else}
         <form onsubmit={createProject} class="space-y-4">
           <div class="space-y-2">
-            <label for="project-name" class="text-sm font-medium">Name</label>
+            <label for="project-name" class="text-sm font-medium">{$t('name')}</label>
             <Input
               id="project-name"
               bind:value={name}
@@ -229,7 +230,7 @@
             />
           </div>
           <div class="space-y-2">
-            <label for="project-team" class="text-sm font-medium">Team</label>
+            <label for="project-team" class="text-sm font-medium">{$t('team')}</label>
             <NativeSelect id="project-team" bind:value={teamId} class="w-full">
               {#each teams as team (team.id)}
                 <option value={team.id}>{team.name}</option>
@@ -238,7 +239,7 @@
           </div>
           <Dialog.Footer>
             <Button type="submit" disabled={submitting || !name.trim()}>
-              {submitting ? 'Creating…' : 'Create project'}
+              {submitting ? $t('creating') : $t('create_project')}
             </Button>
           </Dialog.Footer>
         </form>
@@ -249,23 +250,23 @@
   {#if overviews.length === 0}
     <Card.Root>
       <Card.Header>
-        <Card.Title>No projects</Card.Title>
+        <Card.Title>{$t('no_projects')}</Card.Title>
         <Card.Description>
-          Create a project to get a DSN and start sending events from your application.
+          {$t('create_a_project_to_get_a_dsn_and_start_sending_events_from_your_application')}
         </Card.Description>
       </Card.Header>
       <Card.Content>
         <Button class="gap-2" onclick={() => (createOpen = true)} disabled={!canCreate}>
           <FolderPlus class="size-4" />
-          New project
+          {$t('new_project')}
         </Button>
         {#if !canCreate}
           <p class="text-muted-foreground mt-3 text-sm">
-            No teams available yet —
+            {$t('no_teams_available_yet')}
             <a href="/teams" class="text-foreground underline-offset-4 hover:underline">
-              create a team
+              {$t('create_a_team_316b5a')}
             </a>
-            to continue.
+            {$t('to_continue')}
           </p>
         {/if}
       </Card.Content>
@@ -274,11 +275,11 @@
     <div class="flex flex-wrap items-center gap-3">
       <Input
         bind:value={searchQuery}
-        placeholder="Search projects…"
+        placeholder={$t('search_projects')}
         class="max-w-sm {searchQuery.trim() !== ''
           ? 'border-primary/50 ring-primary/15 ring-1'
           : ''}"
-        aria-label="Search projects"
+        aria-label={$t('search_projects_30c3c3')}
         onkeydown={(e) => {
           if (e.key === 'Escape') {
             searchQuery = '';
@@ -290,9 +291,9 @@
         <NativeSelect
           bind:value={filterTeamId}
           class={filterTeamId ? 'border-primary/50 ring-primary/15 ring-1' : ''}
-          aria-label="Filter by team"
+          aria-label={$t('filter_by_team')}
         >
-          <option value="">All teams</option>
+          <option value="">{$t('all_teams')}</option>
           {#each teamOptions as team (team.id)}
             <option value={team.id}>{team.name}</option>
           {/each}
@@ -308,14 +309,14 @@
           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
       >
         <CircleAlert class="size-4 {onlyWithIssues ? 'text-destructive' : ''}" />
-        Projects with issues
+        {$t('projects_with_issues')}
         <span class="text-muted-foreground font-normal tabular-nums">{withIssuesCount}</span>
       </button>
 
       <div
         class="border-input flex h-8 rounded-lg border text-sm"
         role="group"
-        aria-label="Sort order"
+        aria-label={$t('sort_order')}
       >
         <button
           class="flex items-center rounded-l-lg px-3 transition-colors {sortMode === 'activity'
@@ -323,7 +324,7 @@
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
           onclick={() => (sortMode = 'activity')}
         >
-          By activity
+          {$t('by_activity')}
         </button>
         <button
           class="border-input flex items-center rounded-r-lg border-l px-3 transition-colors {sortMode ===
@@ -332,15 +333,15 @@
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
           onclick={() => (sortMode = 'name')}
         >
-          By name
+          {$t('by_name')}
         </button>
       </div>
     </div>
 
     {#if filteredAndSorted.length === 0}
       <div class="flex flex-wrap items-center gap-3">
-        <p class="text-muted-foreground text-sm">No projects match the current filters.</p>
-        <Button variant="outline" size="sm" onclick={resetFilters}>Clear filters</Button>
+        <p class="text-muted-foreground text-sm">{$t('no_projects_match_the_current_filters')}</p>
+        <Button variant="outline" size="sm" onclick={resetFilters}>{$t('clear_filters')}</Button>
       </div>
     {:else}
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -367,14 +368,14 @@
                     {#if project.muted}
                       <BellOff
                         class="text-muted-foreground size-4"
-                        aria-label="Notifications muted"
+                        aria-label={$t('notifications_muted')}
                       />
                     {/if}
                     <button
                       onclick={(e) => toggleFavorite(e, project.id)}
                       aria-label={favoritedIds.has(project.id)
-                        ? 'Remove from favorites'
-                        : 'Add to favorites'}
+                        ? $t('remove_from_favorites')
+                        : $t('add_to_favorites')}
                       class="hover:bg-accent rounded p-1 transition-colors"
                     >
                       <Star
@@ -390,13 +391,12 @@
                 {#if unresolvedCount === 0}
                   <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
                     <CircleCheck class="size-4 text-emerald-500" />
-                    No unresolved issues
+                    {$t('no_unresolved_issues')}
                   </p>
                 {:else}
                   <p class="flex items-center gap-1.5 text-sm font-medium">
                     <CircleAlert class="text-destructive size-4" />
-                    {unresolvedCount}
-                    {unresolvedCount === 1 ? 'unresolved issue' : 'unresolved issues'}
+                    {$t('unresolved_issue_count', { values: { count: unresolvedCount } })}
                   </p>
                 {/if}
               </Card.Content>

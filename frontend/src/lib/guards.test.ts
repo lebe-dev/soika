@@ -28,6 +28,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     display_name: 'User',
     instance_role: 'member',
     notifications_enabled: true,
+    locale: null,
     auth_provider: 'local',
     ...overrides
   };

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
@@ -36,46 +37,47 @@
         display_name: displayName || undefined
       });
       authStore.set(user);
-      toast.success('Invite accepted');
+      toast.success($t('invite_accepted'));
       await goto(`/teams/${data.preview.team_id}`, { invalidateAll: true });
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not accept invite'));
+      toast.error(errorMessage(err, $t('could_not_accept_invite')));
     } finally {
       submitting = false;
     }
   }
 </script>
 
-<PageTitle title="Invite" />
+<PageTitle title={$t('invite')} />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
     {#if data.error || !data.preview}
       <Card.Header>
-        <Card.Title>Invite unavailable</Card.Title>
-        <Card.Description>{data.error ?? 'This invite is no longer valid.'}</Card.Description>
+        <Card.Title>{$t('invite_unavailable')}</Card.Title>
+        <Card.Description>{data.error ?? $t('this_invite_is_no_longer_valid')}</Card.Description>
       </Card.Header>
       <Card.Footer>
-        <Button href="/login" variant="outline">Go to sign in</Button>
+        <Button href="/login" variant="outline">{$t('go_to_sign_in')}</Button>
       </Card.Footer>
     {:else}
       <Card.Header>
-        <Card.Title>You're invited</Card.Title>
+        <Card.Title>{$t('you_re_invited')}</Card.Title>
         <Card.Description>
-          Join <span class="font-medium">{data.preview.team_name}</span> as
-          <Badge variant="secondary" class="capitalize">{data.preview.role}</Badge>
+          {$t('join')} <span class="font-medium">{data.preview.team_name}</span>
+          {$t('as')}
+          <Badge variant="secondary" class="capitalize">{$t(data.preview.role)}</Badge>
         </Card.Description>
         <p class="text-muted-foreground text-xs">{teamRoleDescription(data.preview.role)}</p>
       </Card.Header>
       <form onsubmit={accept} class="contents">
         <Card.Content class="space-y-4">
           <div class="space-y-2">
-            <label for="email" class="text-sm font-medium">Email</label>
+            <label for="email" class="text-sm font-medium">{$t('email')}</label>
             <Input id="email" type="email" bind:value={email} required />
           </div>
           {#if requiresRegistration}
             <div class="space-y-2">
-              <label for="name" class="text-sm font-medium">Display name</label>
+              <label for="name" class="text-sm font-medium">{$t('display_name')}</label>
               <Input
                 id="name"
                 bind:value={displayName}
@@ -85,7 +87,7 @@
             </div>
           {/if}
           <div class="space-y-2">
-            <label for="password" class="text-sm font-medium">Password</label>
+            <label for="password" class="text-sm font-medium">{$t('password')}</label>
             <Input
               id="password"
               type="password"
@@ -97,7 +99,7 @@
         </Card.Content>
         <Card.Footer>
           <Button type="submit" class="w-full" disabled={submitting}>
-            {submitting ? 'Joining…' : 'Accept invite'}
+            {submitting ? $t('joining') : $t('accept_invite')}
           </Button>
         </Card.Footer>
       </form>

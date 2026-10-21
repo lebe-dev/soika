@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from '$lib/i18n';
   import { untrack } from 'svelte';
   import { version } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
@@ -63,9 +64,9 @@
     try {
       const to = testRecipient.trim();
       const result = await api.settings.testEmail(to ? { to } : {});
-      toast.success(`Test email sent to ${result.sent_to}`);
+      toast.success($t('test_email_sent', { values: { email: result.sent_to } }));
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to send test email'));
+      toast.error(errorMessage(err, $t('failed_to_send_test_email')));
       reportUnexpected(err);
     } finally {
       sendingTest = false;
@@ -80,7 +81,7 @@
   async function save() {
     const name = orgName.trim();
     if (!name) {
-      toast.error('Organization name cannot be empty');
+      toast.error($t('organization_name_cannot_be_empty'));
       return;
     }
 
@@ -91,10 +92,10 @@
     saving = true;
     try {
       await api.settings.update(body);
-      toast.success('Service settings saved');
+      toast.success($t('service_settings_saved'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to save settings'));
+      toast.error(errorMessage(err, $t('failed_to_save_settings')));
       reportUnexpected(err);
     } finally {
       saving = false;
@@ -117,10 +118,10 @@
     busyUserId = id;
     try {
       await api.admin.approve(id);
-      toast.success('Account approved');
+      toast.success($t('account_approved'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to approve account'));
+      toast.error(errorMessage(err, $t('failed_to_approve_account')));
       reportUnexpected(err);
     } finally {
       busyUserId = null;
@@ -149,10 +150,10 @@
     busyUserId = id;
     try {
       await api.admin.setRole(id, { instance_role: role });
-      toast.success('Role updated');
+      toast.success($t('role_updated'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update role'));
+      toast.error(errorMessage(err, $t('failed_to_update_role')));
       reportUnexpected(err);
       // Re-run the load so the (optimistically-changed) <select> snaps back to
       // the server's authoritative value on failure.
@@ -163,14 +164,14 @@
   }
 
   async function rejectUser(id: string, email: string) {
-    if (!confirm(`Reject and delete the pending account ${email}? This cannot be undone.`)) return;
+    if (!confirm($t('reject_account_confirm', { values: { email } }))) return;
     busyUserId = id;
     try {
       await api.admin.remove(id);
-      toast.success('Account rejected');
+      toast.success($t('account_rejected'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to reject account'));
+      toast.error(errorMessage(err, $t('failed_to_reject_account')));
       reportUnexpected(err);
     } finally {
       busyUserId = null;
@@ -187,19 +188,14 @@
   }
 
   async function deleteUser(id: string, email: string) {
-    if (
-      !confirm(
-        `Delete the account ${email}? This permanently removes the user and cannot be undone.`
-      )
-    )
-      return;
+    if (!confirm($t('delete_account_confirm', { values: { email } }))) return;
     busyUserId = id;
     try {
       await api.admin.remove(id);
-      toast.success('Account deleted');
+      toast.success($t('account_deleted'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to delete account'));
+      toast.error(errorMessage(err, $t('failed_to_delete_account')));
       reportUnexpected(err);
     } finally {
       busyUserId = null;
@@ -207,39 +203,39 @@
   }
 </script>
 
-<PageTitle title="Admin" />
+<PageTitle title={$t('admin')} />
 
 <div class="space-y-6">
-  <PageHeader title="Admin">
+  <PageHeader title={$t('admin')}>
     {#snippet description()}
-      Instance-wide settings, users, and teams.
+      {$t('instance_wide_settings_users_and_teams')}
     {/snippet}
   </PageHeader>
 
   <Tabs.Root value="settings">
     <Tabs.List>
-      <Tabs.Trigger value="settings">Service settings</Tabs.Trigger>
+      <Tabs.Trigger value="settings">{$t('service_settings')}</Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="users">
-        Users ({data.users.length})
+        {$t('users')}{data.users.length})
         {#if pendingCount > 0}
-          <Badge variant="default" class="ml-1.5">{pendingCount} pending</Badge>
+          <Badge variant="default" class="ml-1.5">{pendingCount} {$t('pending')}</Badge>
         {/if}
       </Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="teams">Teams ({data.teams.length})</Tabs.Trigger>
+      <Tabs.Trigger value="teams">{$t('teams_b2ba35')}{data.teams.length})</Tabs.Trigger>
     </Tabs.List>
 
     <!-- Service settings -->
     <Tabs.Content value="settings" class="space-y-6">
       <Card.Root>
         <Card.Header>
-          <Card.Title>Organization</Card.Title>
-          <Card.Description>The display name shown across the instance.</Card.Description>
+          <Card.Title>{$t('organization')}</Card.Title>
+          <Card.Description>{$t('the_display_name_shown_across_the_instance')}</Card.Description>
         </Card.Header>
         <Card.Content class="space-y-4">
           <div class="grid gap-2">
-            <label for="org-name" class="text-sm font-medium">Organization name</label>
+            <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
             <Input id="org-name" bind:value={orgName} class="max-w-sm" disabled={saving} />
           </div>
         </Card.Content>
@@ -247,17 +243,17 @@
 
       <Card.Root>
         <Card.Header>
-          <Card.Title>Registration</Card.Title>
+          <Card.Title>{$t('registration')}</Card.Title>
           <Card.Description>
-            Control whether new users can register without an invite.
+            {$t('control_whether_new_users_can_register_without_an_invite')}
           </Card.Description>
         </Card.Header>
         <Card.Content>
           <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
             <div class="space-y-0.5">
-              <p class="text-sm font-medium">Allow public sign-up</p>
+              <p class="text-sm font-medium">{$t('allow_public_sign_up')}</p>
               <p class="text-muted-foreground text-sm">
-                When off, accounts are created only via invite.
+                {$t('when_off_accounts_are_created_only_via_invite')}
               </p>
             </div>
             <Button
@@ -269,9 +265,9 @@
             >
               {#if allowSignup}
                 <Check class="size-4" />
-                Enabled
+                {$t('enabled')}
               {:else}
-                Disabled
+                {$t('disabled')}
               {/if}
             </Button>
           </div>
@@ -282,7 +278,7 @@
         <Card.Header>
           <Card.Title>SMTP</Card.Title>
           <Card.Description>
-            Email delivery is configured via environment variables and shown here read-only.
+            {$t('email_delivery_is_configured_via_environment_variables_and_shown_here_read_only')}
           </Card.Description>
         </Card.Header>
         <Card.Content class="space-y-3">
@@ -290,47 +286,49 @@
             {#if smtp.configured}
               <Badge variant="secondary">
                 <Mail class="size-3" />
-                Configured
+                {$t('configured')}
               </Badge>
             {:else}
               <Badge variant="outline">
                 <MailX class="size-3" />
-                Not configured
+                {$t('not_configured')}
               </Badge>
             {/if}
           </div>
           {#if smtp.configured}
             <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-              <dt class="text-muted-foreground">Host</dt>
+              <dt class="text-muted-foreground">{$t('host')}</dt>
               <dd class="font-mono">{smtp.host ?? '—'}</dd>
-              <dt class="text-muted-foreground">Port</dt>
+              <dt class="text-muted-foreground">{$t('port')}</dt>
               <dd class="font-mono">{smtp.port ?? '—'}</dd>
-              <dt class="text-muted-foreground">From</dt>
+              <dt class="text-muted-foreground">{$t('from')}</dt>
               <dd class="font-mono">{smtp.from ?? '—'}</dd>
             </dl>
             <div class="space-y-2 border-t pt-3">
-              <p class="text-sm font-medium">Send a test email</p>
+              <p class="text-sm font-medium">{$t('send_a_test_email')}</p>
               <p class="text-muted-foreground text-sm">
-                Verify delivery end-to-end. Leave the field blank to send to your own address.
+                {$t('verify_delivery_end_to_end_leave_the_field_blank_to_send_to_your_own_address')}
               </p>
               <div class="flex flex-wrap items-center gap-2">
                 <Input
                   type="email"
-                  placeholder="recipient@example.com (optional)"
+                  placeholder={$t('email_recipient_optional')}
                   bind:value={testRecipient}
                   class="max-w-xs"
                   disabled={sendingTest}
                 />
                 <Button variant="outline" size="sm" onclick={sendTestEmail} disabled={sendingTest}>
                   <Mail class="size-4" />
-                  {sendingTest ? 'Sending…' : 'Send test email'}
+                  {sendingTest ? $t('sending') : $t('send_test_email')}
                 </Button>
               </div>
             </div>
           {:else}
             <p class="text-muted-foreground text-sm">
-              Set <code class="font-mono">SMTP_HOST</code> and related variables to enable email notifications
-              and invite delivery. Invite links remain copyable without it.
+              {$t('set')} <code class="font-mono">SMTP_HOST</code>
+              {$t(
+                'and_related_variables_to_enable_email_notifications_and_invite_delivery_invite_l'
+              )}
             </p>
           {/if}
         </Card.Content>
@@ -338,9 +336,9 @@
 
       <div class="flex items-center gap-2">
         <Button onclick={save} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save changes'}
+          {saving ? $t('saving') : $t('save_changes')}
         </Button>
-        <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>Reset</Button>
+        <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>{$t('reset')}</Button>
       </div>
     </Tabs.Content>
 
@@ -349,13 +347,13 @@
       <Card.Root class="shadow-sm">
         <Card.Header>
           <div class="flex items-center gap-1.5">
-            <Card.Title>Users</Card.Title>
+            <Card.Title>{$t('users_57f2b1')}</Card.Title>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger>
                 <button
                   type="button"
                   class="text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="What can each role do?"
+                  aria-label={$t('what_can_each_role_do')}
                 >
                   <Info class="size-4" />
                 </button>
@@ -365,11 +363,11 @@
               </DropdownMenu.Content>
             </DropdownMenu.Root>
           </div>
-          <Card.Description>All accounts on this instance.</Card.Description>
+          <Card.Description>{$t('all_accounts_on_this_instance')}</Card.Description>
         </Card.Header>
         <Card.Content>
           {#if data.users.length === 0}
-            <p class="text-muted-foreground text-sm">No users yet.</p>
+            <p class="text-muted-foreground text-sm">{$t('no_users_yet')}</p>
           {:else}
             <div class="divide-border/60 divide-y">
               {#each data.users as u (u.id)}
@@ -380,36 +378,40 @@
                     <p class="flex items-center gap-2 font-medium">
                       <span class="truncate">{u.display_name}</span>
                       {#if isSelf}
-                        <span class="text-muted-foreground text-xs font-normal">(you)</span>
+                        <span class="text-muted-foreground text-xs font-normal">{$t('you')}</span>
                       {/if}
                       {#if u.status === 'pending'}
                         <Badge variant="secondary">
                           <Clock class="size-3" />
-                          Pending
+                          {$t('pending_96f608')}
                         </Badge>
                       {/if}
                     </p>
                     <p class="text-muted-foreground truncate text-sm">
-                      {u.email} · joined {formatDate(u.created_at)}
+                      {u.email}
+                      {$t('joined')}
+                      {formatDate(u.created_at, $locale)}
                       {#if !u.notifications_enabled}
-                        · notifications off
+                        {$t('notifications_off')}
                       {/if}
                     </p>
                   </div>
                   {#if canEditRole(u)}
                     <NativeSelect
-                      aria-label={`Instance role for ${u.display_name}`}
+                      aria-label={$t('instance_role_for', { values: { name: u.display_name } })}
                       value={u.instance_role}
                       disabled={busyUserId === u.id}
                       onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
                       class="shrink-0"
                     >
-                      <option value="owner" disabled={roleOptionDisabled(u, 'owner')}>Owner</option>
+                      <option value="owner" disabled={roleOptionDisabled(u, 'owner')}
+                        >{$t('owner')}</option
+                      >
                       <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
-                        >Manager</option
+                        >{$t('manager')}</option
                       >
                       <option value="member" disabled={roleOptionDisabled(u, 'member')}
-                        >Member</option
+                        >{$t('member')}</option
                       >
                     </NativeSelect>
                   {:else}
@@ -419,7 +421,7 @@
                         ? 'text-primary shrink-0 capitalize'
                         : 'shrink-0 capitalize'}
                     >
-                      {u.instance_role}
+                      {$t(u.instance_role)}
                     </Badge>
                   {/if}
                   {#if u.status === 'pending'}
@@ -431,7 +433,7 @@
                         onclick={() => approveUser(u.id)}
                       >
                         <UserCheck class="size-4" />
-                        Approve
+                        {$t('approve')}
                       </Button>
                       <Button
                         variant="outline"
@@ -440,7 +442,7 @@
                         onclick={() => rejectUser(u.id, u.email)}
                       >
                         <Trash2 class="size-4" />
-                        Reject
+                        {$t('reject')}
                       </Button>
                     </div>
                   {:else if canDelete(u, isSelf)}
@@ -448,7 +450,7 @@
                       variant="ghost"
                       size="icon"
                       class="text-destructive hover:text-destructive size-8 shrink-0"
-                      title="Delete account"
+                      title={$t('delete_account')}
                       aria-label={`Delete account ${u.email}`}
                       disabled={busyUserId === u.id}
                       onclick={() => deleteUser(u.id, u.email)}
@@ -469,7 +471,7 @@
     <!-- Teams overview -->
     <Tabs.Content value="teams">
       {#if data.teams.length === 0}
-        <p class="text-muted-foreground text-sm">No teams yet.</p>
+        <p class="text-muted-foreground text-sm">{$t('no_teams_yet')}</p>
       {:else}
         <TeamList teams={data.teams} />
       {/if}

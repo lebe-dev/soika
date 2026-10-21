@@ -3,6 +3,7 @@
 // the active route attached. Sentry's `init` lives in `$lib/sentry` (gated on
 // the authenticated client config) — we only capture, never initialize, so
 // nothing is sent until the SDK has been initialized post sign-in.
+import { translate } from '$lib/i18n';
 import * as Sentry from '@sentry/svelte';
 import type { HandleClientError } from '@sveltejs/kit';
 
@@ -10,6 +11,6 @@ export const handleError: HandleClientError = ({ error }) => {
   Sentry.captureException(error);
 
   return {
-    message: 'An unexpected error occurred.'
+    message: translate('unexpected_error')
   };
 };

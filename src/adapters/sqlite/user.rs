@@ -1,8 +1,10 @@
 //! SQLite [`UserRepository`] adapter.
 
+use super::write::retry_write;
 use super::{
     Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
+use crate::config::WritePolicy;
 use crate::domain::{AuthProvider, Id, InstanceRole, Timestamp, User, UserStatus};
 use crate::error::{Error, Result};
 use crate::ports::{NewUser, UserRepository, UserUpdate};
@@ -29,6 +31,7 @@ struct UserRow {
     password_hash: String,
     instance_role: String,
     notifications_enabled: i64,
+    locale: Option<String>,
     auth_provider: String,
     status: String,
     created_at: String,
@@ -44,6 +47,7 @@ impl UserRow {
             password_hash: self.password_hash,
             instance_role: InstanceRole::from_db(&self.instance_role),
             notifications_enabled: bool_from_db(self.notifications_enabled),
+            locale: self.locale.as_deref().map(str::parse).transpose()?,
             auth_provider: AuthProvider::from_db(&self.auth_provider),
             status: UserStatus::from_db(&self.status),
             created_at: ts_from_db(&self.created_at)?,
@@ -53,7 +57,7 @@ impl UserRow {
 }
 
 const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, instance_role, \
-    notifications_enabled, auth_provider, status, created_at, updated_at FROM users";
+    notifications_enabled, locale, auth_provider, status, created_at, updated_at FROM users";
 
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
@@ -86,6 +90,7 @@ impl UserRepository for SqliteUserRepository {
             password_hash: new.password_hash,
             instance_role: new.instance_role,
             notifications_enabled: true,
+            locale: None,
             auth_provider: new.auth_provider,
             status: new.status,
             created_at: now,
@@ -127,27 +132,38 @@ impl UserRepository for SqliteUserRepository {
         if update.notifications_enabled.is_some() {
             sql.push_str(", notifications_enabled = ?");
         }
+        if update.locale.is_some() {
+            sql.push_str(", locale = ?");
+        } else if update.initial_locale.is_some() {
+            sql.push_str(", locale = COALESCE(locale, ?)");
+        }
         if update.status.is_some() {
             sql.push_str(", status = ?");
         }
         sql.push_str(" WHERE id = ?");
 
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql)).bind(ts_to_db(now));
-        if let Some(name) = &update.display_name {
-            query = query.bind(name.as_str());
-        }
-        if let Some(hash) = &update.password_hash {
-            query = query.bind(hash.as_str());
-        }
-        if let Some(enabled) = update.notifications_enabled {
-            query = query.bind(bool_to_db(enabled));
-        }
-        if let Some(status) = update.status {
-            query = query.bind(status.as_str());
-        }
-        query = query.bind(id_to_db(id));
+        let result = retry_write(&WritePolicy::default(), "update user profile", || async {
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql)).bind(ts_to_db(now));
+            if let Some(name) = &update.display_name {
+                query = query.bind(name.as_str());
+            }
+            if let Some(hash) = &update.password_hash {
+                query = query.bind(hash.as_str());
+            }
+            if let Some(enabled) = update.notifications_enabled {
+                query = query.bind(bool_to_db(enabled));
+            }
+            if let Some(locale) = update.locale.or(update.initial_locale) {
+                query = query.bind(locale.as_str());
+            }
+            if let Some(status) = update.status {
+                query = query.bind(status.as_str());
+            }
+            query = query.bind(id_to_db(id));
 
-        let result = query.execute(&self.db).await?;
+            Ok(query.execute(&self.db).await?)
+        })
+        .await?;
         if result.rows_affected() == 0 {
             return Err(Error::not_found(format!("user not found: {id}")));
         }

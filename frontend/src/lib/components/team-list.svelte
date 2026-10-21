@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   // Roster of teams. Each row is a plain link so SvelteKit's router handles
   // the click as a client-side navigation (no full page reload).
   import type { TeamSummary } from '$lib/api';
@@ -21,9 +22,10 @@
           <div class="min-w-0 flex-1">
             <p class="truncate font-medium">{team.name}</p>
             <p class="text-muted-foreground text-sm">
-              {team.member_count}
-              {team.member_count === 1 ? 'member' : 'members'} · {team.project_count}
-              {team.project_count === 1 ? 'project' : 'projects'}
+              {$t('member_count', { values: { count: team.member_count } })} · {$t(
+                'project_count',
+                { values: { count: team.project_count } }
+              )}
             </p>
           </div>
           <ChevronRight

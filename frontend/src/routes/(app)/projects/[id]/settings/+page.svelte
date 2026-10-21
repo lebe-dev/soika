@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { untrack } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import { projects, errorMessage, type TagMuteRule } from '$lib/api';
@@ -68,9 +69,9 @@
       // derives from that fresh data.
       await invalidateAll();
       resetGeneral();
-      toast.success('Project updated');
+      toast.success($t('project_updated'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Update failed'));
+      toast.error(errorMessage(err, $t('update_failed')));
       reportUnexpected(err);
     } finally {
       savingGeneral = false;
@@ -96,9 +97,9 @@
       await projects.changeTeam(project.id, { team_id: selectedTeamId });
       await invalidateAll();
       selectedTeamId = project.team_id;
-      toast.success('Project moved to a different team');
+      toast.success($t('project_moved_to_a_different_team'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to move project'));
+      toast.error(errorMessage(err, $t('failed_to_move_project')));
       reportUnexpected(err);
     } finally {
       movingTeam = false;
@@ -113,9 +114,9 @@
     try {
       await projects.mute(project.id, nextMuted);
       await invalidateAll();
-      toast.success(nextMuted ? 'Project muted' : 'Project unmuted');
+      toast.success(nextMuted ? $t('project_muted') : $t('project_unmuted'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update mute'));
+      toast.error(errorMessage(err, $t('failed_to_update_mute')));
       reportUnexpected(err);
     } finally {
       mutating = false;
@@ -138,9 +139,9 @@
     try {
       await projects.deleteMuteRule(project.id, ruleId);
       muteRules = muteRules.filter((r) => r.id !== ruleId);
-      toast.success('Rule removed');
+      toast.success($t('rule_removed'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not remove rule'));
+      toast.error(errorMessage(err, $t('could_not_remove_rule')));
       reportUnexpected(err);
     } finally {
       deletingRule = null;
@@ -165,9 +166,9 @@
       await projects.update(project.id, { webhook_url: webhookUrl.trim() });
       await invalidateAll();
       resetWebhook();
-      toast.success('Webhook updated');
+      toast.success($t('webhook_updated'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update webhook'));
+      toast.error(errorMessage(err, $t('failed_to_update_webhook')));
       reportUnexpected(err);
     } finally {
       savingWebhook = false;
@@ -177,38 +178,38 @@
   // --- Danger zone ---------------------------------------------------------
   let deleting = $state(false);
   async function deleteProject() {
-    if (!confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
+    if (!confirm($t('delete_project_confirm', { values: { name: project.name } }))) return;
     deleting = true;
     try {
       await projects.remove(project.id);
-      toast.success('Project deleted');
+      toast.success($t('project_deleted'));
       await invalidateAll();
       await goto('/');
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to delete project'));
+      toast.error(errorMessage(err, $t('failed_to_delete_project')));
       reportUnexpected(err);
       deleting = false;
     }
   }
 </script>
 
-<PageTitle title={`${project.name} · Settings`} />
+<PageTitle title={`${project.name} · ${$t('settings')}`} />
 
 <div class="space-y-6">
   <!-- General settings -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>General</Card.Title>
-      <Card.Description>Project name and event retention (by count and age).</Card.Description>
+      <Card.Title>{$t('general')}</Card.Title>
+      <Card.Description>{$t('project_name_and_event_retention_by_count_and_age')}</Card.Description>
     </Card.Header>
     <form onsubmit={saveGeneral} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
-          <label for="name" class="text-sm font-medium">Name</label>
+          <label for="name" class="text-sm font-medium">{$t('name')}</label>
           <Input id="name" bind:value={name} disabled={!isAdmin} required />
         </div>
         <div class="space-y-2">
-          <label for="retention" class="text-sm font-medium">Retention (max events)</label>
+          <label for="retention" class="text-sm font-medium">{$t('retention_max_events')}</label>
           <Input
             id="retention"
             type="number"
@@ -218,12 +219,11 @@
             required
           />
           <p class="text-muted-foreground text-xs">
-            Keep at most this many recent events; older events are pruned. Issue counters are
-            preserved.
+            {$t('keep_at_most_this_many_recent_events_older_events_are_pruned_issue_counters_are_')}
           </p>
         </div>
         <div class="space-y-2">
-          <label for="retention-days" class="text-sm font-medium">Retention (days)</label>
+          <label for="retention-days" class="text-sm font-medium">{$t('retention_days')}</label>
           <Input
             id="retention-days"
             type="number"
@@ -232,15 +232,14 @@
             disabled={!isAdmin}
           />
           <p class="text-muted-foreground text-xs">
-            0 = keep events regardless of age; otherwise events older than this many days are
-            pruned. Issue counters are preserved.
+            {$t('0_keep_events_regardless_of_age_otherwise_events_older_than_this_many_days_are_p')}
           </p>
         </div>
       </Card.Content>
       {#if isAdmin}
         <Card.Footer>
           <Button type="submit" disabled={savingGeneral || !generalDirty}>
-            {savingGeneral ? 'Saving…' : 'Save changes'}
+            {savingGeneral ? $t('saving') : $t('save_changes')}
           </Button>
         </Card.Footer>
       {/if}
@@ -250,20 +249,19 @@
   <!-- Mute -->
   <Card.Root class={project.muted ? 'ring-1 ring-orange-500' : undefined}>
     <Card.Header>
-      <Card.Title>Notifications</Card.Title>
+      <Card.Title>{$t('notifications')}</Card.Title>
       <Card.Description>
-        Muting suppresses notifications for all issues in this project. Ingestion and counting
-        continue.
+        {$t('muting_suppresses_notifications_for_all_issues_in_this_project_ingestion_and_cou')}
       </Card.Description>
     </Card.Header>
     <Card.Content class="space-y-6">
       <div class="flex items-center justify-between gap-4">
         <div class="text-sm">
-          Status:
+          {$t('status_11dc9e')}
           {#if project.muted}
-            <Badge variant="secondary">Muted</Badge>
+            <Badge variant="secondary">{$t('status_muted')}</Badge>
           {:else}
-            <Badge variant="outline">Active</Badge>
+            <Badge variant="outline">{$t('active')}</Badge>
           {/if}
         </div>
         {#if isAdmin}
@@ -271,7 +269,7 @@
             type="button"
             role="switch"
             aria-checked={!project.muted}
-            aria-label={project.muted ? 'Unmute project' : 'Mute project'}
+            aria-label={project.muted ? $t('unmute_project') : $t('mute_project')}
             disabled={mutating}
             onclick={toggleMute}
             class={cn(
@@ -292,7 +290,7 @@
       </div>
 
       <form onsubmit={saveWebhook} class="space-y-2">
-        <label for="webhook-url" class="text-sm font-medium">Webhook URL</label>
+        <label for="webhook-url" class="text-sm font-medium">{$t('webhook_url')}</label>
         <Input
           id="webhook-url"
           type="url"
@@ -301,11 +299,11 @@
           disabled={!isAdmin}
         />
         <p class="text-muted-foreground text-xs">
-          POST new-issue and regression notifications as JSON to this URL. Leave empty to disable.
+          {$t('post_new_issue_and_regression_notifications_as_json_to_this_url_leave_empty_to_d')}
         </p>
         {#if isAdmin}
           <Button type="submit" variant="outline" disabled={savingWebhook || !webhookDirty}>
-            {savingWebhook ? 'Saving…' : 'Save webhook'}
+            {savingWebhook ? $t('saving') : $t('save_webhook')}
           </Button>
         {/if}
       </form>
@@ -317,10 +315,9 @@
     <Card.Header>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <Card.Title>Mute by tags</Card.Title>
+          <Card.Title>{$t('mute_by_tags')}</Card.Title>
           <Card.Description>
-            Suppress notifications for events whose tags match a rule. All pairs in a rule must
-            match (AND). Events are still ingested and counted.
+            {$t('suppress_notifications_for_events_whose_tags_match_a_rule_all_pairs_in_a_rule_mu')}
           </Card.Description>
         </div>
         <Button
@@ -329,13 +326,13 @@
           onclick={() => (ruleDialogOpen = true)}
         >
           <Plus class="size-4" />
-          Add rule
+          {$t('add_rule')}
         </Button>
       </div>
     </Card.Header>
     <Card.Content>
       {#if muteRules.length === 0}
-        <p class="text-muted-foreground text-sm">No tag-mute rules yet.</p>
+        <p class="text-muted-foreground text-sm">{$t('no_tag_mute_rules_yet')}</p>
       {:else}
         <ul class="divide-border divide-y">
           {#each muteRules as rule (rule.id)}
@@ -355,7 +352,7 @@
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Remove rule"
+                aria-label={$t('remove_rule')}
                 disabled={deletingRule === rule.id}
                 onclick={() => deleteRule(rule.id)}
               >
@@ -372,15 +369,14 @@
   {#if canMoveTeam}
     <Card.Root>
       <Card.Header>
-        <Card.Title>Owning team</Card.Title>
+        <Card.Title>{$t('owning_team')}</Card.Title>
         <Card.Description>
-          Move this project to a different team. Access (and admin rights) follow the new team —
-          members of the previous team lose access.
+          {$t('move_this_project_to_a_different_team_access_and_admin_rights_follow_the_new_tea')}
         </Card.Description>
       </Card.Header>
       <form onsubmit={changeTeam} class="contents">
         <Card.Content class="space-y-2">
-          <label for="owning-team" class="text-sm font-medium">Team</label>
+          <label for="owning-team" class="text-sm font-medium">{$t('team')}</label>
           <NativeSelect
             id="owning-team"
             bind:value={selectedTeamId}
@@ -394,7 +390,7 @@
         </Card.Content>
         <Card.Footer>
           <Button type="submit" variant="outline" disabled={movingTeam || !teamDirty}>
-            {movingTeam ? 'Moving…' : 'Move project'}
+            {movingTeam ? $t('moving') : $t('move_project')}
           </Button>
         </Card.Footer>
       </form>
@@ -404,14 +400,13 @@
   <!-- Members & invites are managed at the team level -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Members</Card.Title>
+      <Card.Title>{$t('members')}</Card.Title>
       <Card.Description>
-        Access to this project comes from membership in its owning team. Add members, set team
-        roles, and create invites from the team page.
+        {$t('access_to_this_project_comes_from_membership_in_its_owning_team_add_members_set_')}
       </Card.Description>
     </Card.Header>
     <Card.Content>
-      <Button variant="outline" href={`/teams/${project.team_id}`}>Manage team</Button>
+      <Button variant="outline" href={`/teams/${project.team_id}`}>{$t('manage_team')}</Button>
     </Card.Content>
   </Card.Root>
 
@@ -420,14 +415,14 @@
     <!-- Danger zone -->
     <Card.Root class="border-destructive/40">
       <Card.Header>
-        <Card.Title class="text-destructive">Danger zone</Card.Title>
+        <Card.Title class="text-destructive">{$t('danger_zone')}</Card.Title>
         <Card.Description
-          >Deleting a project removes its issues and events permanently.</Card.Description
+          >{$t('deleting_a_project_removes_its_issues_and_events_permanently')}</Card.Description
         >
       </Card.Header>
       <Card.Footer>
         <Button variant="destructive" disabled={deleting} onclick={deleteProject}>
-          {deleting ? 'Deleting…' : 'Delete project'}
+          {deleting ? $t('deleting') : $t('delete_project')}
         </Button>
       </Card.Footer>
     </Card.Root>

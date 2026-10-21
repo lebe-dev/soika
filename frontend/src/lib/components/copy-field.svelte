@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { Button } from '$lib/components/ui/button';
   import { toast } from '$lib/components/ui/sonner';
   import { cn } from '$lib/utils';
@@ -10,7 +11,7 @@
   // block (e.g. SDK snippets); otherwise a single-line inline field.
   let {
     value,
-    label = 'value',
+    label = '',
     block = false,
     class: className
   }: {
@@ -26,10 +27,10 @@
     try {
       await navigator.clipboard.writeText(value);
       copied = true;
-      toast.success(`Copied ${label} to clipboard`);
+      toast.success($t('copied_label', { values: { label: label || $t('value') } }));
       setTimeout(() => (copied = false), 1500);
     } catch {
-      toast.error('Copy failed — select and copy manually');
+      toast.error($t('copy_failed_select_and_copy_manually'));
     }
   }
 </script>
@@ -43,7 +44,7 @@
       size="icon"
       class="absolute top-2 right-2 size-7"
       onclick={copy}
-      aria-label={`Copy ${label}`}
+      aria-label={$t('copy_label', { values: { label: label || $t('value') } })}
     >
       {#if copied}
         <Check class="size-3.5 text-green-600" />
@@ -63,7 +64,7 @@
       size="icon"
       class="size-9 shrink-0"
       onclick={copy}
-      aria-label={`Copy ${label}`}
+      aria-label={$t('copy_label', { values: { label: label || $t('value') } })}
     >
       {#if copied}
         <Check class="size-3.5 text-green-600" />

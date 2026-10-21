@@ -336,6 +336,7 @@ mod tests {
             password_hash: "hash".to_string(),
             instance_role: crate::domain::InstanceRole::Member,
             notifications_enabled,
+            locale: None,
             auth_provider: crate::domain::AuthProvider::Local,
             status: crate::domain::UserStatus::Active,
             created_at: now,

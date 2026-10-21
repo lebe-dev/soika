@@ -32,7 +32,9 @@ vi.mock('@sveltejs/kit', () => ({
 // `auth.config` is the single bootstrap call. We mock the whole api barrel and
 // drive the resolved/rejected value per case.
 const configMock = vi.fn();
+const updateProfileMock = vi.fn();
 vi.mock('$lib/api', () => ({
+  profile: { update: (...args: unknown[]) => updateProfileMock(...args) },
   auth: {
     config: (...args: unknown[]) => configMock(...args)
   }
@@ -108,6 +110,8 @@ async function call(load: Awaited<ReturnType<typeof importLoad>>, href: string):
 beforeEach(() => {
   vi.resetModules();
   configMock.mockReset();
+  updateProfileMock.mockReset();
+  vi.unstubAllGlobals();
   trackedUrlReads = 0;
 });
 
@@ -128,7 +132,7 @@ describe('+layout load: bootstrap fetch', () => {
   it('fetches fresh config on every run (initial load / invalidation)', async () => {
     configMock
       .mockResolvedValueOnce(authConfig({ user: null }))
-      .mockResolvedValueOnce(authConfig({ user: { id: 'u1' } as never }));
+      .mockResolvedValueOnce(authConfig({ user: { id: 'u1', locale: 'en' } as never }));
     const load = await importLoad();
 
     // Signed out on /login, then the login flow invalidates and navigates to
@@ -138,7 +142,7 @@ describe('+layout load: bootstrap fetch', () => {
 
     expect(configMock).toHaveBeenCalledTimes(2);
     expect(before.user).toBeNull();
-    expect(after.user).toEqual({ id: 'u1' });
+    expect(after.user).toEqual({ id: 'u1', locale: 'en' });
   });
 
   it('forwards the request-scoped fetch to auth.config', async () => {
@@ -163,7 +167,7 @@ describe('+layout load: rejected bootstrap', () => {
 
   it('retries on the next run instead of replaying a failure', async () => {
     configMock.mockRejectedValueOnce(new Error('network down'));
-    configMock.mockResolvedValue(authConfig({ user: { id: 'u1' } as never }));
+    configMock.mockResolvedValue(authConfig({ user: { id: 'u1', locale: 'en' } as never }));
     const load = await importLoad();
 
     const first = await call(load, '/login');
@@ -172,7 +176,7 @@ describe('+layout load: rejected bootstrap', () => {
     const second = await call(load, '/projects');
     expect(configMock).toHaveBeenCalledTimes(2);
     expect(second.config).not.toBeNull();
-    expect(second.user).toEqual({ id: 'u1' });
+    expect(second.user).toEqual({ id: 'u1', locale: 'en' });
   });
 });
 
@@ -222,5 +226,54 @@ describe('+layout load: first-run redirect routing', () => {
     const load = await importLoad();
 
     await expect(call(load, '/login')).rejects.toBeInstanceOf(RedirectError);
+  });
+});
+
+describe('+layout load: locale preference', () => {
+  it('detects and saves Russian once for a new account', async () => {
+    vi.stubGlobal('navigator', { language: 'ru-RU' });
+    configMock.mockResolvedValue(authConfig({ user: { id: 'u1', locale: null } as never }));
+    updateProfileMock.mockResolvedValue({ id: 'u1', locale: 'ru' });
+    const load = await importLoad();
+    expect((await call(load, '/')).user?.locale).toBe('ru');
+    expect(updateProfileMock).toHaveBeenCalledWith({ initial_locale: 'ru' }, { fetch: noopFetch });
+    await call(load, '/profile');
+    expect(updateProfileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults an unsupported browser language to English', async () => {
+    vi.stubGlobal('navigator', { language: 'de-DE' });
+    configMock.mockResolvedValue(authConfig({ user: { id: 'u1', locale: null } as never }));
+    updateProfileMock.mockResolvedValue({ id: 'u1', locale: 'en' });
+    const load = await importLoad();
+    expect((await call(load, '/')).user?.locale).toBe('en');
+    expect(updateProfileMock).toHaveBeenCalledWith({ initial_locale: 'en' }, { fetch: noopFetch });
+  });
+
+  it('uses a saved preference on a different-language browser without writing it again', async () => {
+    vi.stubGlobal('navigator', { language: 'ru-RU' });
+    configMock.mockResolvedValue(authConfig({ user: { id: 'u1', locale: 'en' } as never }));
+    const load = await importLoad();
+    expect((await call(load, '/')).user?.locale).toBe('en');
+    const { currentLocale } = await import('$lib/i18n');
+    expect(currentLocale()).toBe('en');
+    expect(updateProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('uses browser language for anonymous pages without saving a profile', async () => {
+    vi.stubGlobal('navigator', { language: 'ru-BY' });
+    configMock.mockResolvedValue(authConfig());
+    const load = await importLoad();
+    await call(load, '/login');
+    const { currentLocale } = await import('$lib/i18n');
+    expect(currentLocale()).toBe('ru');
+    expect(updateProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed preference save instead of treating the session as anonymous', async () => {
+    configMock.mockResolvedValue(authConfig({ user: { id: 'u1', locale: null } as never }));
+    updateProfileMock.mockRejectedValue(new Error('write unavailable'));
+    const load = await importLoad();
+    await expect(call(load, '/')).rejects.toThrow('write unavailable');
   });
 });

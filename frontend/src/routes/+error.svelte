@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   // App-wide error boundary. SvelteKit renders this for thrown `error(...)`
   // results (404/403/…) and for uncaught load/render exceptions, replacing its
   // unstyled default page with an in-app card matching the auth screens.
@@ -9,10 +10,10 @@
   import PageTitle from '$lib/components/page-title.svelte';
 
   const status = $derived(page.status);
-  const message = $derived(page.error?.message ?? 'Something went wrong.');
+  const message = $derived(page.error?.message ?? $t('something_went_wrong'));
 </script>
 
-<PageTitle title={`Error ${status}`} />
+<PageTitle title={`${$t('error')} ${status}`} />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
@@ -22,11 +23,11 @@
       >
         <TriangleAlert class="size-5" />
       </div>
-      <Card.Title>Error {status}</Card.Title>
+      <Card.Title>{$t('error')} {status}</Card.Title>
       <Card.Description>{message}</Card.Description>
     </Card.Header>
     <Card.Footer>
-      <Button href="/" class="w-full">Back to dashboard</Button>
+      <Button href="/" class="w-full">{$t('back_to_dashboard')}</Button>
     </Card.Footer>
   </Card.Root>
 </div>

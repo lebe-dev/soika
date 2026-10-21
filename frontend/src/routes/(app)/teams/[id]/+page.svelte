@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from '$lib/i18n';
   import { goto, invalidateAll } from '$app/navigation';
   import {
     teams as teamsApi,
@@ -83,11 +84,11 @@
     renaming = true;
     try {
       await teamsApi.update(team.id, { name });
-      toast.success('Team renamed');
+      toast.success($t('team_renamed'));
       renameOpen = false;
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to rename team'));
+      toast.error(errorMessage(err, $t('failed_to_rename_team')));
       reportUnexpected(err);
     } finally {
       renaming = false;
@@ -102,11 +103,11 @@
     deleting = true;
     try {
       await teamsApi.remove(team.id);
-      toast.success('Team deleted');
+      toast.success($t('team_deleted'));
       deleteOpen = false;
       await goto('/teams');
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to delete team'));
+      toast.error(errorMessage(err, $t('failed_to_delete_team')));
       reportUnexpected(err);
       deleting = false;
     }
@@ -130,11 +131,11 @@
     adding = true;
     try {
       await teamsApi.addMember(team.id, { user_id: selectedUserId, role: selectedRole });
-      toast.success('Member added');
+      toast.success($t('member_added'));
       addOpen = false;
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to add member'));
+      toast.error(errorMessage(err, $t('failed_to_add_member')));
       reportUnexpected(err);
     } finally {
       adding = false;
@@ -157,10 +158,10 @@
     busyMemberId = userId;
     try {
       await teamsApi.setMemberRole(team.id, userId, { role });
-      toast.success('Role updated');
+      toast.success($t('role_updated'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update role'));
+      toast.error(errorMessage(err, $t('failed_to_update_role')));
       reportUnexpected(err);
       // Snap the selector back to the server's value on failure.
       await invalidateAll();
@@ -176,10 +177,10 @@
     removingId = userId;
     try {
       await teamsApi.removeMember(team.id, userId);
-      toast.success('Member removed');
+      toast.success($t('member_removed'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to remove member'));
+      toast.error(errorMessage(err, $t('failed_to_remove_member')));
       reportUnexpected(err);
     } finally {
       removingId = null;
@@ -232,9 +233,11 @@
       invites = [invite, ...invites];
       inviteEmail = '';
       inviteOpen = false;
-      toast.success(invite.email_sent ? 'Invite created and emailed' : 'Invite link created');
+      toast.success(
+        invite.email_sent ? $t('invite_created_and_emailed') : $t('invite_link_created')
+      );
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to create invite'));
+      toast.error(errorMessage(err, $t('failed_to_create_invite')));
       reportUnexpected(err);
     } finally {
       creatingInvite = false;
@@ -245,9 +248,9 @@
     try {
       await teamsApi.revokeInvite(team.id, invite.token);
       invites = invites.filter((i) => i.token !== invite.token);
-      toast.success('Invite revoked');
+      toast.success($t('invite_revoked'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to revoke invite'));
+      toast.error(errorMessage(err, $t('failed_to_revoke_invite')));
       reportUnexpected(err);
     }
   }
@@ -258,36 +261,34 @@
 <div class="space-y-6">
   <!-- Identity: team chip + soft stat pills. The pills carry the at-a-glance
        summary so the sections below can stay quiet. -->
-  <EntityHeader title={team.name} avatarId={team.id} back={{ href: '/teams', label: 'Teams' }}>
+  <EntityHeader title={team.name} avatarId={team.id} back={{ href: '/teams', label: $t('teams') }}>
     {#snippet pills()}
       <StatPill>
-        <strong>{team.members.length}</strong>
-        {team.members.length === 1 ? 'member' : 'members'}
+        {$t('member_count', { values: { count: team.members.length } })}
       </StatPill>
       <StatPill>
-        <strong>{team.projects.length}</strong>
-        {team.projects.length === 1 ? 'project' : 'projects'}
+        {$t('project_count', { values: { count: team.projects.length } })}
       </StatPill>
       {#if myRole}
-        <StatPill>you’re <strong class="capitalize">{myRole}</strong></StatPill>
+        <StatPill>{$t('you_re')} <strong class="capitalize">{$t(myRole)}</strong></StatPill>
       {/if}
     {/snippet}
     {#snippet actions()}
       {#if canManageInstance}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
-            <Button variant="outline" size="icon" aria-label="Team actions">
+            <Button variant="outline" size="icon" aria-label={$t('team_actions')}>
               <EllipsisVertical class="size-4" />
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="end" class="w-40">
             <DropdownMenu.Item onclick={openRename}>
               <Pencil class="size-4" />
-              Rename
+              {$t('rename')}
             </DropdownMenu.Item>
             <DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
               <Trash2 class="size-4" />
-              Delete
+              {$t('delete')}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
@@ -301,13 +302,13 @@
     <Card.Header>
       <div class="space-y-1">
         <div class="flex items-center gap-1.5">
-          <Card.Title>Members</Card.Title>
+          <Card.Title>{$t('members')}</Card.Title>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               <button
                 type="button"
                 class="text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="What can each role do?"
+                aria-label={$t('what_can_each_role_do')}
               >
                 <Info class="size-4" />
               </button>
@@ -317,13 +318,13 @@
             </DropdownMenu.Content>
           </DropdownMenu.Root>
         </div>
-        <Card.Description>Who’s in this team and what role they have.</Card.Description>
+        <Card.Description>{$t('who_s_in_this_team_and_what_role_they_have')}</Card.Description>
       </div>
       {#if canManageMembers}
         <Card.Action class="flex items-center gap-2">
           <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
             <Link2 class="size-4" />
-            Invite by link
+            {$t('invite_by_link')}
           </Button>
           <Button
             variant="default"
@@ -333,7 +334,7 @@
             disabled={candidates.length === 0}
           >
             <UserPlus class="size-4" />
-            Add member
+            {$t('add_member')}
           </Button>
         </Card.Action>
       {/if}
@@ -342,7 +343,7 @@
       {#if canManageMembers && pendingInvites.length > 0}
         <div class="bg-muted/30 space-y-2 rounded-lg border p-3">
           <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Pending invites
+            {$t('pending_invites')}
           </p>
           {#each pendingInvites as invite (invite.token)}
             <div class="space-y-2">
@@ -352,15 +353,15 @@
                     variant="outline"
                     class={invite.role === 'admin' ? 'text-primary capitalize' : 'capitalize'}
                   >
-                    {invite.role}
+                    {$t(invite.role)}
                   </Badge>
                   {#if invite.email}
                     <span class="truncate">{invite.email}</span>
                   {:else}
-                    <span class="text-muted-foreground">Anyone with the link</span>
+                    <span class="text-muted-foreground">{$t('anyone_with_the_link')}</span>
                   {/if}
                   <span class="text-muted-foreground shrink-0 text-xs"
-                    >· expires {formatRelative(invite.expires_at)}</span
+                    >{$t('expires')} {formatRelative(invite.expires_at, $locale)}</span
                   >
                 </div>
                 <Button
@@ -368,12 +369,12 @@
                   size="icon"
                   class="size-8 shrink-0"
                   onclick={() => revokeInvite(invite)}
-                  aria-label="Revoke invite"
+                  aria-label={$t('revoke_invite')}
                 >
                   <Trash2 class="text-destructive size-4" />
                 </Button>
               </div>
-              <CopyField value={invite.link} label="invite link" />
+              <CopyField value={invite.link} label={$t('invite_link')} />
             </div>
           {/each}
         </div>
@@ -384,15 +385,15 @@
           <span class="bg-muted text-primary grid size-11 place-items-center rounded-xl">
             <UserPlus class="size-5" />
           </span>
-          <p class="font-medium">No members yet</p>
+          <p class="font-medium">{$t('no_members_yet')}</p>
           <p class="text-muted-foreground max-w-xs text-sm">
-            Add a teammate or share an invite link to give access to this team’s projects.
+            {$t('add_a_teammate_or_share_an_invite_link_to_give_access_to_this_team_s_projects')}
           </p>
           {#if canManageMembers}
             <div class="mt-3 flex items-center gap-2">
               <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
                 <Link2 class="size-4" />
-                Invite by link
+                {$t('invite_by_link')}
               </Button>
               <Button
                 size="sm"
@@ -401,7 +402,7 @@
                 disabled={candidates.length === 0}
               >
                 <UserPlus class="size-4" />
-                Add member
+                {$t('add_member')}
               </Button>
             </div>
           {/if}
@@ -417,20 +418,22 @@
               </div>
               {#if canManageMembers}
                 <NativeSelect
-                  aria-label={`Team role for ${member.display_name}`}
+                  aria-label={$t('team_role_for', { values: { name: member.display_name } })}
                   value={member.role}
                   disabled={busyMemberId === member.id}
                   onchange={(e) => changeRole(member.id, e.currentTarget.value as TeamRole)}
                   class="shrink-0"
                 >
-                  <option value="admin">Admin</option>
-                  <option value="contributor" disabled={demoteBlocked(member)}>Contributor</option>
+                  <option value="admin">{$t('admin')}</option>
+                  <option value="contributor" disabled={demoteBlocked(member)}
+                    >{$t('contributor')}</option
+                  >
                 </NativeSelect>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="text-destructive hover:text-destructive size-8 shrink-0"
-                  title="Remove member"
+                  title={$t('remove_member')}
                   disabled={removingId === member.id ||
                     (member.role === 'admin' && adminCount <= 1)}
                   onclick={() => removeMember(member.id)}
@@ -444,7 +447,7 @@
                     ? 'text-primary shrink-0 capitalize'
                     : 'shrink-0 capitalize'}
                 >
-                  {member.role}
+                  {$t(member.role)}
                 </Badge>
               {/if}
             </div>
@@ -458,14 +461,14 @@
        not a full table; assignment happens on the project itself. -->
   <Card.Root>
     <Card.Header>
-      <Card.Title class="text-base">Projects</Card.Title>
-      <Card.Description>Projects this team can access.</Card.Description>
+      <Card.Title class="text-base">{$t('projects')}</Card.Title>
+      <Card.Description>{$t('projects_this_team_can_access')}</Card.Description>
     </Card.Header>
     <Card.Content>
       {#if team.projects.length === 0}
         <div class="flex flex-col items-center gap-2 py-6 text-center">
           <FolderKanban class="text-muted-foreground size-7" />
-          <p class="text-muted-foreground text-sm">No projects assigned to this team.</p>
+          <p class="text-muted-foreground text-sm">{$t('no_projects_assigned_to_this_team')}</p>
         </div>
       {:else}
         <div class="flex flex-wrap gap-2">
@@ -492,18 +495,20 @@
 <Dialog.Root bind:open={renameOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Rename team</Dialog.Title>
-      <Dialog.Description>Update the display name for this team.</Dialog.Description>
+      <Dialog.Title>{$t('rename_team')}</Dialog.Title>
+      <Dialog.Description>{$t('update_the_display_name_for_this_team')}</Dialog.Description>
     </Dialog.Header>
     <form onsubmit={renameTeam} class="space-y-4">
       <div class="space-y-2">
-        <label for="rename-team" class="text-sm font-medium">Name</label>
+        <label for="rename-team" class="text-sm font-medium">{$t('name')}</label>
         <Input id="rename-team" bind:value={renameName} required />
       </div>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (renameOpen = false)}>Cancel</Button>
+        <Button type="button" variant="outline" onclick={() => (renameOpen = false)}
+          >{$t('cancel')}</Button
+        >
         <Button type="submit" disabled={renaming || renameName.trim().length === 0}>
-          {renaming ? 'Saving…' : 'Save'}
+          {renaming ? $t('saving') : $t('save')}
         </Button>
       </Dialog.Footer>
     </form>
@@ -514,15 +519,17 @@
 <Dialog.Root bind:open={deleteOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Delete team</Dialog.Title>
+      <Dialog.Title>{$t('delete_team')}</Dialog.Title>
       <Dialog.Description>
-        Delete “{team.name}”? Members lose access to its projects. This cannot be undone.
+        {$t('delete_team_confirm', { values: { name: team.name } })}
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
-      <Button type="button" variant="outline" onclick={() => (deleteOpen = false)}>Cancel</Button>
+      <Button type="button" variant="outline" onclick={() => (deleteOpen = false)}
+        >{$t('cancel')}</Button
+      >
       <Button variant="destructive" disabled={deleting} onclick={deleteTeam}>
-        {deleting ? 'Deleting…' : 'Delete team'}
+        {deleting ? $t('deleting') : $t('delete_team')}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>
@@ -532,15 +539,14 @@
 <Dialog.Root bind:open={inviteOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Invite by link</Dialog.Title>
+      <Dialog.Title>{$t('invite_by_link')}</Dialog.Title>
       <Dialog.Description>
-        Generate a link to add someone to this team. The link works even without email; if SMTP is
-        configured and you provide an address, it is also emailed.
+        {$t('generate_a_link_to_add_someone_to_this_team_the_link_works_even_without_email_if')}
       </Dialog.Description>
     </Dialog.Header>
     <form onsubmit={createInvite} class="space-y-4">
       <div class="space-y-2">
-        <label for="invite-email" class="text-sm font-medium">Email (optional)</label>
+        <label for="invite-email" class="text-sm font-medium">{$t('email_optional')}</label>
         <Input
           id="invite-email"
           type="email"
@@ -549,17 +555,19 @@
         />
       </div>
       <div class="space-y-2">
-        <label for="invite-role" class="text-sm font-medium">Role</label>
+        <label for="invite-role" class="text-sm font-medium">{$t('role')}</label>
         <NativeSelect id="invite-role" bind:value={inviteRole} class="w-full">
-          <option value="contributor">Contributor</option>
-          <option value="admin">Admin</option>
+          <option value="contributor">{$t('contributor')}</option>
+          <option value="admin">{$t('admin')}</option>
         </NativeSelect>
         <RoleHint scope="team" />
       </div>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (inviteOpen = false)}>Cancel</Button>
+        <Button type="button" variant="outline" onclick={() => (inviteOpen = false)}
+          >{$t('cancel')}</Button
+        >
         <Button type="submit" disabled={creatingInvite}>
-          {creatingInvite ? 'Creating…' : 'Create invite'}
+          {creatingInvite ? $t('creating') : $t('create_invite')}
         </Button>
       </Dialog.Footer>
     </form>
@@ -570,14 +578,14 @@
 <Dialog.Root bind:open={addOpen}>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Add member</Dialog.Title>
-      <Dialog.Description>Select a user and a role to add to this team.</Dialog.Description>
+      <Dialog.Title>{$t('add_member')}</Dialog.Title>
+      <Dialog.Description>{$t('select_a_user_and_a_role_to_add_to_this_team')}</Dialog.Description>
     </Dialog.Header>
     <form onsubmit={addMember} class="space-y-4">
       <div class="space-y-2">
-        <label for="add-member" class="text-sm font-medium">User</label>
+        <label for="add-member" class="text-sm font-medium">{$t('user')}</label>
         {#if candidates.length === 0}
-          <p class="text-muted-foreground text-sm">All users are already members.</p>
+          <p class="text-muted-foreground text-sm">{$t('all_users_are_already_members')}</p>
         {:else}
           <NativeSelect id="add-member" bind:value={selectedUserId} class="w-full">
             {#each candidates as user (user.id)}
@@ -587,17 +595,19 @@
         {/if}
       </div>
       <div class="space-y-2">
-        <label for="add-member-role" class="text-sm font-medium">Role</label>
+        <label for="add-member-role" class="text-sm font-medium">{$t('role')}</label>
         <NativeSelect id="add-member-role" bind:value={selectedRole} class="w-full">
-          <option value="contributor">Contributor</option>
-          <option value="admin">Admin</option>
+          <option value="contributor">{$t('contributor')}</option>
+          <option value="admin">{$t('admin')}</option>
         </NativeSelect>
         <RoleHint scope="team" />
       </div>
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (addOpen = false)}>Cancel</Button>
+        <Button type="button" variant="outline" onclick={() => (addOpen = false)}
+          >{$t('cancel')}</Button
+        >
         <Button type="submit" disabled={adding || !selectedUserId}>
-          {adding ? 'Adding…' : 'Add member'}
+          {adding ? $t('adding') : $t('add_member')}
         </Button>
       </Dialog.Footer>
     </form>

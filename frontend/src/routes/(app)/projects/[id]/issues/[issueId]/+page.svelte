@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from '$lib/i18n';
   import { goto, invalidateAll } from '$app/navigation';
   import {
     issues as issuesApi,
@@ -83,11 +84,10 @@
     try {
       const updated = await issuesApi[action](issue.id);
       optimistic = { id: issue.id, patch: updated };
-      const labels = { resolve: 'resolved', unresolve: 'reopened' } as const;
-      toast.success(`Issue ${labels[action]}`);
+      toast.success(action === 'resolve' ? $t('issue_resolved') : $t('issue_reopened'));
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Action failed'));
+      toast.error(errorMessage(err, $t('action_failed')));
       reportUnexpected(err);
     } finally {
       acting = false;
@@ -98,15 +98,15 @@
   // for an indefinite mute (the bare Mute button); a duration or event-rate
   // otherwise. Auto-unmute is enforced server-side (scheduler / ingestion).
   const DAY = 86_400;
-  const muteOptions: { label: string; body?: MuteRequest }[] = [
-    { label: '1 day', body: { duration_seconds: DAY } },
-    { label: '1 week', body: { duration_seconds: 7 * DAY } },
-    { label: '1 month', body: { duration_seconds: 30 * DAY } },
-    { label: '3 months', body: { duration_seconds: 90 * DAY } },
-    { label: '5 events per hour', body: { events: 5, window_seconds: 3600 } },
-    { label: '5 events per 24 hours', body: { events: 5, window_seconds: DAY } },
-    { label: '100 events per 24 hours', body: { events: 100, window_seconds: DAY } }
-  ];
+  const muteOptions: { label: string; body?: MuteRequest }[] = $derived([
+    { label: $t('mute_day'), body: { duration_seconds: DAY } },
+    { label: $t('mute_week'), body: { duration_seconds: 7 * DAY } },
+    { label: $t('mute_month'), body: { duration_seconds: 30 * DAY } },
+    { label: $t('mute_three_months'), body: { duration_seconds: 90 * DAY } },
+    { label: $t('mute_5_hour'), body: { events: 5, window_seconds: 3600 } },
+    { label: $t('mute_5_day'), body: { events: 5, window_seconds: DAY } },
+    { label: $t('mute_100_day'), body: { events: 100, window_seconds: DAY } }
+  ]);
 
   async function mute(
     body: MuteRequest | undefined = undefined,
@@ -116,10 +116,12 @@
     try {
       const updated = await issuesApi.mute(issue.id, body);
       optimistic = { id: issue.id, patch: updated };
-      toast.success(label ? `Issue muted (${label})` : 'Issue muted');
+      toast.success(
+        label ? $t('issue_muted_period', { values: { period: label } }) : $t('issue_muted')
+      );
       await invalidateAll();
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not mute issue'));
+      toast.error(errorMessage(err, $t('could_not_mute_issue')));
       reportUnexpected(err);
     } finally {
       acting = false;
@@ -146,7 +148,7 @@
     acting = true;
     try {
       const updated = await issuesApi.setFingerprint(issue.id, next);
-      toast.success('Fingerprint updated');
+      toast.success($t('fingerprint_updated'));
       editingFp = false;
       await invalidateAll();
       if (updated.id !== issue.id) {
@@ -155,7 +157,7 @@
       }
       optimistic = { id: issue.id, patch: updated };
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not update fingerprint'));
+      toast.error(errorMessage(err, $t('could_not_update_fingerprint')));
       reportUnexpected(err);
     } finally {
       acting = false;
@@ -179,9 +181,9 @@
     const json = JSON.stringify({ ...issue, event: currentEvent ?? null }, null, 2);
     try {
       await navigator.clipboard.writeText(json);
-      toast.success('Copied issue as JSON');
+      toast.success($t('copied_issue_as_json'));
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not copy to clipboard'));
+      toast.error(errorMessage(err, $t('could_not_copy_to_clipboard')));
       reportUnexpected(err);
     }
   }
@@ -191,7 +193,7 @@
 
 <div class="reveal space-y-6">
   <div>
-    <BackLink href={`/projects/${projectId}`} label="Issues" />
+    <BackLink href={`/projects/${projectId}`} label={$t('issues')} />
   </div>
 
   <!-- Hero: severity rail, level, title, culprit, actions -->
@@ -207,7 +209,11 @@
             )}
           >
             <SevIcon class="size-3" />
-            {sev.label}
+            {['fatal', 'error', 'warning', 'info', 'debug', 'unknown'].includes(
+              sev.label.toLowerCase()
+            )
+              ? $t(sev.label.toLowerCase())
+              : sev.label}
           </span>
           <IssueStatusBadge status={issue.status} class="rounded-[min(var(--radius-md),12px)]" />
         </div>
@@ -216,19 +222,19 @@
           {#if issue.status === 'resolved'}
             <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
               <RotateCcw class="size-4" />
-              Reopen
+              {$t('reopen')}
             </Button>
           {:else}
             <Button size="sm" disabled={acting} onclick={() => run('resolve')}>
               <CheckCircle2 class="size-4" />
-              Resolve
+              {$t('resolve')}
             </Button>
           {/if}
 
           {#if issue.status === 'muted'}
             <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
               <VolumeX class="size-4" />
-              Unmute
+              {$t('unmute')}
             </Button>
           {:else}
             <!-- Split button: bare "Mute" (forever) + a dropdown of periods. -->
@@ -241,7 +247,7 @@
                 onclick={() => mute()}
               >
                 <VolumeX class="size-4" />
-                Mute
+                {$t('mute')}
               </Button>
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
@@ -250,14 +256,14 @@
                     size="sm"
                     class="rounded-l-none px-2"
                     disabled={acting}
-                    aria-label="Mute for/until"
+                    aria-label={$t('mute_for_until')}
                   >
                     <ChevronDown class="size-4" />
                   </Button>
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content align="end" class="w-52">
                   <DropdownMenu.Label class="text-muted-foreground text-xs">
-                    Mute for/until
+                    {$t('mute_for_until')}
                   </DropdownMenu.Label>
                   <DropdownMenu.Separator />
                   {#each muteOptions as opt (opt.label)}
@@ -271,7 +277,7 @@
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item onclick={() => (muteByTagsOpen = true)}>
                     <Tag class="size-4" />
-                    Mute by tags…
+                    {$t('mute_by_tags_4deade')}
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
@@ -280,14 +286,14 @@
 
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <Button variant="outline" size="sm" class="px-2" aria-label="More actions">
+              <Button variant="outline" size="sm" class="px-2" aria-label={$t('more_actions')}>
                 <EllipsisVertical class="size-4" />
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end" class="w-44">
               <DropdownMenu.Item onclick={copyAsJson}>
                 <Copy class="size-4" />
-                Copy as JSON
+                {$t('copy_as_json')}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
@@ -314,9 +320,11 @@
           class="text-muted-foreground flex items-center gap-1.5 text-xs tracking-wide uppercase"
         >
           <Activity class="size-3.5" />
-          Events
+          {$t('events_c5497b')}
         </div>
-        <div class="text-3xl font-semibold tabular-nums">{formatCount(issue.event_count)}</div>
+        <div class="text-3xl font-semibold tabular-nums">
+          {formatCount(issue.event_count, $locale)}
+        </div>
       </Card.Content>
     </Card.Root>
     <Card.Root class="sm:col-span-2">
@@ -326,27 +334,29 @@
     </Card.Root>
     <Card.Root class="sm:col-span-1">
       <Card.Content class="space-y-2 p-4">
-        <div class="text-muted-foreground text-xs tracking-wide uppercase">Fingerprint</div>
+        <div class="text-muted-foreground text-xs tracking-wide uppercase">{$t('fingerprint')}</div>
         {#if editingFp}
           <div class="flex items-center gap-1.5">
             <Input
               class="h-7 font-mono text-xs"
               bind:value={fpDraft}
               disabled={acting}
-              aria-label="New fingerprint"
+              aria-label={$t('new_fingerprint')}
               onkeydown={(e) => e.key === 'Enter' && saveFingerprint()}
             />
-            <Button size="sm" class="h-7" disabled={acting} onclick={saveFingerprint}>Save</Button>
+            <Button size="sm" class="h-7" disabled={acting} onclick={saveFingerprint}
+              >{$t('save')}</Button
+            >
             <Button
               variant="ghost"
               size="sm"
               class="h-7"
               disabled={acting}
-              onclick={() => (editingFp = false)}>Cancel</Button
+              onclick={() => (editingFp = false)}>{$t('cancel')}</Button
             >
           </div>
           <p class="text-muted-foreground text-xs">
-            Setting a fingerprint already used by another issue merges them.
+            {$t('setting_a_fingerprint_already_used_by_another_issue_merges_them')}
           </p>
         {:else}
           <div class="truncate font-mono text-xs" title={issue.fingerprint}>
@@ -357,7 +367,7 @@
             size="sm"
             class="h-7"
             disabled={acting}
-            onclick={openFingerprintEditor}>Merge / edit</Button
+            onclick={openFingerprintEditor}>{$t('merge_edit')}</Button
           >
         {/if}
       </Card.Content>
@@ -368,17 +378,17 @@
     <!-- Event navigation -->
     <div class="bg-muted/30 flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
       <div class="min-w-0 text-sm">
-        <span class="text-muted-foreground">Event</span>
+        <span class="text-muted-foreground">{$t('event')}</span>
         <span class="font-medium">{events.length - eventIndex}</span>
-        <span class="text-muted-foreground">of {events.length}</span>
+        <span class="text-muted-foreground">{$t('of')} {events.length}</span>
         <span class="text-muted-foreground ml-2 font-mono text-xs" title={currentEvent.event_id}>
           {currentEvent.event_id.slice(0, 8)}
         </span>
         <span class="text-muted-foreground ml-2 text-xs">
           · <time
             datetime={currentEvent.received_at}
-            title={formatRelative(currentEvent.received_at)}
-            >{formatDateTime(currentEvent.received_at, timezone)}</time
+            title={formatRelative(currentEvent.received_at, $locale)}
+            >{formatDateTime(currentEvent.received_at, timezone, $locale)}</time
           >
         </span>
       </div>
@@ -390,7 +400,7 @@
           class="size-8"
           disabled={eventIndex >= events.length - 1}
           onclick={prevEvent}
-          aria-label="Older event"
+          aria-label={$t('older_event')}
         >
           <ChevronLeft class="size-4" />
         </Button>
@@ -400,7 +410,7 @@
           class="size-8"
           disabled={eventIndex <= 0}
           onclick={nextEvent}
-          aria-label="Newer event"
+          aria-label={$t('newer_event')}
         >
           <ChevronRight class="size-4" />
         </Button>
@@ -438,14 +448,14 @@
     {:else}
       <Card.Root>
         <Card.Content class="text-muted-foreground py-8 text-center text-sm">
-          No stacktrace was reported for this event.
+          {$t('no_stacktrace_was_reported_for_this_event')}
         </Card.Content>
       </Card.Root>
     {/if}
   {:else}
     <Card.Root>
       <Card.Content class="text-muted-foreground py-12 text-center text-sm">
-        No events are available for this issue. Older events may have been pruned by retention.
+        {$t('no_events_are_available_for_this_issue_older_events_may_have_been_pruned_by_rete')}
       </Card.Content>
     </Card.Root>
   {/if}

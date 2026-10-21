@@ -1,9 +1,10 @@
+import precompileIntl from 'svelte-intl-precompile/sveltekit-plugin';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [tailwindcss(), sveltekit()],
+  plugins: [precompileIntl('locales'), tailwindcss(), sveltekit()],
   server: {
     allowedHosts: ['test.home'],
     // Dev convenience: proxy API calls to the Rust backend so the session

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   // Thin top bar shown while a client-side navigation waits for its load
   // functions. It appears only after a short delay, so instant (preloaded)
   // navigations never flash it.
@@ -22,7 +23,7 @@
   <div
     class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden"
     role="progressbar"
-    aria-label="Loading page"
+    aria-label={$t('loading_page')}
   >
     <div class="nav-progress bg-primary h-full w-1/3"></div>
   </div>

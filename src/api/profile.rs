@@ -2,7 +2,7 @@
 //!
 //! Lets the current user view and edit their profile: display name, password
 //! (verify old → re-hash new), and the user-level `notifications_enabled`
-//! email opt-out. Session auth via the shared [`AuthUser`] extractor.
+//! email opt-out, plus the interface language preference. Session auth via the shared [`AuthUser`] extractor.
 
 use axum::Json;
 use axum::extract::State;
@@ -24,6 +24,8 @@ pub struct ProfileView {
     /// Instance-wide role (`owner | manager | member`).
     pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
+    pub locale: Option<crate::domain::Locale>,
+    pub auth_provider: crate::domain::AuthProvider,
 }
 
 impl From<User> for ProfileView {
@@ -34,6 +36,8 @@ impl From<User> for ProfileView {
             display_name: u.display_name,
             instance_role: u.instance_role,
             notifications_enabled: u.notifications_enabled,
+            locale: u.locale,
+            auth_provider: u.auth_provider,
         }
     }
 }
@@ -46,6 +50,9 @@ impl From<User> for ProfileView {
 pub struct UpdateProfile {
     pub display_name: Option<String>,
     pub notifications_enabled: Option<bool>,
+    pub locale: Option<crate::domain::Locale>,
+    /// Browser detection only initializes an unset preference; explicit locale wins.
+    pub initial_locale: Option<crate::domain::Locale>,
     pub current_password: Option<String>,
     pub new_password: Option<String>,
 }
@@ -59,7 +66,11 @@ pub async fn update(
     State(state): State<AppState>,
     Json(body): Json<UpdateProfile>,
 ) -> Result<Json<ProfileView>, ApiError> {
-    let mut update = UserUpdate::default();
+    let mut update = UserUpdate {
+        locale: body.locale,
+        initial_locale: body.initial_locale,
+        ..Default::default()
+    };
     let mut password_changed = false;
 
     if let Some(name) = body.display_name {
@@ -154,6 +165,8 @@ mod tests {
             display_name: "A".into(),
             instance_role: InstanceRole::Member,
             notifications_enabled: true,
+            locale: None,
+            auth_provider: crate::domain::AuthProvider::Local,
         };
         let json = serde_json::to_string(&view).unwrap();
         assert!(!json.contains("password"));

@@ -8,6 +8,8 @@
 // re-fetching. The config also drives first-run routing: an uninitialized
 // instance is sent to `/setup`; once initialized, `/setup` bounces back to login.
 
+import { browserLocale, setLocale } from '$lib/i18n';
+import { profile } from '$lib/api';
 import { redirect } from '@sveltejs/kit';
 import { auth, type AuthConfig, type ClientConfig, type User } from '$lib/api';
 import type { LayoutLoad } from './$types';
@@ -40,6 +42,15 @@ export const load: LayoutLoad = async ({ fetch, url, untrack }) => {
     // Network/server error: treat as unauthenticated with unknown config; route
     // guards handle auth redirects and we skip first-run routing below.
   }
+
+  // Initialize at most once, atomically on the backend; saved preferences win.
+  // Keep failures separate from bootstrap auth so a failed save is visible and
+  // does not discard the authenticated session.
+  if (user && user.locale == null) {
+    user = { ...user, ...(await profile.update({ initial_locale: browserLocale() }, { fetch })) };
+    if (config) config.user = user;
+  }
+  setLocale(user?.locale ?? browserLocale());
 
   if (config) {
     const onSetup = pathname === '/setup';

@@ -194,6 +194,7 @@ mod tests {
             password_hash: String::new(),
             instance_role,
             notifications_enabled: true,
+            locale: None,
             auth_provider: crate::domain::AuthProvider::Local,
             status: crate::domain::UserStatus::Active,
             created_at: Utc::now(),

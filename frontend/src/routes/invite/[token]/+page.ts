@@ -1,3 +1,4 @@
+import { translate } from '$lib/i18n';
 // Accept-invite page load: fetch the invite preview so the page can render the
 // right flow (join vs. register). Invalid/expired tokens surface via
 // the catch in the component, so we pass the token and let the page fetch.
@@ -11,7 +12,7 @@ export const load: PageLoad = async ({ params, fetch }) => {
   try {
     preview = await invites.preview(params.token, { fetch });
   } catch (err) {
-    error = errorMessage(err, 'This invite is no longer valid.');
+    error = errorMessage(err, translate('this_invite_is_no_longer_valid'));
   }
   return { token: params.token, preview, error };
 };

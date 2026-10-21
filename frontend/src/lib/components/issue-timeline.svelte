@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from '$lib/i18n';
   import { formatRelative, formatDateTime } from '$lib/format';
 
   // Compact lifetime strip for an issue: "first seen → last seen". The filled
@@ -23,15 +24,15 @@
 <div class="space-y-2.5">
   <div class="flex items-end justify-between gap-3">
     <div>
-      <div class="text-muted-foreground text-xs tracking-wide uppercase">First seen</div>
-      <div class="text-sm font-medium" title={formatDateTime(firstSeen)}>
-        {formatRelative(firstSeen)}
+      <div class="text-muted-foreground text-xs tracking-wide uppercase">{$t('first_seen')}</div>
+      <div class="text-sm font-medium" title={formatDateTime(firstSeen, undefined, $locale)}>
+        {formatRelative(firstSeen, $locale)}
       </div>
     </div>
     <div class="text-right">
-      <div class="text-muted-foreground text-xs tracking-wide uppercase">Last seen</div>
-      <div class="text-sm font-medium" title={formatDateTime(lastSeen)}>
-        {formatRelative(lastSeen)}
+      <div class="text-muted-foreground text-xs tracking-wide uppercase">{$t('last_seen')}</div>
+      <div class="text-sm font-medium" title={formatDateTime(lastSeen, undefined, $locale)}>
+        {formatRelative(lastSeen, $locale)}
       </div>
     </div>
   </div>

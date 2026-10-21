@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { Badge } from '$lib/components/ui/badge';
   import { cn } from '$lib/utils';
   import type { IssueStatus } from '$lib/api';
@@ -9,15 +10,15 @@
   const config: Record<
     IssueStatus,
     { label: string; variant: 'outline' | 'secondary' | 'destructive'; class?: string }
-  > = {
-    unresolved: { label: 'Unresolved', variant: 'destructive' },
+  > = $derived({
+    unresolved: { label: $t('status_unresolved'), variant: 'destructive' },
     resolved: {
-      label: 'Resolved',
+      label: $t('status_resolved'),
       variant: 'outline',
       class: 'border-green-600/40 text-green-700 dark:text-green-400'
     },
-    muted: { label: 'Muted', variant: 'secondary' }
-  };
+    muted: { label: $t('status_muted'), variant: 'secondary' }
+  });
 
   const c = $derived(config[status]);
 </script>

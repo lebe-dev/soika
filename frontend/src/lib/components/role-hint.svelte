@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import { translate } from '$lib/i18n';
   // One-line descriptions of what each role can do, kept in sync with the
   // permission matrix in README.md. Surfaced next to role selectors so the
   // role names (Owner / Manager / Member, Admin / Contributor) are not opaque.
@@ -6,44 +7,45 @@
 
   const INSTANCE_ROLES: RoleEntry[] = [
     {
-      name: 'Owner',
+      name: 'owner',
       description:
-        'Full control. Everything a Manager can do, plus granting/revoking Owner and destructive instance operations.'
+        'full_control_everything_a_manager_can_do_plus_granting_revoking_owner_and_destru'
     },
     {
-      name: 'Manager',
+      name: 'manager',
       description:
-        'Administers every team and project, invites and approves users, sets instance roles (but cannot grant Owner).'
+        'administers_every_team_and_project_invites_and_approves_users_sets_instance_role'
     },
     {
-      name: 'Member',
+      name: 'member',
       description:
-        'No instance-wide powers. Access is limited to the projects of the teams they belong to.'
+        'no_instance_wide_powers_access_is_limited_to_the_projects_of_the_teams_they_belo'
     }
   ];
 
   const TEAM_ROLES: RoleEntry[] = [
     {
-      name: 'Admin',
+      name: 'admin',
       description:
-        'Manages the team: members and their roles, project settings, and invites for this team.'
+        'manages_the_team_members_and_their_roles_project_settings_and_invites_for_this_t'
     },
     {
-      name: 'Contributor',
-      description:
-        'Read and triage the team’s projects (view issues and events). No team management.'
+      name: 'contributor',
+      description: 'read_and_triage_the_team_s_projects_view_issues_and_events_no_team_management'
     }
   ];
 
   // One-line description for a single team role (`admin | contributor`), used
   // where only one role is shown (e.g. the invite acceptance preview).
   export function teamRoleDescription(role: 'admin' | 'contributor'): string {
-    const name = role === 'admin' ? 'Admin' : 'Contributor';
-    return TEAM_ROLES.find((r) => r.name === name)?.description ?? '';
+    const name = role === 'admin' ? 'admin' : 'contributor';
+    const key = TEAM_ROLES.find((r) => r.name === name)?.description;
+    return key ? translate(key) : '';
   }
 </script>
 
 <script lang="ts">
+  import { t } from '$lib/i18n';
   let { scope }: { scope: 'instance' | 'team' } = $props();
 
   const roles = $derived(scope === 'instance' ? INSTANCE_ROLES : TEAM_ROLES);
@@ -52,8 +54,8 @@
 <dl class="text-muted-foreground space-y-1 text-xs">
   {#each roles as role (role.name)}
     <div class="flex gap-1.5">
-      <dt class="text-foreground shrink-0 font-medium">{role.name}</dt>
-      <dd>— {role.description}</dd>
+      <dt class="text-foreground shrink-0 font-medium">{$t(role.name)}</dt>
+      <dd>— {$t(role.description)}</dd>
     </div>
   {/each}
 </dl>

@@ -150,6 +150,35 @@ impl UserStatus {
     }
 }
 
+/// Supported interface languages. An unset user preference is initialized by the SPA.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Locale {
+    En,
+    Ru,
+}
+
+impl Locale {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::Ru => "ru",
+        }
+    }
+}
+
+impl FromStr for Locale {
+    type Err = crate::error::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "en" => Ok(Self::En),
+            "ru" => Ok(Self::Ru),
+            _ => Err(crate::error::Error::validation("unsupported locale")),
+        }
+    }
+}
+
 /// An authenticated account with credentials and profile settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -163,6 +192,7 @@ pub struct User {
     pub instance_role: InstanceRole,
     /// User-level opt-out from all email notifications.
     pub notifications_enabled: bool,
+    pub locale: Option<Locale>,
     /// Origin of the account: local password or OIDC.
     pub auth_provider: AuthProvider,
     /// Activation status; `Pending` accounts await admin approval and hold no session.

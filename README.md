@@ -224,6 +224,30 @@ Passkeys coexist with everything else: password login and SSO keep working, and
 an account with no registered key is unaffected. Deleting a user deletes their
 credentials with them.
 
+## Interface language
+
+The interface supports **English** and **Russian**, using `svelte-intl-precompile`.
+English is the fallback. On an anonymous visit and the first authenticated visit
+(including after signup, setup, SSO or passkey sign-in), the SPA checks the browser's
+primary language: `ru` and regional variants such as `ru-RU` select Russian;
+every other language selects English.
+
+The initial authenticated choice is saved in SQLite. **Profile → Language** lets
+each user change it; that saved preference takes precedence on subsequent visits,
+including from other browsers and devices. Existing accounts detect their language
+on their next authenticated visit after upgrading. Dates and counts follow the
+interface language; the configured display timezone still applies.
+
+The profile API accepts `locale: "en" | "ru"` for an explicit choice and
+`initial_locale: "en" | "ru"` to initialize an unset preference atomically without
+overwriting a saved choice. `locale: null` in a user response means detection has
+not yet been saved. Email templates, SDK payloads, source code and unknown backend
+diagnostic messages retain their original language.
+
+Translation catalogs live in `frontend/locales/en.json` and `ru.json`; keep their
+keys in sync and use ICU plural messages for counts. Run `just dist` after changing
+the frontend so the single binary embeds the updated translations.
+
 ## Database & write concurrency (SQLite)
 
 soika stores everything in one SQLite file. SQLite allows **many readers but

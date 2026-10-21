@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth, type User } from '$lib/api';
@@ -30,12 +31,12 @@
 
   type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
 
-  const items: NavItem[] = [
-    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/teams', label: 'Teams', icon: Users },
-    { href: '/profile', label: 'Profile', icon: UserIcon },
-    { href: '/admin', label: 'Admin', icon: Shield, adminOnly: true }
-  ];
+  const items: NavItem[] = $derived([
+    { href: '/', label: $t('dashboard'), icon: LayoutDashboard },
+    { href: '/teams', label: $t('teams'), icon: Users },
+    { href: '/profile', label: $t('profile'), icon: UserIcon },
+    { href: '/admin', label: $t('admin'), icon: Shield, adminOnly: true }
+  ]);
 
   // Admin-only nav items are visible to instance managers (Owner | Manager).
   const canManageInstance = $derived(
@@ -60,7 +61,7 @@
       // Ignore: server-side logout is best-effort; local clear is what matters.
     }
     authStore.clear();
-    toast.success('Signed out');
+    toast.success($t('signed_out'));
     await goto('/login', { invalidateAll: true });
   }
 </script>
@@ -72,7 +73,7 @@
     <!-- Mobile: hamburger menu collapses the primary nav links. -->
     <DropdownMenu.Root>
       <DropdownMenu.Trigger class="md:hidden">
-        <Button variant="ghost" size="icon" aria-label="Open navigation">
+        <Button variant="ghost" size="icon" aria-label={$t('open_navigation')}>
           <Menu class="size-5" />
           {#if pendingApprovals > 0 && canManageInstance}
             <AlertTriangle class="text-primary size-3" />
@@ -116,7 +117,7 @@
           {#if item.href === '/admin' && pendingApprovals > 0}
             <AlertTriangle
               class="text-primary size-3.5"
-              aria-label={`${pendingApprovals} account${pendingApprovals === 1 ? '' : 's'} awaiting approval`}
+              aria-label={$t('awaiting_approval_count', { values: { count: pendingApprovals } })}
             />
           {/if}
         </a>
@@ -129,14 +130,14 @@
           variant="ghost"
           size="icon"
           onclick={() => goto('/profile')}
-          aria-label="Email notifications are off"
-          title="Email notifications are off"
+          aria-label={$t('email_notifications_are_off')}
+          title={$t('email_notifications_are_off')}
         >
           <BellOff class="size-4 text-orange-500" />
         </Button>
       {/if}
 
-      <Button variant="ghost" size="icon" onclick={toggleMode} aria-label="Toggle theme">
+      <Button variant="ghost" size="icon" onclick={toggleMode} aria-label={$t('toggle_theme')}>
         {#if mode.current === 'dark'}
           <Sun class="size-4" />
         {:else}
@@ -146,7 +147,7 @@
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button variant="ghost" class="gap-2 px-1.5 sm:pr-2.5" aria-label="Account menu">
+          <Button variant="ghost" class="gap-2 px-1.5 sm:pr-2.5" aria-label={$t('account_menu')}>
             <Avatar name={user.display_name} id={user.id} size="sm" />
             <span class="hidden max-w-[12ch] truncate sm:inline">{user.display_name}</span>
           </Button>
@@ -156,11 +157,11 @@
           <DropdownMenu.Separator />
           <DropdownMenu.Item onclick={() => goto('/profile')}>
             <UserIcon class="size-4" />
-            Profile
+            {$t('profile')}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={logout}>
             <LogOut class="size-4" />
-            Sign out
+            {$t('sign_out')}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>

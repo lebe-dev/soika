@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { page } from '$app/stores';
   import { Button } from '$lib/components/ui/button';
   import * as Card from '$lib/components/ui/card';
@@ -20,12 +21,12 @@
   // anonymous-route failure isn't silent.
   $effect(() => {
     if (config === null) {
-      toast.error('Could not reach the server');
+      toast.error($t('could_not_reach_the_server'));
     }
   });
 </script>
 
-<PageTitle title="Awaiting approval" />
+<PageTitle title={$t('awaiting_approval')} />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
@@ -35,19 +36,17 @@
       >
         <Clock class="size-5" />
       </div>
-      <Card.Title>Account awaiting approval</Card.Title>
+      <Card.Title>{$t('account_awaiting_approval')}</Card.Title>
       <Card.Description>
-        You've signed in successfully, but your account needs to be approved by an administrator
-        before you can continue.
+        {$t('you_ve_signed_in_successfully_but_your_account_needs_to_be_approved_by_an_admini')}
       </Card.Description>
     </Card.Header>
     <Card.Content class="space-y-4">
       <p class="text-muted-foreground text-sm">
-        Once an administrator approves your account, sign in again to access {config?.oauth_provider_name
-          ? `${config.oauth_provider_name}`
-          : 'the app'}.
+        {$t('once_an_administrator_approves_your_account_sign_in_again_to_access')}
+        {config?.oauth_provider_name ? `${config.oauth_provider_name}` : $t('the_app')}.
       </p>
-      <Button href="/login" class="w-full" data-sveltekit-reload>Back to sign in</Button>
+      <Button href="/login" class="w-full" data-sveltekit-reload>{$t('back_to_sign_in')}</Button>
     </Card.Content>
   </Card.Root>
 </div>

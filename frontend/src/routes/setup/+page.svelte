@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { goto } from '$app/navigation';
   import { auth, errorMessage } from '$lib/api';
@@ -25,7 +26,7 @@
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     if (!passwordsMatch) {
-      toast.error('Passwords do not match');
+      toast.error($t('passwords_do_not_match_d69c3b'));
       return;
     }
     submitting = true;
@@ -37,34 +38,34 @@
         org_name: orgName
       });
       authStore.set(user);
-      toast.success('Admin account created');
+      toast.success($t('admin_account_created'));
       await goto('/', { invalidateAll: true });
     } catch (err) {
-      toast.error(errorMessage(err, 'Setup failed'));
+      toast.error(errorMessage(err, $t('setup_failed')));
     } finally {
       submitting = false;
     }
   }
 </script>
 
-<PageTitle title="Setup" />
+<PageTitle title={$t('setup')} />
 
 <div class="flex min-h-screen items-center justify-center p-4">
   <Card.Root class="w-full max-w-sm">
     <Card.Header>
-      <Card.Title>Welcome to soika</Card.Title>
+      <Card.Title>{$t('welcome_to_soika')}</Card.Title>
       <Card.Description>
-        Set up your instance by creating the administrator account.
+        {$t('set_up_your_instance_by_creating_the_administrator_account')}
       </Card.Description>
     </Card.Header>
     <form onsubmit={submit} class="contents">
       <Card.Content class="space-y-4">
         <div class="space-y-2">
-          <label for="org" class="text-sm font-medium">Organization name</label>
+          <label for="org" class="text-sm font-medium">{$t('organization_name')}</label>
           <Input id="org" autocomplete="organization" bind:value={orgName} required />
         </div>
         <div class="space-y-2">
-          <label for="name" class="text-sm font-medium">Your name</label>
+          <label for="name" class="text-sm font-medium">{$t('your_name')}</label>
           <Input
             id="name"
             autocomplete="name"
@@ -74,11 +75,11 @@
           />
         </div>
         <div class="space-y-2">
-          <label for="email" class="text-sm font-medium">Email</label>
+          <label for="email" class="text-sm font-medium">{$t('email')}</label>
           <Input id="email" type="email" autocomplete="email" bind:value={email} required />
         </div>
         <div class="space-y-2">
-          <label for="password" class="text-sm font-medium">Password</label>
+          <label for="password" class="text-sm font-medium">{$t('password')}</label>
           <Input
             id="password"
             type="password"
@@ -89,7 +90,7 @@
           />
         </div>
         <div class="space-y-2">
-          <label for="confirm" class="text-sm font-medium">Confirm password</label>
+          <label for="confirm" class="text-sm font-medium">{$t('confirm_password')}</label>
           <Input
             id="confirm"
             type="password"
@@ -99,13 +100,13 @@
             required
           />
           {#if confirmPassword && !passwordsMatch}
-            <p class="text-destructive text-sm">Passwords do not match.</p>
+            <p class="text-destructive text-sm">{$t('passwords_do_not_match')}</p>
           {/if}
         </div>
       </Card.Content>
       <Card.Footer>
         <Button type="submit" class="w-full" disabled={submitting || !passwordsMatch}>
-          {submitting ? 'Creating…' : 'Create admin account'}
+          {submitting ? $t('creating') : $t('create_admin_account')}
         </Button>
       </Card.Footer>
     </form>
