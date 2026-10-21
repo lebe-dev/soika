@@ -55,8 +55,6 @@ docker run -d \
 - [Helm chart](helm-chart/README.md)
 - [User interface](docs/UI.md)
 - [Development](DEV.md)
-- [MVP scope](MVP.md)
-- [Project plan](PLAN.md)
 
 ## License
 
