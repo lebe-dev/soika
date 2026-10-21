@@ -27,6 +27,7 @@ Owner account on the setup page.
 - Supports password login, OAuth/OIDC single sign-on, and passkeys.
 - Provides team-based project access and issue triage in the web interface.
 - Runs as one binary with embedded frontend assets and an SQLite database.
+- Supports English and Russian localizations (`en`, `ru`).
 
 ## Docs
 
