@@ -1,0 +1,14 @@
+Soika is available through service {{ include "soika.fullname" . }} on port {{ .Values.service.port }}.
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  Ingress: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if .Values.httpRoute.enabled }}
+{{- range .Values.httpRoute.hostnames }}
+  HTTPRoute host: {{ . }}
+{{- end }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "soika.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+Set BASE_URL to the public URL, and ensure SECRET_KEY is non-empty before starting Soika.

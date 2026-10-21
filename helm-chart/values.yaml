@@ -1,0 +1,116 @@
+# Soika uses one SQLite database and runs migrations at startup. Keep one replica.
+replicaCount: 1
+revisionHistoryLimit: 2
+
+image:
+  repository: tinyops/soika
+  pullPolicy: IfNotPresent
+  tag: "" # Defaults to Chart.appVersion.
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Non-sensitive application settings. See .env.example for all available keys.
+# Set BASE_URL to the public URL used by users and Sentry SDKs.
+envs:
+  - name: BIND_ADDR
+    value: "0.0.0.0:8080"
+  - name: DATABASE_URL
+    value: "sqlite:///app/data/soika.db?mode=rwc"
+  - name: BASE_URL
+    value: "http://localhost:8080"
+
+# Set SECRET_KEY before installing. An empty key causes Soika to reject startup.
+# Alternatively, set create: false and existingSecret to a Secret containing
+# SECRET_KEY (and any other sensitive environment variables).
+secrets:
+  create: true
+  existingSecret: ""
+  annotations: {}
+  envs:
+    - name: SECRET_KEY
+      value: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 8080
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  failureThreshold: 30
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: errors.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - errors.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+# Use a block-storage volume that supports SQLite file locking. Avoid NFS/SMB.
+# If existingClaim is set, the chart does not create a PVC.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClassName: "" # Empty uses the cluster default StorageClass.
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations:
+    helm.sh/resource-policy: keep
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+extraObjects: []

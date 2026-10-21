@@ -39,6 +39,7 @@ Owner account on the setup page.
 ## Docs
 
 - [Installation and configuration](docs/OPERATIONS.md)
+- [Helm chart](helm-chart/README.md)
 - [User interface](docs/UI.md)
 - [Development](DEV.md)
 - [MVP scope](MVP.md)
