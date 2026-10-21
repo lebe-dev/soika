@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { teams as teamsApi, errorMessage, type TeamSummary } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -36,6 +36,9 @@
       toast.success($t('team_created', { values: { name: team.name } }));
       createOpen = false;
       newName = '';
+      // The dashboard reads its team list from the root auth/config load. Refresh
+      // it after creation so returning there doesn't show the stale empty state.
+      await invalidateAll();
       await goto(`/teams/${team.id}`);
     } catch (err) {
       toast.error(errorMessage(err, $t('failed_to_create_team')));
