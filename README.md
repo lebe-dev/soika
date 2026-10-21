@@ -24,6 +24,7 @@ Owner account on the setup page.
 
 - Accepts events from Sentry-compatible SDKs.
 - Groups errors and displays issues, events, stacktraces, tags, and context.
+- Supports password login, OAuth/OIDC single sign-on, and passkeys.
 - Provides team-based project access and issue triage in the web interface.
 - Runs as one binary with embedded frontend assets and an SQLite database.
 
