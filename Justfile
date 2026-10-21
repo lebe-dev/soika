@@ -6,6 +6,7 @@
 set dotenv-load
 
 version := `cat Cargo.toml | grep version | head -1 | cut -d " " -f 3 | tr -d "\""`
+gitHash := `git rev-parse --short HEAD`
 imageName := 'tinyops/soika'
 
 DATABASE_URL := env_var_or_default("DATABASE_URL", "sqlite://soika.db")
@@ -127,6 +128,14 @@ push-image:
 
 release: build-image && push-image
 
+build-image-dev: test && lint
+    docker build --progress=plain --platform linux/amd64 -t {{ imageName }}:{{ version }}-{{ gitHash }} .
+
+push-image-dev:
+    docker push {{ imageName }}:{{ version }}-{{ gitHash }}
+
+release-dev: build-image-dev && push-image-dev
+
 ssh:
     ssh kaiman
 
@@ -141,6 +150,9 @@ stop:
 # --- Deploy ---
 deploy:
     ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
+
+deploy-dev:
+    ssh kaiman "cd /opt/soika && sed -i 's|{{ imageName }}:[^\"]*|{{ imageName }}:{{ version }}-{{ gitHash }}|' docker-compose.yml && docker compose pull && docker compose down && docker compose up -d"
 
 # --- SonarQube (static analysis) ---
 # Compose stack lives in sonarqube.yml (SonarQube Community Build + PostgreSQL).
