@@ -14,8 +14,10 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import Star from '@lucide/svelte/icons/star';
   import PageTitle from '$lib/components/page-title.svelte';
+  import PageHeader from '$lib/components/page-header.svelte';
+  import Avatar from '$lib/components/avatar.svelte';
+  import { NativeSelect } from '$lib/components/ui/native-select';
   import { teamFilterOptions, visibleProjects, type SortMode } from '$lib/dashboard';
-  import { navActions } from '$lib/stores/nav-actions.svelte';
   import { readJson, writeJson } from '$lib/local-storage';
   import type { PageData } from './$types';
 
@@ -139,12 +141,6 @@
   // --- Create-project dialog state ---
   let createOpen = $state(false);
 
-  $effect(() => {
-    navActions.newProjectCallback = () => (createOpen = true);
-    return () => {
-      navActions.newProjectCallback = null;
-    };
-  });
   let name = $state('');
   let teamId = $state('');
   let submitting = $state(false);
@@ -181,9 +177,8 @@
 <PageTitle title="Dashboard" />
 
 <div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
-    <p class="text-muted-foreground text-sm">
+  <PageHeader title="Projects">
+    {#snippet description()}
       {#if overviews.length === 0}
         No projects yet — create your first to start capturing errors.
       {:else if filtersActive}
@@ -193,8 +188,16 @@
         {overviews.length}
         {overviews.length === 1 ? 'project' : 'projects'} in your workspace.
       {/if}
-    </p>
-  </div>
+    {/snippet}
+    {#snippet actions()}
+      {#if canCreate}
+        <Button onclick={() => (createOpen = true)} class="gap-1.5">
+          <FolderPlus class="size-4" />
+          New project
+        </Button>
+      {/if}
+    {/snippet}
+  </PageHeader>
 
   <Dialog.Root bind:open={createOpen}>
     <Dialog.Content class="sm:max-w-md">
@@ -227,15 +230,11 @@
           </div>
           <div class="space-y-2">
             <label for="project-team" class="text-sm font-medium">Team</label>
-            <select
-              id="project-team"
-              bind:value={teamId}
-              class="border-input focus-visible:border-primary focus-visible:ring-primary/30 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
-            >
+            <NativeSelect id="project-team" bind:value={teamId} class="w-full">
               {#each teams as team (team.id)}
                 <option value={team.id}>{team.name}</option>
               {/each}
-            </select>
+            </NativeSelect>
           </div>
           <Dialog.Footer>
             <Button type="submit" disabled={submitting || !name.trim()}>
@@ -288,25 +287,23 @@
         }}
       />
       {#if teamOptions.length > 1}
-        <select
+        <NativeSelect
           bind:value={filterTeamId}
-          class="border-input bg-background h-9 rounded-md border px-2 text-sm {filterTeamId
-            ? 'border-primary/50 ring-primary/15 ring-1'
-            : ''}"
+          class={filterTeamId ? 'border-primary/50 ring-primary/15 ring-1' : ''}
           aria-label="Filter by team"
         >
           <option value="">All teams</option>
           {#each teamOptions as team (team.id)}
             <option value={team.id}>{team.name}</option>
           {/each}
-        </select>
+        </NativeSelect>
       {/if}
 
       <button
         type="button"
         aria-pressed={onlyWithIssues}
         onclick={() => (onlyWithIssues = !onlyWithIssues)}
-        class="border-input flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm transition-colors {onlyWithIssues
+        class="border-input flex h-8 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors {onlyWithIssues
           ? 'bg-secondary text-secondary-foreground font-medium'
           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
       >
@@ -316,12 +313,12 @@
       </button>
 
       <div
-        class="border-input flex h-9 rounded-md border text-sm"
+        class="border-input flex h-8 rounded-lg border text-sm"
         role="group"
         aria-label="Sort order"
       >
         <button
-          class="flex items-center rounded-l-md px-3 transition-colors {sortMode === 'activity'
+          class="flex items-center rounded-l-lg px-3 transition-colors {sortMode === 'activity'
             ? 'bg-secondary text-secondary-foreground font-medium'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
           onclick={() => (sortMode = 'activity')}
@@ -329,7 +326,7 @@
           By activity
         </button>
         <button
-          class="border-input flex items-center rounded-r-md border-l px-3 transition-colors {sortMode ===
+          class="border-input flex items-center rounded-r-lg border-l px-3 transition-colors {sortMode ===
           'name'
             ? 'bg-secondary text-secondary-foreground font-medium'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
@@ -350,18 +347,21 @@
         {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
           <a
             href={`/projects/${project.id}`}
-            class="group focus-visible:ring-primary/30 rounded-lg transition focus-visible:ring-1 focus-visible:outline-none"
+            class="group focus-visible:ring-primary/30 rounded-xl transition focus-visible:ring-1 focus-visible:outline-none"
           >
             <Card.Root
-              class="group-hover:border-primary/50 group-hover:ring-primary/20 h-full transition-colors group-hover:ring-2"
+              class="group-hover:ring-primary/40 group-hover:bg-muted/30 h-full shadow-sm transition-colors"
             >
               <Card.Header>
                 <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <Card.Title class="truncate">{project.name}</Card.Title>
-                    <Card.Description class="truncate font-mono text-xs">
-                      {project.slug}
-                    </Card.Description>
+                  <div class="flex min-w-0 items-center gap-3">
+                    <Avatar name={project.name} id={project.id} shape="tile" />
+                    <div class="min-w-0">
+                      <Card.Title class="truncate">{project.name}</Card.Title>
+                      <Card.Description class="truncate font-mono text-xs">
+                        {project.slug}
+                      </Card.Description>
+                    </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     {#if project.muted}

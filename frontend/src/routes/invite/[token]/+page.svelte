@@ -36,7 +36,7 @@
       });
       authStore.set(user);
       toast.success('Invite accepted');
-      await goto(`/teams/${data.preview.team_id}`);
+      await goto(`/teams/${data.preview.team_id}`, { invalidateAll: true });
     } catch (err) {
       toast.error(errorMessage(err, 'Could not accept invite'));
     } finally {

@@ -8,6 +8,8 @@
   import { cn } from '$lib/utils';
   import { formatCount, formatRelative } from '$lib/format';
   import PageTitle from '$lib/components/page-title.svelte';
+  import { Input } from '$lib/components/ui/input';
+  import { NativeSelect } from '$lib/components/ui/native-select';
   import type { LayoutData } from './$types';
   import Inbox from '@lucide/svelte/icons/inbox';
   import { readJson, writeJson } from '$lib/local-storage';
@@ -251,40 +253,33 @@
   </div>
 
   <div class="flex flex-wrap items-center gap-2">
-    <select
+    <NativeSelect
       value={urlLevel}
       onchange={(e) => selectLevel(e.currentTarget.value as Level)}
-      class="border-input bg-background h-9 rounded-md border px-2 text-sm {urlLevel !== 'all'
-        ? 'border-primary/50 ring-primary/15 ring-1'
-        : ''}"
+      class={urlLevel !== 'all' ? 'border-primary/50 ring-primary/15 ring-1' : ''}
       aria-label="Filter by level"
     >
       {#each levels as l (l.value)}
         <option value={l.value}>{l.label}</option>
       {/each}
-    </select>
+    </NativeSelect>
 
-    <input
+    <Input
       type="text"
       value={urlEnvironment}
       onchange={(e) => setParam('environment', e.currentTarget.value)}
       placeholder="Environment"
       aria-label="Filter by environment"
-      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm {urlEnvironment !==
-      ''
-        ? 'border-primary/50 ring-primary/15 ring-1'
-        : ''}"
+      class={cn('w-40', urlEnvironment !== '' && 'border-primary/50 ring-primary/15 ring-1')}
     />
 
-    <input
+    <Input
       type="text"
       value={urlRelease}
       onchange={(e) => setParam('release', e.currentTarget.value)}
       placeholder="Release"
       aria-label="Filter by release"
-      class="border-input bg-background h-9 w-40 rounded-md border px-2 text-sm {urlRelease !== ''
-        ? 'border-primary/50 ring-primary/15 ring-1'
-        : ''}"
+      class={cn('w-40', urlRelease !== '' && 'border-primary/50 ring-primary/15 ring-1')}
     />
   </div>
 

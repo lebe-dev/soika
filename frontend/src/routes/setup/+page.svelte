@@ -37,7 +37,7 @@
       });
       authStore.set(user);
       toast.success('Admin account created');
-      await goto('/');
+      await goto('/', { invalidateAll: true });
     } catch (err) {
       toast.error(errorMessage(err, 'Setup failed'));
     } finally {

@@ -8,7 +8,8 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import * as Card from '$lib/components/ui/card';
   import * as Tabs from '$lib/components/ui/tabs';
-  import * as Table from '$lib/components/ui/table';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  import { NativeSelect } from '$lib/components/ui/native-select';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -22,6 +23,10 @@
   import MailX from '@lucide/svelte/icons/mail-x';
   import PageTitle from '$lib/components/page-title.svelte';
   import RoleHint from '$lib/components/role-hint.svelte';
+  import PageHeader from '$lib/components/page-header.svelte';
+  import Avatar from '$lib/components/avatar.svelte';
+  import TeamList from '$lib/components/team-list.svelte';
+  import Info from '@lucide/svelte/icons/info';
   import type { PageData } from './$types';
 
   // Admin — service settings, users, and teams overview.
@@ -205,10 +210,11 @@
 <PageTitle title="Admin" />
 
 <div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-semibold tracking-tight">Admin</h1>
-    <p class="text-muted-foreground text-sm">Instance-wide settings, users, and teams.</p>
-  </div>
+  <PageHeader title="Admin">
+    {#snippet description()}
+      Instance-wide settings, users, and teams.
+    {/snippet}
+  </PageHeader>
 
   <Tabs.Root value="settings">
     <Tabs.List>
@@ -338,132 +344,123 @@
       </div>
     </Tabs.Content>
 
-    <!-- Users overview -->
+    <!-- Users overview: same roster layout as team members. -->
     <Tabs.Content value="users">
-      <Card.Root>
+      <Card.Root class="shadow-sm">
         <Card.Header>
-          <Card.Title>Users</Card.Title>
+          <div class="flex items-center gap-1.5">
+            <Card.Title>Users</Card.Title>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="What can each role do?"
+                >
+                  <Info class="size-4" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="start" class="w-80 p-3">
+                <RoleHint scope="instance" />
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          </div>
           <Card.Description>All accounts on this instance.</Card.Description>
         </Card.Header>
-        <Card.Content class="space-y-4">
-          <div class="bg-muted/40 rounded-lg border p-3">
-            <RoleHint scope="instance" />
-          </div>
+        <Card.Content>
           {#if data.users.length === 0}
             <p class="text-muted-foreground text-sm">No users yet.</p>
           {:else}
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Name</Table.Head>
-                  <Table.Head>Email</Table.Head>
-                  <Table.Head>Role</Table.Head>
-                  <Table.Head>Status</Table.Head>
-                  <Table.Head>Notifications</Table.Head>
-                  <Table.Head>Joined</Table.Head>
-                  <Table.Head class="text-right">Actions</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {#each data.users as u (u.id)}
-                  {@const isSelf = authStore.user != null && u.id === authStore.user.id}
-                  <Table.Row>
-                    <Table.Cell class="font-medium">
-                      {u.display_name}
+            <div class="divide-border/60 divide-y">
+              {#each data.users as u (u.id)}
+                {@const isSelf = authStore.user != null && u.id === authStore.user.id}
+                <div class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                  <Avatar name={u.display_name} id={u.id} />
+                  <div class="min-w-0 flex-1">
+                    <p class="flex items-center gap-2 font-medium">
+                      <span class="truncate">{u.display_name}</span>
                       {#if isSelf}
-                        <span class="text-muted-foreground ml-1 text-xs">(you)</span>
+                        <span class="text-muted-foreground text-xs font-normal">(you)</span>
                       {/if}
-                    </Table.Cell>
-                    <Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
-                    <Table.Cell>
-                      {#if canEditRole(u)}
-                        <select
-                          aria-label={`Instance role for ${u.display_name}`}
-                          value={u.instance_role}
-                          disabled={busyUserId === u.id}
-                          onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
-                          class="border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 h-8 rounded-lg border bg-transparent px-2.5 text-sm capitalize transition-colors outline-none focus-visible:ring-1 disabled:opacity-50"
-                        >
-                          <option value="owner" disabled={roleOptionDisabled(u, 'owner')}
-                            >Owner</option
-                          >
-                          <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
-                            >Manager</option
-                          >
-                          <option value="member" disabled={roleOptionDisabled(u, 'member')}
-                            >Member</option
-                          >
-                        </select>
-                      {:else}
-                        <Badge
-                          variant="outline"
-                          class={u.instance_role === 'owner'
-                            ? 'text-primary capitalize'
-                            : 'capitalize'}
-                        >
-                          {u.instance_role}
-                        </Badge>
-                      {/if}
-                    </Table.Cell>
-                    <Table.Cell>
                       {#if u.status === 'pending'}
                         <Badge variant="secondary">
                           <Clock class="size-3" />
                           Pending
                         </Badge>
-                      {:else}
-                        <Badge variant="outline">Active</Badge>
                       {/if}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span class="text-muted-foreground text-sm">
-                        {u.notifications_enabled ? 'On' : 'Off'}
-                      </span>
-                    </Table.Cell>
-                    <Table.Cell class="text-muted-foreground">{formatDate(u.created_at)}</Table.Cell
+                    </p>
+                    <p class="text-muted-foreground truncate text-sm">
+                      {u.email} · joined {formatDate(u.created_at)}
+                      {#if !u.notifications_enabled}
+                        · notifications off
+                      {/if}
+                    </p>
+                  </div>
+                  {#if canEditRole(u)}
+                    <NativeSelect
+                      aria-label={`Instance role for ${u.display_name}`}
+                      value={u.instance_role}
+                      disabled={busyUserId === u.id}
+                      onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
+                      class="shrink-0"
                     >
-                    <Table.Cell class="text-right">
-                      {#if u.status === 'pending'}
-                        <div class="flex items-center justify-end gap-2">
-                          <Button
-                            variant="default"
-                            size="sm"
-                            disabled={busyUserId === u.id}
-                            onclick={() => approveUser(u.id)}
-                          >
-                            <UserCheck class="size-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyUserId === u.id || isSelf}
-                            onclick={() => rejectUser(u.id, u.email)}
-                          >
-                            <Trash2 class="size-4" />
-                            Reject
-                          </Button>
-                        </div>
-                      {:else if canDelete(u, isSelf)}
-                        <div class="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyUserId === u.id}
-                            onclick={() => deleteUser(u.id, u.email)}
-                          >
-                            <Trash2 class="size-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      {:else}
-                        <span class="text-muted-foreground text-xs">—</span>
-                      {/if}
-                    </Table.Cell>
-                  </Table.Row>
-                {/each}
-              </Table.Body>
-            </Table.Root>
+                      <option value="owner" disabled={roleOptionDisabled(u, 'owner')}>Owner</option>
+                      <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
+                        >Manager</option
+                      >
+                      <option value="member" disabled={roleOptionDisabled(u, 'member')}
+                        >Member</option
+                      >
+                    </NativeSelect>
+                  {:else}
+                    <Badge
+                      variant="outline"
+                      class={u.instance_role === 'owner'
+                        ? 'text-primary shrink-0 capitalize'
+                        : 'shrink-0 capitalize'}
+                    >
+                      {u.instance_role}
+                    </Badge>
+                  {/if}
+                  {#if u.status === 'pending'}
+                    <div class="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={busyUserId === u.id}
+                        onclick={() => approveUser(u.id)}
+                      >
+                        <UserCheck class="size-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busyUserId === u.id || isSelf}
+                        onclick={() => rejectUser(u.id, u.email)}
+                      >
+                        <Trash2 class="size-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  {:else if canDelete(u, isSelf)}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-destructive hover:text-destructive size-8 shrink-0"
+                      title="Delete account"
+                      aria-label={`Delete account ${u.email}`}
+                      disabled={busyUserId === u.id}
+                      onclick={() => deleteUser(u.id, u.email)}
+                    >
+                      <Trash2 class="size-4" />
+                    </Button>
+                  {:else}
+                    <span class="size-8 shrink-0" aria-hidden="true"></span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -471,42 +468,11 @@
 
     <!-- Teams overview -->
     <Tabs.Content value="teams">
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>Teams</Card.Title>
-          <Card.Description>Teams and their membership across the instance.</Card.Description>
-        </Card.Header>
-        <Card.Content>
-          {#if data.teams.length === 0}
-            <p class="text-muted-foreground text-sm">No teams yet.</p>
-          {:else}
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Team</Table.Head>
-                  <Table.Head class="text-right">Members</Table.Head>
-                  <Table.Head class="text-right">Projects</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {#each data.teams as t (t.id)}
-                  <Table.Row>
-                    <Table.Cell class="font-medium">
-                      <a href={`/teams/${t.id}`} class="hover:underline">{t.name}</a>
-                    </Table.Cell>
-                    <Table.Cell class="text-muted-foreground text-right"
-                      >{t.member_count}</Table.Cell
-                    >
-                    <Table.Cell class="text-muted-foreground text-right"
-                      >{t.project_count}</Table.Cell
-                    >
-                  </Table.Row>
-                {/each}
-              </Table.Body>
-            </Table.Root>
-          {/if}
-        </Card.Content>
-      </Card.Root>
+      {#if data.teams.length === 0}
+        <p class="text-muted-foreground text-sm">No teams yet.</p>
+      {:else}
+        <TeamList teams={data.teams} />
+      {/if}
     </Tabs.Content>
   </Tabs.Root>
 

@@ -7,6 +7,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Badge } from '$lib/components/ui/badge';
+  import { NativeSelect } from '$lib/components/ui/native-select';
   import { toast } from '$lib/components/ui/sonner';
   import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
@@ -380,16 +381,16 @@
       <form onsubmit={changeTeam} class="contents">
         <Card.Content class="space-y-2">
           <label for="owning-team" class="text-sm font-medium">Team</label>
-          <select
+          <NativeSelect
             id="owning-team"
             bind:value={selectedTeamId}
             disabled={movingTeam}
-            class="border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 h-9 w-full rounded-lg border bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:ring-1 disabled:opacity-50"
+            class="w-full"
           >
             {#each teamOptions as team (team.id)}
               <option value={team.id}>{team.name}</option>
             {/each}
-          </select>
+          </NativeSelect>
         </Card.Content>
         <Card.Footer>
           <Button type="submit" variant="outline" disabled={movingTeam || !teamDirty}>

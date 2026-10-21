@@ -32,16 +32,38 @@ import { load } from './+layout';
 
 const adminUsers = vi.mocked(api.admin.users);
 
+// How many times the load read `url` outside of `untrack`. A tracked read
+// reruns the load — and its user-list request — on every navigation.
+let trackedUrlReads = 0;
+
 function callLoad(user: unknown) {
+  const url = new URL('https://app.test/');
+  let untracked = false;
   return (load as (e: unknown) => Promise<unknown>)({
     parent: async () => ({ user }),
-    url: new URL('https://app.test/'),
+    // Like SvelteKit, a read of any URL property is what registers the
+    // dependency, so the proxy counts reads made outside `untrack`.
+    url: new Proxy(url, {
+      get(target, prop) {
+        if (!untracked) trackedUrlReads += 1;
+        return Reflect.get(target, prop, target);
+      }
+    }),
+    untrack<T>(fn: () => T): T {
+      untracked = true;
+      try {
+        return fn();
+      } finally {
+        untracked = false;
+      }
+    },
     fetch: vi.fn()
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  trackedUrlReads = 0;
 });
 
 describe('(app) +layout load', () => {
@@ -85,6 +107,14 @@ describe('(app) +layout load', () => {
 
     expect(adminUsers).toHaveBeenCalledTimes(1);
     expect(data.pendingApprovals).toBe(1);
+  });
+
+  it('does not rerun on navigation: the url is read untracked', async () => {
+    adminUsers.mockResolvedValue([] as never);
+
+    await callLoad({ id: 'u1', instance_role: 'owner' });
+
+    expect(trackedUrlReads).toBe(0);
   });
 
   it('falls back to pendingApprovals=0 when the user list fetch fails', async () => {

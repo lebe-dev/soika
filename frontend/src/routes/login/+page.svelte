@@ -112,7 +112,7 @@
     try {
       const user = await signInWithPasskey();
       authStore.set(user);
-      await goto(safeNext($page.url.searchParams.get('next')) ?? '/');
+      await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
       // A dismissed system dialog is a deliberate choice, not a failure.
       if (!isCeremonyCancelled(err)) toast.error(errorMessage(err, 'Passkey sign-in failed'));
@@ -128,7 +128,7 @@
       const user = await auth.login({ email, password });
       writeStoredEmail(email);
       authStore.set(user);
-      await goto(safeNext($page.url.searchParams.get('next')) ?? '/');
+      await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
       toast.error(errorMessage(err, 'Login failed'));
     } finally {

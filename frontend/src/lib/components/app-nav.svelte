@@ -17,9 +17,8 @@
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
   import Menu from '@lucide/svelte/icons/menu';
-  import FolderPlus from '@lucide/svelte/icons/folder-plus';
   import BellOff from '@lucide/svelte/icons/bell-off';
-  import { navActions } from '$lib/stores/nav-actions.svelte';
+  import Avatar from '$lib/components/avatar.svelte';
 
   let { user: initialUser, pendingApprovals = 0 }: { user: User; pendingApprovals?: number } =
     $props();
@@ -62,7 +61,7 @@
     }
     authStore.clear();
     toast.success('Signed out');
-    await goto('/login');
+    await goto('/login', { invalidateAll: true });
   }
 </script>
 
@@ -137,18 +136,6 @@
         </Button>
       {/if}
 
-      {#if navActions.newProjectCallback !== null}
-        <Button
-          variant="ghost"
-          size="icon"
-          onclick={navActions.newProjectCallback}
-          aria-label="New project"
-          title="New project"
-        >
-          <FolderPlus class="size-4" />
-        </Button>
-      {/if}
-
       <Button variant="ghost" size="icon" onclick={toggleMode} aria-label="Toggle theme">
         {#if mode.current === 'dark'}
           <Sun class="size-4" />
@@ -159,8 +146,8 @@
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button variant="ghost" class="gap-2">
-            <UserIcon class="size-4" />
+          <Button variant="ghost" class="gap-2 px-1.5 sm:pr-2.5" aria-label="Account menu">
+            <Avatar name={user.display_name} id={user.id} size="sm" />
             <span class="hidden max-w-[12ch] truncate sm:inline">{user.display_name}</span>
           </Button>
         </DropdownMenu.Trigger>

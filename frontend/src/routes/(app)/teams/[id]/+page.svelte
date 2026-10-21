@@ -19,45 +19,22 @@
   import { toast } from '$lib/components/ui/sonner';
   import CopyField from '$lib/components/copy-field.svelte';
   import { formatRelative } from '$lib/format';
-  import { cn } from '$lib/utils';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import UserPlus from '@lucide/svelte/icons/user-plus';
   import UserMinus from '@lucide/svelte/icons/user-minus';
   import FolderKanban from '@lucide/svelte/icons/folder-kanban';
-  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
   import Link2 from '@lucide/svelte/icons/link-2';
   import Info from '@lucide/svelte/icons/info';
   import PageTitle from '$lib/components/page-title.svelte';
   import RoleHint from '$lib/components/role-hint.svelte';
+  import Avatar from '$lib/components/avatar.svelte';
+  import EntityHeader from '$lib/components/entity-header.svelte';
+  import StatPill from '$lib/components/stat-pill.svelte';
+  import { NativeSelect } from '$lib/components/ui/native-select';
   import type { PageData } from './$types';
-
-  // --- Avatar helpers -------------------------------------------------------
-  // Initials (first + last word) for the member/team chip, and a deterministic
-  // soft tint per id so the roster reads at a glance without being loud.
-  function initials(name: string): string {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return '?';
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-
-  const AVATAR_TINTS = [
-    'bg-primary/10 text-primary',
-    'bg-pink-500/10 text-pink-600 dark:text-pink-400',
-    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    'bg-amber-500/10 text-amber-600 dark:text-amber-500',
-    'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-    'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
-  ];
-
-  function avatarTint(id: string): string {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    return AVATAR_TINTS[h % AVATAR_TINTS.length];
-  }
 
   // Team detail: members (with team roles), assigned projects, and invites.
   // Renaming/deleting the team is instance-manager only; managing membership,
@@ -279,70 +256,49 @@
 <PageTitle title={team.name} />
 
 <div class="space-y-6">
-  <div>
-    <a
-      href="/teams"
-      class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
-    >
-      <ChevronLeft class="size-4" />
-      Teams
-    </a>
-  </div>
-
   <!-- Identity: team chip + soft stat pills. The pills carry the at-a-glance
        summary so the sections below can stay quiet. -->
-  <div class="flex items-start justify-between gap-4">
-    <div class="flex items-start gap-3.5">
-      <span
-        class="bg-primary/10 text-primary grid size-12 shrink-0 place-items-center rounded-xl text-base font-semibold"
-        aria-hidden="true"
-      >
-        {initials(team.name)}
-      </span>
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">{team.name}</h1>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <span class="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs">
-            <span class="text-foreground font-medium">{team.members.length}</span>
-            {team.members.length === 1 ? 'member' : 'members'}
-          </span>
-          <span class="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs">
-            <span class="text-foreground font-medium">{team.projects.length}</span>
-            {team.projects.length === 1 ? 'project' : 'projects'}
-          </span>
-          {#if myRole}
-            <span class="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs">
-              you’re <span class="text-foreground font-medium capitalize">{myRole}</span>
-            </span>
-          {/if}
-        </div>
-      </div>
-    </div>
-    {#if canManageInstance}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          <Button variant="outline" size="icon" aria-label="Team actions">
-            <EllipsisVertical class="size-4" />
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="w-40">
-          <DropdownMenu.Item onclick={openRename}>
-            <Pencil class="size-4" />
-            Rename
-          </DropdownMenu.Item>
-          <DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
-            <Trash2 class="size-4" />
-            Delete
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    {/if}
-  </div>
+  <EntityHeader title={team.name} avatarId={team.id} back={{ href: '/teams', label: 'Teams' }}>
+    {#snippet pills()}
+      <StatPill>
+        <strong>{team.members.length}</strong>
+        {team.members.length === 1 ? 'member' : 'members'}
+      </StatPill>
+      <StatPill>
+        <strong>{team.projects.length}</strong>
+        {team.projects.length === 1 ? 'project' : 'projects'}
+      </StatPill>
+      {#if myRole}
+        <StatPill>you’re <strong class="capitalize">{myRole}</strong></StatPill>
+      {/if}
+    {/snippet}
+    {#snippet actions()}
+      {#if canManageInstance}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button variant="outline" size="icon" aria-label="Team actions">
+              <EllipsisVertical class="size-4" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="end" class="w-40">
+            <DropdownMenu.Item onclick={openRename}>
+              <Pencil class="size-4" />
+              Rename
+            </DropdownMenu.Item>
+            <DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
+              <Trash2 class="size-4" />
+              Delete
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
+    {/snippet}
+  </EntityHeader>
 
   <!-- Members: the primary surface. Soft top accent, roster with avatars.
        Invites live here as a secondary action (dialog), not their own block. -->
   <Card.Root class="shadow-sm">
-    <Card.Header class="flex-row items-start justify-between space-y-0">
+    <Card.Header>
       <div class="space-y-1">
         <div class="flex items-center gap-1.5">
           <Card.Title>Members</Card.Title>
@@ -364,7 +320,7 @@
         <Card.Description>Who’s in this team and what role they have.</Card.Description>
       </div>
       {#if canManageMembers}
-        <div class="flex shrink-0 items-center gap-2">
+        <Card.Action class="flex items-center gap-2">
           <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
             <Link2 class="size-4" />
             Invite by link
@@ -379,7 +335,7 @@
             <UserPlus class="size-4" />
             Add member
           </Button>
-        </div>
+        </Card.Action>
       {/if}
     </Card.Header>
     <Card.Content class="space-y-4">
@@ -454,30 +410,22 @@
         <div class="divide-border/60 divide-y">
           {#each team.members as member (member.id)}
             <div class="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-              <span
-                class={cn(
-                  'grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold',
-                  avatarTint(member.id)
-                )}
-                aria-hidden="true"
-              >
-                {initials(member.display_name)}
-              </span>
+              <Avatar name={member.display_name} id={member.id} />
               <div class="min-w-0 flex-1">
                 <p class="truncate font-medium">{member.display_name}</p>
                 <p class="text-muted-foreground truncate text-sm">{member.email}</p>
               </div>
               {#if canManageMembers}
-                <select
+                <NativeSelect
                   aria-label={`Team role for ${member.display_name}`}
                   value={member.role}
                   disabled={busyMemberId === member.id}
                   onchange={(e) => changeRole(member.id, e.currentTarget.value as TeamRole)}
-                  class="border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 h-8 shrink-0 rounded-lg border bg-transparent px-2.5 text-sm capitalize transition-colors outline-none focus-visible:ring-1 disabled:opacity-50"
+                  class="shrink-0"
                 >
                   <option value="admin">Admin</option>
                   <option value="contributor" disabled={demoteBlocked(member)}>Contributor</option>
-                </select>
+                </NativeSelect>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -524,9 +472,9 @@
           {#each team.projects as project (project.id)}
             <a
               href={`/projects/${project.id}`}
-              class="hover:border-primary/40 hover:bg-muted/50 group inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              class="hover:border-primary/40 hover:bg-muted/50 group inline-flex items-center gap-2 rounded-lg border py-1.5 pr-3 pl-1.5 text-sm transition-colors"
             >
-              <FolderKanban class="text-primary size-4 shrink-0" />
+              <Avatar name={project.name} id={project.id} shape="tile" size="sm" />
               <span class="font-medium">{project.name}</span>
               <span class="text-muted-foreground font-mono text-xs">{project.slug}</span>
               <ChevronRight
@@ -602,14 +550,10 @@
       </div>
       <div class="space-y-2">
         <label for="invite-role" class="text-sm font-medium">Role</label>
-        <select
-          id="invite-role"
-          bind:value={inviteRole}
-          class="border-input focus-visible:border-primary focus-visible:ring-primary/30 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-1"
-        >
+        <NativeSelect id="invite-role" bind:value={inviteRole} class="w-full">
           <option value="contributor">Contributor</option>
           <option value="admin">Admin</option>
-        </select>
+        </NativeSelect>
         <RoleHint scope="team" />
       </div>
       <Dialog.Footer>
@@ -635,27 +579,19 @@
         {#if candidates.length === 0}
           <p class="text-muted-foreground text-sm">All users are already members.</p>
         {:else}
-          <select
-            id="add-member"
-            bind:value={selectedUserId}
-            class="border-input focus-visible:border-primary focus-visible:ring-primary/30 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-1"
-          >
+          <NativeSelect id="add-member" bind:value={selectedUserId} class="w-full">
             {#each candidates as user (user.id)}
               <option value={user.id}>{user.display_name} ({user.email})</option>
             {/each}
-          </select>
+          </NativeSelect>
         {/if}
       </div>
       <div class="space-y-2">
         <label for="add-member-role" class="text-sm font-medium">Role</label>
-        <select
-          id="add-member-role"
-          bind:value={selectedRole}
-          class="border-input focus-visible:border-primary focus-visible:ring-primary/30 h-8 w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:ring-1"
-        >
+        <NativeSelect id="add-member-role" bind:value={selectedRole} class="w-full">
           <option value="contributor">Contributor</option>
           <option value="admin">Admin</option>
-        </select>
+        </NativeSelect>
         <RoleHint scope="team" />
       </div>
       <Dialog.Footer>

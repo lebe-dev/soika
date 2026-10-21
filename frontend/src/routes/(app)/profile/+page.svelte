@@ -15,6 +15,9 @@
   import { toast } from '$lib/components/ui/sonner';
   import { cn } from '$lib/utils';
   import PageTitle from '$lib/components/page-title.svelte';
+  import EntityHeader from '$lib/components/entity-header.svelte';
+  import StatPill from '$lib/components/stat-pill.svelte';
+  import BellOff from '@lucide/svelte/icons/bell-off';
 
   // The root layout seeds the auth store with the current user, so we render
   // from it directly rather than refetching. `user` is always present here:
@@ -191,8 +194,24 @@
 
 <PageTitle title="Profile" />
 
-<div class="mx-auto max-w-2xl space-y-6">
-  <h1 class="text-2xl font-semibold tracking-tight">Profile</h1>
+<div class="max-w-2xl space-y-6">
+  <EntityHeader title={user?.display_name ?? 'Profile'} avatarId={user?.id} avatarShape="circle">
+    {#snippet pills()}
+      {#if user}
+        <StatPill>{user.email}</StatPill>
+        <StatPill><strong class="capitalize">{user.instance_role}</strong></StatPill>
+        {#if user.auth_provider === 'oidc'}
+          <StatPill>Single sign-on</StatPill>
+        {/if}
+        {#if !user.notifications_enabled}
+          <StatPill class="text-orange-600 dark:text-orange-400">
+            <BellOff />
+            Notifications off
+          </StatPill>
+        {/if}
+      {/if}
+    {/snippet}
+  </EntityHeader>
 
   <!-- Account details -->
   <Card.Root>

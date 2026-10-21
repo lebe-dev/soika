@@ -1,11 +1,12 @@
 // Tests for the root +layout.ts load:
-//   - bootstrap fetch memoization (module-level cachedConfig/lastUrl),
-//   - graceful handling of a rejected auth.config (no cached rejection),
+//   - the URL is read untracked, so client-side navigation never reruns it
+//     (only an explicit invalidation does) and every run fetches fresh config,
+//   - graceful handling of a rejected auth.config,
 //   - first-run redirect routing (must NOT be swallowed by the catch).
 //
-// `cachedConfig`/`lastUrl` are module-level, so each case `vi.resetModules()`
-// and re-imports a fresh copy of the module. `auth.config` and the `redirect`
-// thrower from '@sveltejs/kit' are mocked so no real network/navigation runs.
+// Each case `vi.resetModules()` and re-imports a fresh copy of the module.
+// `auth.config` and the `redirect` thrower from '@sveltejs/kit' are mocked so
+// no real network/navigation runs.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthConfig } from '$lib/api';
@@ -57,7 +58,7 @@ function makeUrl(href: string): URL {
   return new URL(href, 'http://localhost');
 }
 
-// Fresh import after a module reset so cachedConfig/lastUrl start null.
+// Fresh import after a module reset.
 async function importLoad() {
   const mod = await import('./+layout');
   return mod.load;
@@ -74,49 +75,70 @@ interface LoadData {
   telemetry: AuthConfig['telemetry'] | null;
 }
 
+// How many times the load read `url` outside of `untrack` — a tracked read
+// would make SvelteKit rerun the load (and refetch) on every navigation.
+let trackedUrlReads = 0;
+
 async function call(load: Awaited<ReturnType<typeof importLoad>>, href: string): Promise<LoadData> {
-  // The load only touches `fetch` and `url` from its event arg.
-  const data = await load({ fetch: noopFetch, url: makeUrl(href) } as never);
+  const url = makeUrl(href);
+  let untracked = false;
+  const event = {
+    fetch: noopFetch,
+    // Like SvelteKit, a read of any URL property is what registers the
+    // dependency, so the proxy counts reads made outside `untrack`.
+    url: new Proxy(url, {
+      get(target, prop) {
+        if (!untracked) trackedUrlReads += 1;
+        return Reflect.get(target, prop, target);
+      }
+    }),
+    untrack<T>(fn: () => T): T {
+      untracked = true;
+      try {
+        return fn();
+      } finally {
+        untracked = false;
+      }
+    }
+  };
+  const data = await load(event as never);
   return data as LoadData;
 }
 
 beforeEach(() => {
   vi.resetModules();
   configMock.mockReset();
+  trackedUrlReads = 0;
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('+layout load: bootstrap memoization', () => {
-  it('refetches when the same url is loaded twice (initial load / invalidateAll)', async () => {
+describe('+layout load: bootstrap fetch', () => {
+  it('never reads the url as a tracked dependency', async () => {
     configMock.mockResolvedValue(authConfig());
     const load = await importLoad();
 
-    await call(load, '/login');
-    await call(load, '/login');
+    await call(load, '/projects');
 
-    // First run: cachedConfig is null → fetch. Second run with the SAME href:
-    // `sameUrl` is true → fetch again (this is the invalidateAll / reload path).
-    expect(configMock).toHaveBeenCalledTimes(2);
+    expect(trackedUrlReads).toBe(0);
   });
 
-  it('reuses the cached promise across a url change, then refetches when that url repeats', async () => {
-    configMock.mockResolvedValue(authConfig());
+  it('fetches fresh config on every run (initial load / invalidation)', async () => {
+    configMock
+      .mockResolvedValueOnce(authConfig({ user: null }))
+      .mockResolvedValueOnce(authConfig({ user: { id: 'u1' } as never }));
     const load = await importLoad();
 
-    // Run 1 (/login): fetch (cachedConfig null).
-    await call(load, '/login');
-    expect(configMock).toHaveBeenCalledTimes(1);
+    // Signed out on /login, then the login flow invalidates and navigates to
+    // `/`: the second run must see the new session, not a cached anonymous one.
+    const before = await call(load, '/login');
+    const after = await call(load, '/');
 
-    // Run 2 (/projects): url CHANGED → reuse the cached promise, no new fetch.
-    await call(load, '/projects');
-    expect(configMock).toHaveBeenCalledTimes(1);
-
-    // Run 3 (/projects again): same url → refetch.
-    await call(load, '/projects');
     expect(configMock).toHaveBeenCalledTimes(2);
+    expect(before.user).toBeNull();
+    expect(after.user).toEqual({ id: 'u1' });
   });
 
   it('forwards the request-scoped fetch to auth.config', async () => {
@@ -139,17 +161,14 @@ describe('+layout load: rejected bootstrap', () => {
     expect(data).toEqual({ user: null, config: null, telemetry: null });
   });
 
-  it('drops the rejected memo so the next run retries instead of replaying it', async () => {
+  it('retries on the next run instead of replaying a failure', async () => {
     configMock.mockRejectedValueOnce(new Error('network down'));
     configMock.mockResolvedValue(authConfig({ user: { id: 'u1' } as never }));
     const load = await importLoad();
 
-    // Run 1: rejects → cachedConfig is cleared back to null.
     const first = await call(load, '/login');
     expect(first.config).toBeNull();
 
-    // Run 2 (url changed): because the memo was dropped, cachedConfig is null
-    // again so it refetches rather than awaiting the stale rejected promise.
     const second = await call(load, '/projects');
     expect(configMock).toHaveBeenCalledTimes(2);
     expect(second.config).not.toBeNull();

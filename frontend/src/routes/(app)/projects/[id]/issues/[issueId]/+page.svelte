@@ -25,7 +25,7 @@
   import { cn } from '$lib/utils';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import BackLink from '$lib/components/back-link.svelte';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -190,13 +190,9 @@
 <PageTitle title={issue.title.length > 60 ? issue.title.slice(0, 60) + '…' : issue.title} />
 
 <div class="reveal space-y-6">
-  <a
-    href={`/projects/${projectId}`}
-    class="text-primary hover:text-primary/80 inline-flex items-center gap-1.5 text-sm transition-colors"
-  >
-    <ArrowLeft class="size-4" />
-    Back to issues
-  </a>
+  <div>
+    <BackLink href={`/projects/${projectId}`} label="Issues" />
+  </div>
 
   <!-- Hero: severity rail, level, title, culprit, actions -->
   <div class={cn('ring-foreground/10 flex gap-4 overflow-hidden rounded-xl ring-1', sev.tint)}>

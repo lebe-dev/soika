@@ -5,14 +5,14 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import { Badge } from '$lib/components/ui/badge';
   import * as Card from '$lib/components/ui/card';
   import * as Dialog from '$lib/components/ui/dialog';
-  import * as Table from '$lib/components/ui/table';
   import { toast } from '$lib/components/ui/sonner';
   import Plus from '@lucide/svelte/icons/plus';
   import Users from '@lucide/svelte/icons/users';
   import PageTitle from '$lib/components/page-title.svelte';
+  import PageHeader from '$lib/components/page-header.svelte';
+  import TeamList from '$lib/components/team-list.svelte';
   import type { PageData } from './$types';
 
   // Teams — team list. Any authenticated user can browse their teams;
@@ -55,68 +55,41 @@
 <PageTitle title="Teams" />
 
 <div class="space-y-6">
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Teams</h1>
-      <p class="text-muted-foreground text-sm">
-        Groups of users that grant access to assigned projects.
-      </p>
-    </div>
-    {#if canManageInstance}
-      <Button onclick={openCreate} class="gap-2">
-        <Plus class="size-4" />
-        New team
-      </Button>
-    {/if}
-  </div>
-
-  <Card.Root>
-    <Card.Content class="pt-6">
-      {#if list.length === 0}
-        <div class="flex flex-col items-center gap-3 py-10 text-center">
-          <Users class="text-muted-foreground size-8" />
-          <p class="text-muted-foreground text-sm">No teams yet.</p>
-          {#if canManageInstance}
-            <Button variant="outline" onclick={openCreate} class="gap-2">
-              <Plus class="size-4" />
-              Create your first team
-            </Button>
-          {/if}
-        </div>
-      {:else}
-        <Table.Root>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>Name</Table.Head>
-              <Table.Head class="text-right">Members</Table.Head>
-              <Table.Head class="text-right">Projects</Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each list as team (team.id)}
-              <Table.Row class="cursor-pointer" onclick={() => goto(`/teams/${team.id}`)}>
-                <Table.Cell class="font-medium">
-                  <a
-                    href={`/teams/${team.id}`}
-                    class="underline-offset-4 hover:underline"
-                    onclick={(e) => e.stopPropagation()}
-                  >
-                    {team.name}
-                  </a>
-                </Table.Cell>
-                <Table.Cell class="text-right">
-                  <Badge variant="secondary">{team.member_count}</Badge>
-                </Table.Cell>
-                <Table.Cell class="text-right">
-                  <Badge variant="secondary">{team.project_count}</Badge>
-                </Table.Cell>
-              </Table.Row>
-            {/each}
-          </Table.Body>
-        </Table.Root>
+  <PageHeader title="Teams">
+    {#snippet description()}
+      Groups of users that grant access to assigned projects.
+    {/snippet}
+    {#snippet actions()}
+      {#if canManageInstance}
+        <Button onclick={openCreate} class="gap-1.5">
+          <Plus class="size-4" />
+          New team
+        </Button>
       {/if}
-    </Card.Content>
-  </Card.Root>
+    {/snippet}
+  </PageHeader>
+
+  {#if list.length === 0}
+    <Card.Root class="shadow-sm">
+      <Card.Content class="flex flex-col items-center gap-1.5 py-10 text-center">
+        <span class="bg-muted text-primary grid size-11 place-items-center rounded-xl">
+          <Users class="size-5" />
+        </span>
+        <p class="font-medium">No teams yet</p>
+        <p class="text-muted-foreground max-w-xs text-sm">
+          Teams group users and grant them access to the team’s projects.
+        </p>
+        {#if canManageInstance}
+          <Button variant="outline" size="sm" onclick={openCreate} class="mt-3 gap-1.5">
+            <Plus class="size-4" />
+            Create your first team
+          </Button>
+        {/if}
+      </Card.Content>
+    </Card.Root>
+  {:else}
+    <TeamList teams={list} />
+  {/if}
 </div>
 
 <Dialog.Root bind:open={createOpen}>

@@ -41,7 +41,7 @@
       const user = await auth.register({ email, password, display_name: displayName });
       authStore.set(user);
       toast.success('Account created');
-      await goto('/');
+      await goto('/', { invalidateAll: true });
     } catch (err) {
       if (err instanceof ApiError && err.isForbidden) {
         signupDisabled = true;
