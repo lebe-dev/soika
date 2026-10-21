@@ -25,7 +25,10 @@ pub use project::Project;
 pub use settings::ServiceSettings;
 pub use stacktrace::{ExceptionValue, Frame, NormalizedEvent, Stacktrace};
 pub use team::{Team, TeamMember};
-pub use user::{AuthProvider, InstanceRole, Session, User, UserStatus};
+pub use user::{
+    AuthProvider, InstanceRole, MIN_DISPLAY_NAME_LEN, Session, User, UserStatus,
+    normalize_display_name,
+};
 
 /// Common timestamp type used across the domain (UTC).
 pub type Timestamp = chrono::DateTime<chrono::Utc>;

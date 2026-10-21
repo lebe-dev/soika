@@ -4,6 +4,22 @@ use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Minimum accepted length of a display name, in characters after trimming.
+pub const MIN_DISPLAY_NAME_LEN: usize = 3;
+
+/// Normalize and validate a user-supplied display name: trims surrounding
+/// whitespace and requires at least [`MIN_DISPLAY_NAME_LEN`] characters, so
+/// placeholders like "." are refused.
+pub fn normalize_display_name(name: &str) -> crate::Result<String> {
+    let trimmed = name.trim();
+    if trimmed.chars().count() < MIN_DISPLAY_NAME_LEN {
+        return Err(crate::error::Error::validation(format!(
+            "display name must be at least {MIN_DISPLAY_NAME_LEN} characters"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
 /// How an account authenticates.
 ///
 /// `Local` accounts hold an Argon2 PHC `password_hash`. `Oidc` accounts are
@@ -162,4 +178,37 @@ pub struct Session {
     pub user_id: Id,
     pub created_at: Timestamp,
     pub expires_at: Timestamp,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_name_is_trimmed() {
+        assert_eq!(normalize_display_name("  Jane ").unwrap(), "Jane");
+    }
+
+    #[test]
+    fn display_name_must_not_be_blank() {
+        assert!(normalize_display_name("   ").is_err());
+    }
+
+    #[test]
+    fn display_name_shorter_than_minimum_is_rejected() {
+        assert!(normalize_display_name(".").is_err());
+        assert!(normalize_display_name(" ab ").is_err());
+    }
+
+    #[test]
+    fn display_name_at_minimum_is_accepted() {
+        assert_eq!(normalize_display_name("Bob").unwrap(), "Bob");
+    }
+
+    #[test]
+    fn display_name_length_counts_characters_not_bytes() {
+        // Two Cyrillic letters are four bytes but still too short.
+        assert!(normalize_display_name("Ян").is_err());
+        assert_eq!(normalize_display_name("Яна").unwrap(), "Яна");
+    }
 }

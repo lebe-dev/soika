@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { auth, ApiError, errorMessage } from '$lib/api';
@@ -78,7 +79,13 @@
         <Card.Content class="space-y-4">
           <div class="space-y-2">
             <label for="name" class="text-sm font-medium">Display name</label>
-            <Input id="name" autocomplete="name" bind:value={displayName} required />
+            <Input
+              id="name"
+              autocomplete="name"
+              bind:value={displayName}
+              required
+              minlength={MIN_DISPLAY_NAME_LENGTH}
+            />
           </div>
           <div class="space-y-2">
             <label for="email" class="text-sm font-medium">Email</label>

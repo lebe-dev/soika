@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { goto } from '$app/navigation';
   import { auth, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -64,7 +65,13 @@
         </div>
         <div class="space-y-2">
           <label for="name" class="text-sm font-medium">Your name</label>
-          <Input id="name" autocomplete="name" bind:value={displayName} required />
+          <Input
+            id="name"
+            autocomplete="name"
+            bind:value={displayName}
+            required
+            minlength={MIN_DISPLAY_NAME_LENGTH}
+          />
         </div>
         <div class="space-y-2">
           <label for="email" class="text-sm font-medium">Email</label>

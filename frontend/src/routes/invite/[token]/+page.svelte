@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { invites, errorMessage } from '$lib/api';
@@ -75,7 +76,12 @@
           {#if requiresRegistration}
             <div class="space-y-2">
               <label for="name" class="text-sm font-medium">Display name</label>
-              <Input id="name" bind:value={displayName} required />
+              <Input
+                id="name"
+                bind:value={displayName}
+                required
+                minlength={MIN_DISPLAY_NAME_LENGTH}
+              />
             </div>
           {/if}
           <div class="space-y-2">

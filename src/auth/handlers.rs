@@ -16,7 +16,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Id, InstanceRole, Invite, TeamRole, User};
+use crate::domain::{Id, InstanceRole, Invite, TeamRole, User, normalize_display_name};
 use crate::error::Error;
 use crate::state::AppState;
 
@@ -190,14 +190,6 @@ fn validate_password(password: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn validate_display_name(name: &str) -> Result<String, Error> {
-    let n = name.trim();
-    if n.is_empty() {
-        return Err(Error::validation("display name must not be empty"));
-    }
-    Ok(n.to_string())
-}
-
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -307,7 +299,7 @@ pub async fn setup(
 
     let email = normalize_email(&body.email)?;
     validate_password(&body.password)?;
-    let display_name = validate_display_name(&body.display_name)?;
+    let display_name = normalize_display_name(&body.display_name)?;
     let org_name = body.org_name.trim();
     if org_name.is_empty() {
         return Err(AuthError(Error::validation(
@@ -514,7 +506,7 @@ async fn create_user(
 ) -> Result<User, Error> {
     let email = normalize_email(email)?;
     validate_password(password)?;
-    let display_name = validate_display_name(display_name)?;
+    let display_name = normalize_display_name(display_name)?;
 
     if state.users.find_by_email(&email).await?.is_some() {
         return Err(Error::Conflict(
@@ -624,12 +616,6 @@ mod tests {
     fn password_minimum_length_enforced() {
         assert!(validate_password("short").is_err());
         assert!(validate_password("longenough").is_ok());
-    }
-
-    #[test]
-    fn display_name_must_not_be_blank() {
-        assert_eq!(validate_display_name("  Jane ").unwrap(), "Jane");
-        assert!(validate_display_name("   ").is_err());
     }
 
     #[test]

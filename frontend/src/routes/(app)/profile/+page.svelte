@@ -7,6 +7,7 @@
   import type { Passkey } from '$lib/api';
   import { isCeremonyCancelled, passkeysSupported, registerPasskey } from '$lib/passkey';
   import { formatDateTime } from '$lib/format';
+  import { MIN_DISPLAY_NAME_LENGTH, displayNameError } from '$lib/display-name';
   import { reportUnexpected } from '$lib/report';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -40,12 +41,16 @@
   });
 
   const displayNameDirty = $derived(displayName.trim() !== (user?.display_name ?? ''));
+  // Only flag the field once it was edited, so a legacy short name stored before
+  // the rule existed does not greet the user with an error.
+  const nameError = $derived(displayNameDirty ? displayNameError(displayName) : null);
 
   async function saveProfile(event: SubmitEvent) {
     event.preventDefault();
     const trimmed = displayName.trim();
-    if (!trimmed) {
-      toast.error('Display name cannot be empty');
+    const error = displayNameError(trimmed);
+    if (error) {
+      toast.error(error);
       return;
     }
     savingProfile = true;
@@ -234,11 +239,20 @@
             autocomplete="name"
             bind:value={displayName}
             required
+            minlength={MIN_DISPLAY_NAME_LENGTH}
+            aria-invalid={nameError !== null}
+            aria-describedby="display-name-hint"
           />
+          <p
+            id="display-name-hint"
+            class={cn('text-xs', nameError ? 'text-destructive' : 'text-muted-foreground')}
+          >
+            {nameError ?? `At least ${MIN_DISPLAY_NAME_LENGTH} characters.`}
+          </p>
         </div>
       </Card.Content>
       <Card.Footer class="justify-end">
-        <Button type="submit" disabled={savingProfile || !displayNameDirty}>
+        <Button type="submit" disabled={savingProfile || !displayNameDirty || nameError !== null}>
           {savingProfile ? 'Saving…' : 'Save changes'}
         </Button>
       </Card.Footer>

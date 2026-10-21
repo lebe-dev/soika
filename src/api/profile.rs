@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::teams::{ApiError, AuthUser};
 use crate::auth::{hash_password, verify_password};
-use crate::domain::{Id, InstanceRole, User};
+use crate::domain::{Id, InstanceRole, User, normalize_display_name};
 use crate::error::Error;
 use crate::ports::UserUpdate;
 use crate::state::AppState;
@@ -63,13 +63,7 @@ pub async fn update(
     let mut password_changed = false;
 
     if let Some(name) = body.display_name {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(ApiError(Error::validation(
-                "display name must not be empty",
-            )));
-        }
-        update.display_name = Some(trimmed.to_string());
+        update.display_name = Some(normalize_display_name(&name)?);
     }
 
     if let Some(enabled) = body.notifications_enabled {
