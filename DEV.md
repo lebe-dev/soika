@@ -80,8 +80,3 @@ just lint                      # backend lint (also formats)
 just lint-frontend             # Prettier and Svelte checks
 ```
 
-## Git workflow
-
-Commit each completed task in English using Conventional Commits. The user
-pushes changes; do not push from the agent workflow. `AGENTS.md` is local
-guidance and must not be added to Git.
