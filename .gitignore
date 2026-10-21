@@ -17,6 +17,8 @@ node_modules
 /frontend/.svelte-kit
 /frontend/dist
 /web/dist
+/helm-repo/
+/soika-*.tgz
 
 # Environment
 .env

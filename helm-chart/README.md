@@ -5,6 +5,14 @@ It uses one replica and a `Recreate` deployment strategy: the retention schedule
 ingestion rate limiter, and login lockout are per process. The application runs
 the selected database's migrations at startup; no migration Job is needed.
 
+## Publishing
+
+Set a new `version` in `Chart.yaml` for each chart release. Run `just release-chart`
+to lint, render, test, and package the chart with the version from `Cargo.toml`
+as its `appVersion`. The command clones or updates the chart repository in
+`helm-repo/`, adds the package and index, and commits them there. Publish the
+prepared commit with `git -C helm-repo push`.
+
 ## SQLite install (default)
 
 Create a local values file with a public URL and a persistent secret key:

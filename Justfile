@@ -6,6 +6,8 @@
 set dotenv-load
 
 version := `cat Cargo.toml | grep version | head -1 | cut -d " " -f 3 | tr -d "\""`
+chartName := `yq -r '.name' helm-chart/Chart.yaml`
+chartVersion := `yq -r '.version' helm-chart/Chart.yaml`
 gitHash := `git rev-parse --short HEAD`
 imageName := 'tinyops/soika'
 
@@ -151,6 +153,38 @@ push-image-dev:
     docker push {{ imageName }}:{{ version }}-{{ gitHash }}
 
 release-dev: build-image-dev && push-image-dev
+
+# Validate and package the Helm chart with the current application version.
+test-chart:
+    helm lint helm-chart/
+    helm template {{ chartName }} helm-chart/ > /dev/null
+    helm unittest helm-chart/
+
+build-chart: test-chart
+    helm package helm-chart/ --app-version {{ version }}
+
+# Prepare a chart-repository commit; push it from helm-repo yourself.
+release-chart: build-chart
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d helm-repo ]; then
+        git clone git@github.com:tinyops-ru/tinyops-ru.github.io.git helm-repo
+    fi
+    if [ -n "$(git -C helm-repo status --porcelain)" ]; then
+        echo "helm-repo has uncommitted changes; resolve them before releasing." >&2
+        exit 1
+    fi
+    git -C helm-repo pull --ff-only
+    package="{{ chartName }}-{{ chartVersion }}.tgz"
+    if [ -e "helm-repo/helm-charts/$package" ]; then
+        echo "$package is already present in helm-repo/helm-charts." >&2
+        exit 1
+    fi
+    cp "$package" helm-repo/helm-charts/
+    helm repo index helm-repo/helm-charts/
+    git -C helm-repo add helm-charts/
+    git -C helm-repo commit -m "Add helm chart: {{ chartName }}-{{ chartVersion }}"
+    echo "Chart prepared. Push it with: git -C helm-repo push"
 
 ssh:
     ssh kaiman
