@@ -4,14 +4,14 @@ Report Summary
 ┌─────────────────────────────────────────────┬────────┬─────────────────┬─────────┐
 │                   Target                    │  Type  │ Vulnerabilities │ Secrets │
 ├─────────────────────────────────────────────┼────────┼─────────────────┼─────────┤
-│ tinyops/soika:0.7.0-7ba6988 (alpine 3.24.2) │ alpine │        1        │    -    │
+│ tinyops/soika:0.7.0-5ef3e11 (alpine 3.24.2) │ alpine │        1        │    -    │
 └─────────────────────────────────────────────┴────────┴─────────────────┴─────────┘
 Legend:
 - '-': Not scanned
 - '0': Clean (no security findings detected)
 
 
-tinyops/soika:0.7.0-7ba6988 (alpine 3.24.2)
+tinyops/soika:0.7.0-5ef3e11 (alpine 3.24.2)
 ===========================================
 Total: 1 (UNKNOWN: 0, LOW: 0, MEDIUM: 1, HIGH: 0, CRITICAL: 0)
 
