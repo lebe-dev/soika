@@ -252,6 +252,34 @@ Translation catalogs live in `frontend/locales/en.json` and `ru.json`; keep thei
 keys in sync and use ICU plural messages for counts. Run `just dist` after changing
 the frontend so the single binary embeds the updated translations.
 
+## Database backends
+
+soika stores its data in **SQLite** (the default) or **PostgreSQL 15 or
+newer**. The scheme of `DATABASE_URL` picks the backend:
+
+| `DATABASE_URL` | Backend |
+| --- | --- |
+| `sqlite://data/soika.db` | SQLite file, created if missing. |
+| `postgres://user:password@host:5432/soika` (or `postgresql://`) | PostgreSQL. The database must exist; add `?sslmode=require` for TLS. |
+
+Both backends run their schema migrations automatically at startup, so a fresh
+PostgreSQL database only needs to be created and reachable. The two backends
+hold the same data but there is no built-in tool to copy an existing SQLite
+database into PostgreSQL yet; switching backends starts from an empty instance.
+
+On PostgreSQL:
+
+- `DB_MAX_CONNECTIONS` and `DB_ACQUIRE_TIMEOUT_MS` size the connection pool.
+  Keep `DB_MAX_CONNECTIONS` well below the server's `max_connections`.
+- Writes that hit a deadlock, a serialization failure or a lock timeout are
+  retried with the same `DB_WRITE_*` budget; an exhausted budget gives the same
+  `429 Retry-After` (ingestion) / `503` (API) as on SQLite.
+- Retention still deletes in `DB_DELETE_BATCH` chunks to keep transactions small.
+- `DB_BUSY_TIMEOUT_MS` and `DB_SYNCHRONOUS` are SQLite-only and ignored.
+
+An example Compose stack running soika against PostgreSQL 15 is in
+`docker-compose-postgres.yml`.
+
 ## Database & write concurrency (SQLite)
 
 soika stores everything in one SQLite file. SQLite allows **many readers but
@@ -279,7 +307,7 @@ How it works, so the settings make sense:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DATABASE_URL` | `sqlite://soika.db` | Database file; created if missing. |
+| `DATABASE_URL` | `sqlite://soika.db` | Database file; created if missing. A `postgres://` URL selects PostgreSQL (see above). |
 | `DB_MAX_CONNECTIONS` | `8` | Connection pool size. |
 | `DB_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for the write lock before reporting "busy". Raise it on a slow or network disk. |
 | `DB_ACQUIRE_TIMEOUT_MS` | `10000` | How long a request waits for a free pooled connection. |

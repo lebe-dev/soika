@@ -1,6 +1,6 @@
 //! SQLite-specific representation helpers, shared by every adapter.
 //!
-//! SQL is kept ANSI-friendly so a PostgreSQL backend can be added later; the
+//! The PostgreSQL adapters (`crate::adapters::postgres`) use native types; the
 //! SQLite-specific choices are isolated here:
 //!
 //!   * UUID ids are stored as TEXT (lowercase hyphenated) — [`id_to_db`]/[`id_from_db`].
@@ -47,22 +47,7 @@ pub(crate) fn bool_to_db(v: bool) -> i64 {
     i64::from(v)
 }
 
-/// Alphabet for short public ids — lowercase alphanumerics, URL-friendly and
-/// unambiguous in a browser address bar (36^6 ≈ 2.1B combinations at length 6).
-const SHORT_ID_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-
-/// Length of a generated short id. Kept small for compact URLs.
-const SHORT_ID_LEN: usize = 6;
-
-/// Generate a random short public id (see [`SHORT_ID_ALPHABET`]).
-///
-/// Callers persist this into a UNIQUE column; the astronomically rare collision
-/// is handled by retrying (see [`unique_short_id`]).
-pub(crate) fn generate_short_id() -> String {
-    (0..SHORT_ID_LEN)
-        .map(|_| SHORT_ID_ALPHABET[rand::random_range(0..SHORT_ID_ALPHABET.len())] as char)
-        .collect()
-}
+pub(crate) use crate::adapters::short_id::generate_short_id;
 
 /// Assign a unique random short id to every project/issue row still missing one.
 ///

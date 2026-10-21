@@ -12,6 +12,8 @@
 //! `ConnectInfo`, since `oneshot` doesn't attach one) the guard keys on
 //! `"unknown"`, so tests that don't set the header all share one IP bucket.
 
+mod common;
+
 use std::time::Duration;
 
 use axum::Router;
@@ -22,7 +24,7 @@ use soika::auth::hash_password;
 use soika::config::LockoutConfig;
 use soika::domain::{AuthProvider, InstanceRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use tower::ServiceExt; // for `oneshot`
 
 const EMAIL: &str = "alice@example.com";
@@ -37,10 +39,7 @@ impl TestApp {
     /// Build a fresh in-memory app whose login guard uses `lockout`, seeded with
     /// one known password account (`EMAIL` / `PASSWORD`).
     async fn spawn(lockout: LockoutConfig) -> TestApp {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
 
         let state = build_state(pool, test_config(lockout)).unwrap();
         seed_account(&state).await;

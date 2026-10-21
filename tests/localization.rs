@@ -1,4 +1,6 @@
 //! Locale persistence, validation and first-visit initialization through the real API.
+mod common;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -6,7 +8,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 use soika::config::LockoutConfig;
-use soika::{Config, MIGRATOR, build_state, router};
+use soika::{Config, build_state, router};
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -46,8 +48,7 @@ async fn send(
 
 #[tokio::test]
 async fn locale_is_initialized_once_then_explicitly_changeable_and_persistent() {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    MIGRATOR.run(&pool).await.unwrap();
+    let pool = common::test_db().await;
     let state = build_state(pool, test_config()).unwrap();
     let app = router::build(state.clone());
     let (status, user, cookie) = send(&app, "POST", "/auth/setup", "", json!({

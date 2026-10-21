@@ -1,6 +1,6 @@
 //! SQLite adapters implementing every repository port.
 //!
-//! SQL is kept ANSI-friendly so a PostgreSQL backend can be added later. The
+//! The PostgreSQL counterparts live in [`crate::adapters::postgres`]. The
 //! SQLite-specific representation helpers (id/timestamp/bool conversion, short
 //! ids, conflict classification) live in [`convert`].
 //!

@@ -33,11 +33,13 @@ tokio = { version = "1.52.3", features = ["full"] }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.0", features = ["compression-full", "cors", "fs", "trace"] }
 
-# Persistence (SQLite for MVP, ANSI-friendly so Postgres can be added later)
+# Persistence: SQLite (default, single file) or PostgreSQL, picked at runtime
+# from the `DATABASE_URL` scheme. Both drivers are always compiled in.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
     "sqlite",
+    "postgres",
     "macros",
     "migrate",
     "chrono",
@@ -131,3 +133,7 @@ webauthn-rs-core = { version = "=0.6.1-dev", default-features = false }
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
+# PostgreSQL integration tests (`just test-postgres`): one reusable Postgres 15
+# container shared by every test binary, a fresh database per test.
+testcontainers = { version = "0.27.3", features = ["reusable-containers"] }
+testcontainers-modules = { version = "0.15.0", features = ["postgres"] }

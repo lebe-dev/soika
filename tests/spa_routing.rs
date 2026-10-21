@@ -10,9 +10,11 @@
 //!     `/invite/{token}`) serves the embedded `index.html`, not JSON;
 //!   * the JSON API is reachable under `/api/*` (and still enforces auth).
 
+mod common;
+
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
-use soika::{Config, MIGRATOR, build_state, router};
+use soika::{Config, build_state, router};
 use tower::ServiceExt; // for `oneshot`
 
 fn test_config() -> Config {
@@ -37,10 +39,7 @@ fn test_config() -> Config {
 }
 
 async fn build_router() -> axum::Router {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-        .await
-        .expect("connect in-memory sqlite");
-    MIGRATOR.run(&pool).await.expect("run migrations");
+    let pool = common::test_db().await;
     let state = build_state(pool, test_config()).unwrap();
     router::build(state)
 }

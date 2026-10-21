@@ -39,8 +39,9 @@ pub enum Error {
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
 
-    /// The database refused a write because it was locked by another writer
-    /// (SQLite `SQLITE_BUSY` / `SQLITE_LOCKED`) and the bounded retry budget was
+    /// The database refused a write because of a transient lock conflict
+    /// (SQLite `SQLITE_BUSY` / `SQLITE_LOCKED`; PostgreSQL serialization
+    /// failure, deadlock or lock timeout) and the bounded retry budget was
     /// exhausted. Kept distinct from [`Error::Db`] because it is *transient*:
     /// the caller may retry, and ingestion answers it with `429 Retry-After`
     /// instead of a `500` so the SDK re-sends the event rather than dropping it.
@@ -97,12 +98,15 @@ impl Error {
     }
 
     /// True when the error is a *transient* lock conflict the caller may retry:
-    /// SQLite `SQLITE_BUSY` (5) / `SQLITE_LOCKED` (6), including their extended
-    /// forms (e.g. `SQLITE_BUSY_SNAPSHOT` = 517, returned when a deferred
-    /// transaction cannot upgrade its snapshot to a write).
     ///
-    /// The classification lives here rather than in the SQLite adapter because
-    /// both the adapter's retry loop and the ingest HTTP mapping need it, and the
+    ///   * SQLite `SQLITE_BUSY` (5) / `SQLITE_LOCKED` (6), including their
+    ///     extended forms (e.g. `SQLITE_BUSY_SNAPSHOT` = 517, returned when a
+    ///     deferred transaction cannot upgrade its snapshot to a write);
+    ///   * PostgreSQL SQLSTATE `40001` (serialization failure), `40P01`
+    ///     (deadlock detected) and `55P03` (lock not available).
+    ///
+    /// The classification lives here rather than in the adapters because both
+    /// the adapters' retry loop and the ingest HTTP mapping need it, and the
     /// latter must not depend on an adapter (hexagonal: dependencies point
     /// inward).
     pub fn is_busy(&self) -> bool {
@@ -118,12 +122,22 @@ impl Error {
 const SQLITE_BUSY: i32 = 5;
 const SQLITE_LOCKED: i32 = 6;
 
+/// PostgreSQL SQLSTATEs that mean "conflicting concurrent work, try again":
+/// serialization failure, deadlock detected, lock not available.
+const PG_TRANSIENT_SQLSTATES: &[&str] = &["40001", "40P01", "55P03"];
+
 /// True when a driver error carries a busy/locked result code.
+///
+/// PostgreSQL errors are recognised by type and judged by SQLSTATE only — a
+/// numeric SQLSTATE must never be read as an SQLite result code.
 ///
 /// SQLite reports the *extended* code (`SQLITE_BUSY_SNAPSHOT` = 517 = 5 | 2<<8),
 /// whose low byte is the primary code — hence the mask. The message check is a
 /// belt-and-braces fallback for drivers that don't surface a numeric code.
 fn is_busy_code(db_err: &dyn sqlx::error::DatabaseError) -> bool {
+    if let Some(pg) = db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
+        return is_pg_transient(pg.code());
+    }
     if let Some(code) = db_err.code().and_then(|c| c.parse::<i32>().ok()) {
         let primary = code & 0xff;
         if primary == SQLITE_BUSY || primary == SQLITE_LOCKED {
@@ -132,6 +146,11 @@ fn is_busy_code(db_err: &dyn sqlx::error::DatabaseError) -> bool {
     }
     let msg = db_err.message().to_ascii_lowercase();
     msg.contains("database is locked") || msg.contains("database table is locked")
+}
+
+/// True for a PostgreSQL SQLSTATE in [`PG_TRANSIENT_SQLSTATES`].
+fn is_pg_transient(sqlstate: &str) -> bool {
+    PG_TRANSIENT_SQLSTATES.contains(&sqlstate)
 }
 
 #[cfg(test)]
@@ -217,6 +236,17 @@ mod tests {
         assert!(!db_error(Some("19"), "UNIQUE constraint failed: users.email").is_busy());
         assert!(!Error::Db(sqlx::Error::PoolTimedOut).is_busy());
         assert!(!Error::Validation("bad".into()).is_busy());
+    }
+
+    #[test]
+    fn postgres_transient_sqlstates_are_recognised() {
+        for code in ["40001", "40P01", "55P03"] {
+            assert!(is_pg_transient(code), "{code} should be transient");
+        }
+        // Unique violation, FK violation, syntax error: permanent.
+        for code in ["23505", "23503", "42601"] {
+            assert!(!is_pg_transient(code), "{code} should not be transient");
+        }
     }
 
     #[test]

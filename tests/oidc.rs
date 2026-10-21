@@ -5,6 +5,8 @@
 //! provider boundary is faked through the [`OidcProvider`] trait so the
 //! happy-path callback runs without any network or real ID-token signing.
 
+mod common;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,7 +18,7 @@ use serde_json::Value;
 use soika::auth::{AuthorizeRequest, OidcClaims, OidcProvider, hash_password};
 use soika::domain::{AuthProvider, InstanceRole, UserStatus};
 use soika::ports::NewUser;
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use tower::ServiceExt;
 
 const SECRET: &str = "test-secret-key";
@@ -89,10 +91,7 @@ impl OidcProvider for FakeProvider {
 
 /// Build a router with SSO either enabled (Some provider) or disabled (None).
 async fn build_app(oidc: Option<Arc<dyn OidcProvider>>) -> (axum::Router, AppState) {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-        .await
-        .expect("connect in-memory sqlite");
-    MIGRATOR.run(&pool).await.expect("run migrations");
+    let pool = common::test_db().await;
 
     let state = build_state(pool, test_config()).unwrap().with_oidc(oidc);
     (router::build(state.clone()), state)

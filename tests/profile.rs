@@ -5,6 +5,8 @@
 //! refused with `400` and leaves the stored name untouched; a valid one is
 //! trimmed and saved.
 
+mod common;
+
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -13,7 +15,7 @@ use soika::auth::hash_password;
 use soika::config::LockoutConfig;
 use soika::domain::{AuthProvider, InstanceRole, UserStatus};
 use soika::ports::NewUser;
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -27,10 +29,7 @@ struct Fixture {
 
 impl Fixture {
     async fn spawn() -> Fixture {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
         let state = build_state(pool, test_config()).unwrap();
         state
             .users

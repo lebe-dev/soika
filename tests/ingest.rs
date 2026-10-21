@@ -13,6 +13,8 @@
 //! proves the whole pipeline end-to-end: auth → decode → parse → fingerprint →
 //! persist (issue + event) → response.
 
+mod common;
+
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,7 +28,7 @@ use serde_json::{Value, json};
 use soika::domain::{Issue, IssueStatus, Project, TagMatch};
 use soika::ingest::RateLimiter;
 use soika::ports::{IssueFilter, NewProject, NewTagMuteRule};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use tower::ServiceExt; // for `oneshot`
 
 /// The DSN public key every seeded project is reachable by.
@@ -62,10 +64,7 @@ impl TestApp {
 
     /// Shared builder: optional rate-limit override and optional project webhook.
     async fn spawn_with(limit: Option<u32>, webhook_url: Option<String>) -> TestApp {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
 
         let mut state = build_state(pool, test_config()).unwrap();
         if let Some(limit) = limit {

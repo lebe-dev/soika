@@ -71,6 +71,19 @@ test-backend name="":
 test-frontend name="":
     cd frontend && yarn vitest run {{ if name != "" { name } else { "" } }}
 
+# Run the backend tests against PostgreSQL 15 (needs Docker): `just test-postgres <name>`.
+# testcontainers starts one shared `soika-test-postgres` container for every
+# test binary and gives each test its own database; the container is removed
+# when the run ends, pass or fail.
+test-postgres name="":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    trap 'docker rm -f soika-test-postgres >/dev/null 2>&1 || true' EXIT
+    SOIKA_TEST_DB=postgres cargo test {{ name }}
+
+# Everything: backend on SQLite, frontend, then backend on PostgreSQL.
+test-all: test && test-postgres
+
 # Run the backend tests with an LCOV coverage report (read by SonarQube via
 # `sonar.rust.lcov.reportPaths`). Requires `cargo install cargo-llvm-cov`.
 # `--remap-path-prefix` makes source paths workspace-relative so they resolve

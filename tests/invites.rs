@@ -18,6 +18,8 @@
 //!   * an existing account with the wrong password is `401`,
 //!   * under OIDC-only, a password accept for a *new* email is `403`.
 
+mod common;
+
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
@@ -35,7 +37,7 @@ use soika::auth::{
 use soika::config::LockoutConfig;
 use soika::domain::{AuthProvider, Id, InstanceRole, Role, TeamRole, UserStatus};
 use soika::ports::{NewInvite, NewProject, NewUser};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use tower::ServiceExt;
 
 const PASSWORD: &str = "correct-horse-battery";
@@ -56,10 +58,7 @@ impl Fixture {
     /// Like [`spawn`], but lets a test enable SSO by passing a provider, which
     /// flips `accept_invite` onto its OIDC-only branch.
     async fn spawn_with_oidc(oidc: Option<Arc<dyn OidcProvider>>) -> Fixture {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
         let state = build_state(pool, test_config()).unwrap().with_oidc(oidc);
         Fixture {
             router: router::build(state.clone()),

@@ -60,3 +60,10 @@ with working SQLite file locks; avoid NFS and SMB. Set
 `keep` annotation so uninstall does not delete the database. Disabling
 `persistence` uses an `emptyDir`, which loses data when the Pod is replaced.
 The application also uses a writable temporary directory at `/tmp`.
+
+To store data in PostgreSQL 15+ instead, put a `postgres://` URL in
+`secrets.envs` as `DATABASE_URL` (it carries the password) and remove the
+SQLite `DATABASE_URL` from `envs`. The database must already exist; Soika
+creates its tables at startup. The PVC then only backs `/app/data` and can be
+disabled with `persistence.enabled: false`. Keep one replica: the retention
+scheduler, rate limiter and login lockout are per process.

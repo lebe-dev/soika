@@ -11,7 +11,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 use soika::auth::{GithubProvider, OidcClient, OidcProvider};
 use soika::config::{DbConfig, OAuthProviderKind, SentryConfig};
-use soika::{Config, MIGRATOR, build_state, scheduler};
+use soika::{Config, DbBackend, DbPool, MIGRATOR, PG_MIGRATOR, build_state, scheduler};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,7 +29,10 @@ async fn main() -> Result<()> {
 
     tracing::info!(org = %config.organization_name, bind = %config.bind_addr, "starting soika");
 
-    let pool = connect_and_migrate(&config.database_url, &config.db)
+    let backend = DbBackend::from_url(&config.database_url).context("reading DATABASE_URL")?;
+    tracing::info!(backend = backend.name(), "using database backend");
+
+    let pool = connect_and_migrate(backend, &config.database_url, &config.db)
         .await
         .context("connecting to database and running migrations")?;
 
@@ -156,12 +159,43 @@ fn init_sentry(cfg: Option<&SentryConfig>) -> Option<sentry::ClientInitGuard> {
     Some(sentry::init((cfg.dsn.clone(), options)))
 }
 
-/// Connect to SQLite (creating the file if missing), then run migrations.
+/// Connect to the database named by `DATABASE_URL` (SQLite or PostgreSQL), then
+/// run that backend's migrations.
 ///
-/// Connection/pool setup (WAL, busy timeout, pool size, …) lives in
-/// [`soika::connect_pool`] so the library and the binary cannot drift apart; the
-/// bin owns only migrations and the one-off short-id backfill.
-async fn connect_and_migrate(database_url: &str, db: &DbConfig) -> Result<sqlx::SqlitePool> {
+/// Connection/pool setup lives in [`soika::db`] so the library and the binary
+/// cannot drift apart; the bin owns only migrations and, on SQLite, the one-off
+/// short-id backfill.
+async fn connect_and_migrate(
+    backend: DbBackend,
+    database_url: &str,
+    db: &DbConfig,
+) -> Result<DbPool> {
+    match backend {
+        DbBackend::Sqlite => {
+            let pool = connect_and_migrate_sqlite(database_url, db).await?;
+            Ok(DbPool::Sqlite(pool))
+        }
+        DbBackend::Postgres => {
+            let pool = soika::connect_pg_pool(database_url, db)
+                .await
+                .context("opening PostgreSQL pool")?;
+            tracing::info!(
+                max_connections = db.max_connections,
+                acquire_timeout_ms = db.acquire_timeout.as_millis(),
+                write_max_retries = db.write.max_retries,
+                delete_batch = db.write.delete_batch,
+                "database pool ready (postgres)"
+            );
+            PG_MIGRATOR.run(&pool).await.context("running migrations")?;
+            tracing::info!("database migrations applied");
+            Ok(DbPool::Postgres(pool))
+        }
+    }
+}
+
+/// Connect to SQLite (creating the file if missing), run migrations and the
+/// short-id backfill.
+async fn connect_and_migrate_sqlite(database_url: &str, db: &DbConfig) -> Result<sqlx::SqlitePool> {
     let pool = soika::connect_pool(database_url, db)
         .await
         .context("opening SQLite pool")?;
@@ -173,7 +207,7 @@ async fn connect_and_migrate(database_url: &str, db: &DbConfig) -> Result<sqlx::
         synchronous = ?db.synchronous,
         write_max_retries = db.write.max_retries,
         delete_batch = db.write.delete_batch,
-        "database pool ready (WAL)"
+        "database pool ready (sqlite, WAL)"
     );
 
     MIGRATOR.run(&pool).await.context("running migrations")?;

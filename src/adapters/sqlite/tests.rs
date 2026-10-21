@@ -38,34 +38,6 @@ pub(crate) async fn insert_team(pool: &Db, name: &str) -> crate::domain::Id {
     id
 }
 
-/// Insert a project row directly (bypassing the project adapter) and return its id.
-pub(crate) async fn insert_project(
-    pool: &Db,
-    team_id: crate::domain::Id,
-    slug: &str,
-    dsn: &str,
-) -> crate::domain::Id {
-    let id = crate::domain::Id::new_v4();
-    let now = super::ts_to_db(chrono::Utc::now());
-    sqlx::query(
-        "INSERT INTO projects (id, short_id, team_id, name, slug, dsn_public_key, \
-         retention_events, muted, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, 1000, 0, ?, ?)",
-    )
-    .bind(super::id_to_db(id))
-    .bind(super::generate_short_id())
-    .bind(super::id_to_db(team_id))
-    .bind(slug)
-    .bind(slug)
-    .bind(dsn)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool)
-    .await
-    .expect("insert project");
-    id
-}
-
 #[tokio::test]
 async fn backfill_short_ids_fills_null_rows_with_unique_codes() {
     let pool = test_pool().await;
@@ -119,65 +91,4 @@ async fn backfill_short_ids_fills_null_rows_with_unique_codes() {
     let mut sorted = codes.clone();
     sorted.sort();
     assert_eq!(after, sorted, "second run is a no-op");
-}
-
-/// Insert a user row directly and return its id.
-///
-/// Leaves `instance_role` at its column default (`'member'`).
-pub(crate) async fn insert_user(pool: &Db, email: &str) -> crate::domain::Id {
-    let id = crate::domain::Id::new_v4();
-    let now = super::ts_to_db(chrono::Utc::now());
-    sqlx::query(
-        "INSERT INTO users (id, email, display_name, password_hash, \
-         notifications_enabled, created_at, updated_at) VALUES (?, ?, ?, 'hash', 1, ?, ?)",
-    )
-    .bind(super::id_to_db(id))
-    .bind(email)
-    .bind(email)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool)
-    .await
-    .expect("insert user");
-    id
-}
-
-#[tokio::test]
-async fn upsert_refreshes_title_on_repeat_event() {
-    use crate::ports::{IssueRepository, IssueUpsert};
-    use chrono::TimeZone;
-
-    let pool = test_pool().await;
-    let team_id = insert_team(&pool, "t").await;
-    let project_id = insert_project(&pool, team_id, "p", "dsn-p").await;
-    let repo = super::SqliteIssueRepository::new(pool.clone());
-
-    let base = |title: &str, at: i64| IssueUpsert {
-        project_id,
-        fingerprint: "fp-1".to_string(),
-        title: title.to_string(),
-        culprit: None,
-        level: None,
-        environment: None,
-        release: None,
-        seen_at: chrono::Utc.timestamp_opt(at, 0).single().unwrap(),
-    };
-
-    // First event freezes an (already parameterized) title.
-    let first = repo
-        .upsert_by_fingerprint(base("Error: Not found: /download/<id>", 100))
-        .await
-        .expect("first upsert");
-    assert!(first.is_new);
-
-    // A second event in the same group refreshes the title (last-write-wins),
-    // so an issue never keeps a stale early sample.
-    let second = repo
-        .upsert_by_fingerprint(base("Error: Not found: /download/<id>", 200))
-        .await
-        .expect("second upsert");
-    assert!(!second.is_new);
-    assert_eq!(second.issue.id, first.issue.id, "same group");
-    assert_eq!(second.issue.title, "Error: Not found: /download/<id>");
-    assert_eq!(second.issue.event_count, 2);
 }

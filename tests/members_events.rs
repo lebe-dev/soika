@@ -14,6 +14,8 @@
 //!   (a different team) gets `403`; a well-formed but unknown event UUID is
 //!   `404`; a non-UUID id is `400`.
 
+mod common;
+
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -22,7 +24,7 @@ use soika::auth::hash_password;
 use soika::config::LockoutConfig;
 use soika::domain::{AuthProvider, Id, InstanceRole, TeamRole, UserStatus};
 use soika::ports::{NewProject, NewUser};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -38,10 +40,7 @@ struct Fixture {
 
 impl Fixture {
     async fn spawn() -> Fixture {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
         let state = build_state(pool, test_config()).unwrap();
         Fixture {
             router: router::build(state.clone()),

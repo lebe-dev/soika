@@ -19,6 +19,8 @@
 //! addition is the ability to swap in a failing [`TagMuteRuleRepository`] before
 //! the router is built, so the fail-open branch is reachable.
 
+mod common;
+
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -33,7 +35,7 @@ use serde_json::{Value, json};
 use soika::domain::{Id, Project, TagMuteRule};
 use soika::error::{Error, Result as SoikaResult};
 use soika::ports::{NewProject, NewTagMuteRule, TagMuteRuleRepository};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use tower::ServiceExt; // for `oneshot`
 
 /// The DSN public key every seeded project is reachable by (matches `ingest.rs`).
@@ -70,10 +72,7 @@ impl TestApp {
         webhook_url: String,
         mute_rules: Option<Arc<dyn TagMuteRuleRepository>>,
     ) -> TestApp {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("connect in-memory sqlite");
-        MIGRATOR.run(&pool).await.expect("run migrations");
+        let pool = common::test_db().await;
 
         let mut state = build_state(pool, test_config()).unwrap();
 

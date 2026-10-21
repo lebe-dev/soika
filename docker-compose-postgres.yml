@@ -1,0 +1,40 @@
+# Example stack: soika backed by PostgreSQL 15.
+#
+#   SECRET_KEY=$(openssl rand -hex 32) POSTGRES_PASSWORD=change-me \
+#     docker compose -f docker-compose-postgres.yml up -d
+#
+# soika creates its tables on startup; the database itself is created by the
+# postgres image from POSTGRES_DB.
+services:
+  postgres:
+    container_name: soika-postgres
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: soika
+      POSTGRES_USER: soika
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - soika-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soika -d soika"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  soika:
+    container_name: soika
+    image: tinyops/soika:0.7.0
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BIND_ADDR: "0.0.0.0:8080"
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      DATABASE_URL: postgres://soika:${POSTGRES_PASSWORD}@postgres:5432/soika
+    ports:
+      - "8080:8080"
+
+volumes:
+  soika-postgres:

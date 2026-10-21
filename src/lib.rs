@@ -9,6 +9,7 @@ pub mod adapters;
 pub mod api;
 pub mod auth;
 pub mod config;
+pub mod db;
 pub mod domain;
 pub mod error;
 pub mod grouping;
@@ -25,74 +26,22 @@ pub use config::Config;
 pub use error::{Error, Result};
 pub use state::AppState;
 
-use std::str::FromStr;
 use std::sync::Arc;
 
-use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-
-/// Embedded SQL migrations (schema), run at startup.
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
-
-/// Connect to the database and create the pool — the single place SQLite
-/// connection and locking behaviour is configured. The bin crate owns running
-/// migrations via [`MIGRATOR`].
-///
-/// Everything here is driven by [`config::DbConfig`] (`DB_*` env vars) so an
-/// operator can widen the timeouts on a slow disk without a rebuild:
-///
-///   * `create_if_missing` — a fresh deployment has no database file yet.
-///   * `foreign_keys` — enabled per connection so `ON DELETE CASCADE` fires for
-///     sessions / team_members / invites (SQLite leaves FKs off by default).
-///   * `journal_mode = WAL` — readers don't block the writer, which is what
-///     makes a single-binary tracker serve the UI while ingesting.
-///   * `busy_timeout` — how long SQLite waits for the one write lock before
-///     returning `SQLITE_BUSY`. It only helps transactions that declare their
-///     write intent up front, which is why every write transaction goes through
-///     `BEGIN IMMEDIATE` (see `adapters::sqlite::write`).
-///   * `synchronous` — `NORMAL` under WAL by default: fewer fsyncs, so the write
-///     lock is held for shorter stretches.
-pub async fn connect_pool(database_url: &str, db: &config::DbConfig) -> Result<SqlitePool> {
-    use sqlx::ConnectOptions;
-    use sqlx::sqlite::{SqliteJournalMode, SqliteSynchronous};
-
-    let synchronous = match db.synchronous {
-        config::Synchronous::Normal => SqliteSynchronous::Normal,
-        config::Synchronous::Full => SqliteSynchronous::Full,
-    };
-
-    let options = SqliteConnectOptions::from_str(database_url)
-        .map_err(crate::error::Error::Db)?
-        .create_if_missing(true)
-        .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(synchronous)
-        .busy_timeout(db.busy_timeout)
-        .disable_statement_logging();
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(db.max_connections)
-        .acquire_timeout(db.acquire_timeout)
-        .connect_with(options)
-        .await?;
-    Ok(pool)
-}
+pub use db::{
+    DbBackend, DbPool, MIGRATOR, PG_MIGRATOR, connect_database, connect_pg_pool, connect_pool,
+};
 
 /// Build the [`AppState`] from a connected pool and resolved config, wiring the
-/// SQLite adapters and the SMTP-or-noop mailer.
+/// repository adapters of the pool's backend (SQLite or PostgreSQL) and the
+/// SMTP-or-noop mailer.
 ///
 /// Loads the email templates (from [`mail::templates_dir`]) up front so a
 /// missing or broken `templates/` directory fails fast at startup rather than
 /// at the first notification.
-pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
+pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> {
     use adapters::clock::SystemClock;
     use adapters::mailer::{NoopMailer, SmtpMailer};
-    use adapters::sqlite::{
-        SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
-        SqliteIssueRepository, SqlitePasskeyRepository, SqliteProjectRepository,
-        SqliteSessionRepository, SqliteSettingsRepository, SqliteTagMuteRuleRepository,
-        SqliteTeamRepository, SqliteUserRepository,
-    };
     use auth::LoginGuard;
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
     use ports::Mailer;
@@ -121,21 +70,24 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
     // everything else keeps the defaults.
     let write_policy = config.db.write.clone();
 
+    let repos = match pool.into() {
+        DbPool::Sqlite(pool) => sqlite_repositories(pool, write_policy),
+        DbPool::Postgres(pool) => postgres_repositories(pool, write_policy),
+    };
+
     Ok(AppState {
         config: Arc::new(config),
-        users: Arc::new(SqliteUserRepository::new(pool.clone())),
-        sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
-        teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
-        projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
-        favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
-        issues: Arc::new(
-            SqliteIssueRepository::new(pool.clone()).with_write_policy(write_policy.clone()),
-        ),
-        events: Arc::new(SqliteEventRepository::new(pool.clone()).with_write_policy(write_policy)),
-        mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
-        invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
-        passkeys: Arc::new(SqlitePasskeyRepository::new(pool.clone())),
-        settings: Arc::new(SqliteSettingsRepository::new(pool)),
+        users: repos.users,
+        sessions: repos.sessions,
+        teams: repos.teams,
+        projects: repos.projects,
+        favorites: repos.favorites,
+        issues: repos.issues,
+        events: repos.events,
+        mute_rules: repos.mute_rules,
+        invites: repos.invites,
+        passkeys: repos.passkeys,
+        settings: repos.settings,
         mailer,
         templates,
         clock: Arc::new(SystemClock),
@@ -146,4 +98,67 @@ pub fn build_state(pool: SqlitePool, config: Config) -> Result<AppState> {
         oidc: None,
         webauthn,
     })
+}
+
+/// Every repository port, as wired into [`AppState`].
+struct Repositories {
+    users: Arc<dyn ports::UserRepository>,
+    sessions: Arc<dyn ports::SessionRepository>,
+    teams: Arc<dyn ports::TeamRepository>,
+    projects: Arc<dyn ports::ProjectRepository>,
+    favorites: Arc<dyn ports::FavoriteRepository>,
+    issues: Arc<dyn ports::IssueRepository>,
+    events: Arc<dyn ports::EventRepository>,
+    mute_rules: Arc<dyn ports::TagMuteRuleRepository>,
+    invites: Arc<dyn ports::InviteRepository>,
+    passkeys: Arc<dyn ports::PasskeyRepository>,
+    settings: Arc<dyn ports::SettingsRepository>,
+}
+
+/// The SQLite adapters. The write policy is only wired into the repositories on
+/// the ingest / retention hot path — everything else keeps the defaults.
+fn sqlite_repositories(pool: sqlx::SqlitePool, write: config::WritePolicy) -> Repositories {
+    use adapters::sqlite::{
+        SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
+        SqliteIssueRepository, SqlitePasskeyRepository, SqliteProjectRepository,
+        SqliteSessionRepository, SqliteSettingsRepository, SqliteTagMuteRuleRepository,
+        SqliteTeamRepository, SqliteUserRepository,
+    };
+
+    Repositories {
+        users: Arc::new(SqliteUserRepository::new(pool.clone())),
+        sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
+        teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
+        projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
+        favorites: Arc::new(SqliteFavoriteRepository::new(pool.clone())),
+        issues: Arc::new(SqliteIssueRepository::new(pool.clone()).with_write_policy(write.clone())),
+        events: Arc::new(SqliteEventRepository::new(pool.clone()).with_write_policy(write)),
+        mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
+        invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
+        passkeys: Arc::new(SqlitePasskeyRepository::new(pool.clone())),
+        settings: Arc::new(SqliteSettingsRepository::new(pool)),
+    }
+}
+
+/// The PostgreSQL adapters, wired like [`sqlite_repositories`].
+fn postgres_repositories(pool: sqlx::PgPool, write: config::WritePolicy) -> Repositories {
+    use adapters::postgres::{
+        PgEventRepository, PgFavoriteRepository, PgInviteRepository, PgIssueRepository,
+        PgPasskeyRepository, PgProjectRepository, PgSessionRepository, PgSettingsRepository,
+        PgTagMuteRuleRepository, PgTeamRepository, PgUserRepository,
+    };
+
+    Repositories {
+        users: Arc::new(PgUserRepository::new(pool.clone())),
+        sessions: Arc::new(PgSessionRepository::new(pool.clone())),
+        teams: Arc::new(PgTeamRepository::new(pool.clone())),
+        projects: Arc::new(PgProjectRepository::new(pool.clone())),
+        favorites: Arc::new(PgFavoriteRepository::new(pool.clone())),
+        issues: Arc::new(PgIssueRepository::new(pool.clone()).with_write_policy(write.clone())),
+        events: Arc::new(PgEventRepository::new(pool.clone()).with_write_policy(write)),
+        mute_rules: Arc::new(PgTagMuteRuleRepository::new(pool.clone())),
+        invites: Arc::new(PgInviteRepository::new(pool.clone())),
+        passkeys: Arc::new(PgPasskeyRepository::new(pool.clone())),
+        settings: Arc::new(PgSettingsRepository::new(pool)),
+    }
 }

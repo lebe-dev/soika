@@ -6,6 +6,8 @@
 //! the signed challenge cookies, ownership of stored credentials, the per-user
 //! quota, and the rejection paths a forged or replayed response takes.
 
+mod common;
+
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
@@ -13,7 +15,7 @@ use soika::auth::hash_password;
 use soika::config::PasskeyConfig;
 use soika::domain::{AuthProvider, Id, InstanceRole, UserStatus};
 use soika::ports::{NewPasskey, NewUser};
-use soika::{AppState, Config, MIGRATOR, build_state, router};
+use soika::{AppState, Config, build_state, router};
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -56,10 +58,7 @@ fn passkey_config() -> PasskeyConfig {
 
 /// Build a router with passkeys either enabled or disabled.
 async fn build_app(enabled: bool) -> (axum::Router, AppState) {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-        .await
-        .expect("connect in-memory sqlite");
-    MIGRATOR.run(&pool).await.expect("run migrations");
+    let pool = common::test_db().await;
 
     let passkey = enabled.then(passkey_config);
     let state = build_state(pool, test_config(passkey)).expect("build state");
