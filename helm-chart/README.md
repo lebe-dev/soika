@@ -4,6 +4,7 @@ This chart deploys the single-binary Soika image with SQLite or PostgreSQL 15+.
 It uses one replica and a `Recreate` deployment strategy: the retention scheduler,
 ingestion rate limiter, and login lockout are per process. The application runs
 the selected database's migrations at startup; no migration Job is needed.
+Chart version: `0.1.2`. Default application image: `tinyops/soika:0.8.0`.
 
 ## Publishing
 
@@ -25,6 +26,8 @@ envs:
     value: "sqlite:///app/data/soika.db?mode=rwc"
   - name: BASE_URL
     value: "https://errors.example.com"
+  - name: ADMIN_USERS
+    value: "alice@example.com,bob@example.com"
 secrets:
   envs:
     - name: SECRET_KEY
@@ -62,6 +65,19 @@ match the external URL for DSNs, email links, secure cookies, and passkeys.
 Enable either `ingress` or `httpRoute` for public access. HTTPRoute requires
 the Gateway API CRDs and a configured Gateway.
 
+`ADMIN_USERS` grants the listed full email addresses the same effective `Owner`
+permissions as the setup administrator, across password, OAuth/OIDC and passkey
+sign-in. The default is empty; matching ignores ASCII letter case and surrounding
+spaces. Authentication and account-approval checks still apply. The stored role
+shown in **Admin → Users** stays independent of this grant.
+
+Changing `envs` changes the ConfigMap checksum and automatically rolls out the
+Deployment on `helm upgrade`. Removing an address restores its stored role,
+including existing sessions, after the rollout. Helm replaces the entire `envs`
+list when overriding it, so include all required entries in your values file.
+See [administrator configuration](../docs/OPERATIONS.md#administrators-from-environment-configuration)
+for the complete behavior.
+
 For SQLite, the chart creates a `ReadWriteOnce` PVC at `/app/data`. Use a storage class
 with working SQLite file locks; avoid NFS and SMB. Set
 `persistence.existingClaim` to reuse a claim. The created PVC has Helm's
@@ -81,6 +97,8 @@ envs:
     value: "0.0.0.0:8080"
   - name: BASE_URL
     value: "https://errors.example.com"
+  - name: ADMIN_USERS
+    value: "alice@example.com,bob@example.com"
 secrets:
   envs:
     - name: SECRET_KEY
