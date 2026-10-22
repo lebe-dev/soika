@@ -24,7 +24,7 @@ services:
 
   soika:
     container_name: soika
-    image: tinyops/soika:0.7.0
+    image: tinyops/soika:0.8.0
     restart: always
     depends_on:
       postgres:

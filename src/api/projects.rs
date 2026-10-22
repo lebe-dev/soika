@@ -60,7 +60,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             .map_err(error_response)?
             .ok_or_else(auth_rejection)?;
 
-        Ok(CurrentUser(user))
+        Ok(CurrentUser(state.config.admin_users.apply(user)))
     }
 }
 

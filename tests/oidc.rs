@@ -106,6 +106,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: SECRET.into(),
         allow_signup: false,
+        admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
@@ -1038,4 +1039,120 @@ async fn setup_validates_inputs() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+fn with_admin_users(mut state: AppState, emails: &str) -> (axum::Router, AppState) {
+    Arc::make_mut(&mut state.config).admin_users =
+        soika::config::AdminUsers::parse(emails).unwrap();
+    (router::build(state.clone()), state)
+}
+
+#[tokio::test]
+async fn admin_users_sso_grants_owner_on_first_and_repeat_login_without_persisting_it() {
+    let email = "sso-admin@example.com";
+    let (_, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+    let (router, state) = with_admin_users(state, " SSO-ADMIN@EXAMPLE.COM ");
+    for _ in 0..2 {
+        let (status, location, cookies) = run_callback(&router, email).await;
+        assert_eq!(status, StatusCode::FOUND);
+        assert_eq!(location.as_deref(), Some("/"));
+        let cookie = cookies
+            .iter()
+            .find(|c| c.starts_with("soika_session="))
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap();
+        let (status, config) = get_json_with_cookie(&router, "/auth/config", cookie).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(config["user"]["instance_role"], "owner");
+        assert_eq!(
+            get_json_with_cookie(&router, "/api/settings", cookie)
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let user = state.users.find_by_email(email).await.unwrap().unwrap();
+    assert_eq!(user.auth_provider, AuthProvider::Oidc);
+    assert_eq!(user.instance_role, InstanceRole::Member);
+    assert_eq!(state.users.count().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn admin_users_sso_accepts_existing_accounts_with_any_stored_role() {
+    for role in [
+        InstanceRole::Member,
+        InstanceRole::Manager,
+        InstanceRole::Owner,
+    ] {
+        let email = "existing@example.com";
+        let (_, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+        seed_user(&state, email, "supersecret", false).await;
+        let user = state.users.find_by_email(email).await.unwrap().unwrap();
+        state.users.set_instance_role(user.id, role).await.unwrap();
+        let (router, state) = with_admin_users(state, email);
+        let (_, location, cookies) = run_callback(&router, email).await;
+        assert_eq!(location.as_deref(), Some("/"));
+        assert!(cookies.iter().any(|c| c.starts_with("soika_session=")));
+        assert_eq!(
+            state
+                .users
+                .find_by_id(user.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .instance_role,
+            role
+        );
+        let (status, view) = post_json(
+            &router,
+            "/auth/login",
+            serde_json::json!({"email":email, "password":"supersecret"}),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "configured local admins keep password login with SSO enabled"
+        );
+        assert_eq!(view["instance_role"], "owner");
+    }
+}
+
+#[tokio::test]
+async fn admin_users_sso_still_requires_verified_email_and_allowed_domain() {
+    for unverified in [true, false] {
+        let email = "admin@example.com";
+        let mut claims = verified_claims(email);
+        claims.email_verified = !unverified;
+        let mut provider = FakeProvider::new(claims);
+        if !unverified {
+            provider.allowed_domains = vec!["other.com".into()];
+        }
+        let (_, state) = build_app(Some(Arc::new(provider))).await;
+        let (router, state) = with_admin_users(state, email);
+        let (_, location, cookies) = run_callback(&router, email).await;
+        assert!(location.unwrap().starts_with("/login?error="));
+        assert!(!cookies.iter().any(|c| c.starts_with("soika_session=")));
+        assert_eq!(state.users.count().await.unwrap(), 0);
+    }
+}
+
+#[tokio::test]
+async fn admin_users_sso_still_requires_account_approval() {
+    let email = "pending-admin@example.com";
+    let (_, state) = build_app(Some(Arc::new(FakeProvider::with_approval(
+        verified_claims(email),
+    ))))
+    .await;
+    let (router, state) = with_admin_users(state, email);
+    for _ in 0..2 {
+        let (_, location, cookies) = run_callback(&router, email).await;
+        assert_eq!(location.as_deref(), Some("/pending"));
+        assert!(!cookies.iter().any(|c| c.starts_with("soika_session=")));
+    }
+    let user = state.users.find_by_email(email).await.unwrap().unwrap();
+    assert_eq!(user.instance_role, InstanceRole::Member);
+    assert_eq!(user.status, UserStatus::Pending);
 }

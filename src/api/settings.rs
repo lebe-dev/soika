@@ -51,7 +51,7 @@ pub struct AdminUserRow {
     pub id: Id,
     pub email: String,
     pub display_name: String,
-    /// Instance-wide role (`owner | manager | member`).
+    /// Stored instance-wide role (`owner | manager | member`), independent of ADMIN_USERS.
     pub instance_role: InstanceRole,
     pub notifications_enabled: bool,
     /// Activation status: `active` | `pending` (awaiting admin approval).
@@ -241,7 +241,12 @@ pub async fn delete_user(
         .await?
         .ok_or_else(|| Error::not_found(format!("user not found: {user_id}")))?;
 
-    if target.instance_role.is_owner() {
+    if state
+        .config
+        .admin_users
+        .effective_role(&target.email, target.instance_role)
+        .is_owner()
+    {
         // Deleting an Owner is an Owner-only, destructive operation.
         if !admin.instance_role.is_owner() {
             return Err(ApiError(Error::Forbidden(
@@ -249,7 +254,7 @@ pub async fn delete_user(
             )));
         }
         // Never orphan the instance: keep at least one Owner.
-        if state.users.count_owners().await? <= 1 {
+        if target.instance_role.is_owner() && state.users.count_owners().await? <= 1 {
             return Err(ApiError(Error::Conflict(
                 "cannot delete the last owner".into(),
             )));
@@ -289,7 +294,9 @@ pub async fn set_user_role(
     let becomes_owner = new_role.is_owner();
 
     // Granting or revoking Owner is Owner-only.
-    if (was_owner || becomes_owner) && !admin.instance_role.is_owner() {
+    if (was_owner || becomes_owner || state.config.admin_users.contains(&target.email))
+        && !admin.instance_role.is_owner()
+    {
         return Err(ApiError(Error::Forbidden(
             "only an owner can grant or revoke the owner role".into(),
         )));

@@ -223,7 +223,11 @@ pub async fn login_verify(
         &mut out,
         &build_clearing_challenge_cookie(PASSKEY_AUTHENTICATION_COOKIE, secure),
     )?;
-    Ok((out, Json(UserView::from(user))).into_response())
+    Ok((
+        out,
+        Json(UserView::from(state.config.admin_users.apply(user))),
+    )
+        .into_response())
 }
 
 // ---------------------------------------------------------------------------

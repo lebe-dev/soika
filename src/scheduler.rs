@@ -311,6 +311,7 @@ mod tests {
             base_url: "http://localhost:8080".into(),
             secret_key: "secret".into(),
             allow_signup: false,
+            admin_users: Default::default(),
             default_events_retention,
             default_retention_days,
             retention_cron: "0 */15 * * * *".into(),

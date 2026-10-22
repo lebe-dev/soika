@@ -299,7 +299,8 @@ async fn run_callback(
     // in via SSO — except the instance Owner, which keeps password
     // login. Refusing the Owner here closes an account-takeover
     // vector where the public IdP could assume the highest-privilege account by
-    // email match.
+    // email match. ADMIN_USERS explicitly trusts the configured email identity
+    // for every authentication method, so listed Owners may also use SSO.
     //
     // When admin approval is required, a freshly provisioned account starts in
     // `Pending`; an already-existing account keeps whatever status it has.
@@ -309,7 +310,10 @@ async fn run_callback(
         UserStatus::Active
     };
     let user = match state.users.find_by_email(&claims.email).await? {
-        Some(existing) if existing.instance_role.is_owner() => {
+        Some(existing)
+            if existing.instance_role.is_owner()
+                && !state.config.admin_users.contains(&existing.email) =>
+        {
             return Err(Error::Forbidden(
                 "owner account uses password login, not SSO".into(),
             ));

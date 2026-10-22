@@ -103,7 +103,9 @@ pub async fn update(
         state.sessions.delete_for_user(user.id).await?;
     }
 
-    Ok(Json(ProfileView::from(updated)))
+    Ok(Json(ProfileView::from(
+        state.config.admin_users.apply(updated),
+    )))
 }
 
 /// Verify the current password and produce the new argon2 hash, after checking

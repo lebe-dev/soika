@@ -220,14 +220,18 @@ pub async fn login(
     }
 
     // Coexistence with SSO: when OAuth is enabled, password login is
-    // reserved for the built-in owner (`InstanceRole::Owner`). Everyone else —
+    // reserved for effective Owners (stored role or ADMIN_USERS). Everyone else —
     // including any OIDC-provisioned account whose `password_hash` is the empty
     // sentinel — must use SSO. We still spend the same hashing effort on the
     // rejected path so the anti-enumeration timing profile is unchanged.
     let oauth_enabled = state.oidc.is_some();
 
     // Constant-ish work whether or not the user exists, to avoid user enumeration.
-    let user = state.users.find_by_email(&email).await?;
+    let user = state
+        .users
+        .find_by_email(&email)
+        .await?
+        .map(|user| state.config.admin_users.apply(user));
     let ok = match &user {
         Some(u) => {
             let verified = verify_password(&body.password, &u.password_hash)?;
@@ -483,7 +487,7 @@ pub async fn accept_invite(
         .mark_accepted(&invite.token, state.clock.now())
         .await?;
 
-    let view = Json(UserView::from(user));
+    let view = Json(UserView::from(state.config.admin_users.apply(user)));
     match set_cookie {
         Some(cookie) => {
             let mut headers = HeaderMap::new();
@@ -525,7 +529,11 @@ async fn create_user(
         auth_provider: crate::domain::AuthProvider::Local,
         status: crate::domain::UserStatus::Active,
     };
-    state.users.create(new).await
+    state
+        .users
+        .create(new)
+        .await
+        .map(|user| state.config.admin_users.apply(user))
 }
 
 /// Load an invite by token and ensure it is still usable (unexpired, unaccepted).

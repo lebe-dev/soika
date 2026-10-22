@@ -249,6 +249,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),

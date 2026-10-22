@@ -164,6 +164,7 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<User, Error> {
         .find_by_id(session.user_id)
         .await?
         .ok_or_else(|| Error::Auth("session user no longer exists".into()))
+        .map(|user| state.config.admin_users.apply(user))
 }
 
 /// Parse a path id segment into a domain [`Id`], mapping a bad UUID to a 400.

@@ -1,8 +1,58 @@
 //! Application configuration — loaded from environment variables.
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
+use crate::domain::{InstanceRole, User};
 use crate::error::{Error, Result};
+
+/// Configuration-only Owner grants. Stored roles remain independent so removing
+/// an address restores the role assigned in the UI, including existing sessions.
+#[derive(Debug, Clone, Default)]
+pub struct AdminUsers(BTreeSet<String>);
+
+impl AdminUsers {
+    /// Parse `ADMIN_USERS`: comma-separated full email addresses.
+    pub fn parse(raw: &str) -> Result<Self> {
+        let mut emails = BTreeSet::new();
+        for email in split_list(raw, ',') {
+            let valid = email.split_once('@').is_some_and(|(local, domain)| {
+                !local.is_empty() && !domain.is_empty() && !domain.contains('@')
+            });
+            if !valid
+                || email
+                    .chars()
+                    .any(|c| c.is_whitespace() || "*;<>\"".contains(c))
+            {
+                return Err(Error::validation(
+                    "ADMIN_USERS must contain full email addresses separated by commas",
+                ));
+            }
+            emails.insert(email.to_ascii_lowercase());
+        }
+        Ok(Self(emails))
+    }
+
+    /// Exact, case-insensitive email match; never match a display name or domain.
+    pub fn contains(&self, email: &str) -> bool {
+        self.0.contains(&email.trim().to_ascii_lowercase())
+    }
+
+    /// Apply the environment grant without writing it to the user's stored role.
+    pub fn effective_role(&self, email: &str, stored: InstanceRole) -> InstanceRole {
+        if self.contains(email) {
+            InstanceRole::Owner
+        } else {
+            stored
+        }
+    }
+
+    /// Return a request-scoped user with effective permissions; never persist it.
+    pub fn apply(&self, mut user: User) -> User {
+        user.instance_role = self.effective_role(&user.email, user.instance_role);
+        user
+    }
+}
 
 /// Brute-force protection for password logins.
 ///
@@ -320,6 +370,8 @@ pub struct Config {
     pub secret_key: String,
     /// Whether public self-registration is enabled (`ALLOW_SIGNUP`).
     pub allow_signup: bool,
+    /// Temporary Owner grants by full email (`ADMIN_USERS`), independent of DB roles.
+    pub admin_users: AdminUsers,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
     /// Default age-based retention in days when a project's own value is 0
@@ -354,6 +406,7 @@ impl std::fmt::Debug for Config {
             .field("base_url", &self.base_url)
             .field("secret_key", &"***")
             .field("allow_signup", &self.allow_signup)
+            .field("admin_users", &self.admin_users)
             .field("default_events_retention", &self.default_events_retention)
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
@@ -413,6 +466,7 @@ impl Config {
             base_url,
             secret_key,
             allow_signup,
+            admin_users: AdminUsers::parse(&env_or("ADMIN_USERS", ""))?,
             default_events_retention,
             default_retention_days,
             retention_cron,
@@ -777,6 +831,146 @@ mod tests {
     use super::*;
     use crate::error::Error;
     use std::sync::Mutex;
+
+    #[test]
+    fn admin_users_parses_full_emails_and_ignores_case_spaces_duplicates_and_empty_items() {
+        let admins =
+            AdminUsers::parse(" Alice@Example.COM, ,bob@example.com,alice@example.com, ").unwrap();
+        assert_eq!(admins.0.len(), 2);
+        assert!(admins.contains("alice@example.com"));
+        assert!(admins.contains(" BOB@EXAMPLE.COM "));
+        for email in [
+            "alice",
+            "alice@other.com",
+            "xalice@example.com",
+            "example.com",
+            "*",
+        ] {
+            assert!(!admins.contains(email), "unexpected match: {email}");
+        }
+    }
+
+    #[test]
+    fn admin_users_empty_list_preserves_every_stored_role() {
+        for raw in ["", "  ", ", ,"] {
+            let admins = AdminUsers::parse(raw).unwrap();
+            for role in [
+                InstanceRole::Member,
+                InstanceRole::Manager,
+                InstanceRole::Owner,
+            ] {
+                assert_eq!(admins.effective_role("alice@example.com", role), role);
+            }
+        }
+    }
+
+    #[test]
+    fn admin_users_override_every_role_without_changing_other_users() {
+        let admins = AdminUsers::parse("alice@example.com").unwrap();
+        for role in [
+            InstanceRole::Member,
+            InstanceRole::Manager,
+            InstanceRole::Owner,
+        ] {
+            assert_eq!(
+                admins.effective_role("alice@example.com", role),
+                InstanceRole::Owner
+            );
+            assert_eq!(admins.effective_role("bob@example.com", role), role);
+            // Removing the override restores even a role changed through the UI.
+            assert_eq!(
+                AdminUsers::default().effective_role("alice@example.com", role),
+                role
+            );
+        }
+    }
+
+    #[test]
+    fn admin_users_rejects_usernames_domains_wildcards_and_malformed_addresses() {
+        for raw in [
+            "alice",
+            "example.com",
+            "*",
+            "@example.com",
+            "alice@",
+            "alice@@example.com",
+            "alice @example.com",
+            "alice@example.com;bob@example.com",
+            "good@example.com,bad",
+        ] {
+            assert!(
+                matches!(AdminUsers::parse(raw), Err(Error::Validation(_))),
+                "accepted {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn admin_users_apply_preserves_identity_credentials_provider_status_and_preferences() {
+        let admins = AdminUsers::parse("alice@example.com").unwrap();
+        for provider in [
+            crate::domain::AuthProvider::Local,
+            crate::domain::AuthProvider::Oidc,
+        ] {
+            for status in [
+                crate::domain::UserStatus::Active,
+                crate::domain::UserStatus::Pending,
+            ] {
+                let user = User {
+                    id: uuid::Uuid::new_v4(),
+                    email: "alice@example.com".into(),
+                    display_name: "Alice".into(),
+                    password_hash: "password-hash".into(),
+                    instance_role: InstanceRole::Member,
+                    notifications_enabled: false,
+                    locale: None,
+                    auth_provider: provider,
+                    status,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                };
+                let mut expected = serde_json::to_value(&user).unwrap();
+                expected["instance_role"] = serde_json::json!("owner");
+                let applied = admins.apply(user);
+                assert_eq!(applied.password_hash, "password-hash");
+                assert_eq!(serde_json::to_value(applied).unwrap(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn admin_users_from_env_reads_defaults_values_and_validation_errors() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_admins = std::env::var_os("ADMIN_USERS");
+        let previous_secret = std::env::var_os("SECRET_KEY");
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var("ADMIN_USERS");
+        }
+        let default = Config::from_env().unwrap();
+        assert!(!default.admin_users.contains("alice@example.com"));
+        unsafe {
+            std::env::set_var("ADMIN_USERS", " ALICE@EXAMPLE.COM,bob@example.com ");
+        }
+        let configured = Config::from_env().unwrap();
+        assert!(configured.admin_users.contains("alice@example.com"));
+        assert!(configured.admin_users.contains("bob@example.com"));
+        unsafe {
+            std::env::set_var("ADMIN_USERS", "alice");
+        }
+        assert!(matches!(Config::from_env(), Err(Error::Validation(_))));
+        for (key, previous) in [
+            ("ADMIN_USERS", previous_admins),
+            ("SECRET_KEY", previous_secret),
+        ] {
+            unsafe {
+                match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
 
     // Tests mutate process-wide env vars, so serialize them.
     static ENV_LOCK: Mutex<()> = Mutex::new(());

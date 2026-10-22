@@ -38,6 +38,37 @@ Every user has one instance-wide role (`Owner | Manager | Member`):
 The first user, created on the `/setup` page on first run, is an `Owner`. Users
 created by self-registration or auto-provisioned via SSO start as `Member`.
 
+### Administrators from environment configuration
+
+Set `ADMIN_USERS` to a comma-separated list of **full email addresses** to give
+those accounts the same effective `Owner` permissions as the setup administrator:
+
+```env
+ADMIN_USERS=alice@example.com,bob@example.com
+```
+
+Matching ignores ASCII letter case and surrounding spaces; empty items and
+duplicates are ignored. Usernames, display names, domains and wildcards are not
+accepted. The default is an empty list. Invalid entries prevent startup.
+
+The grant applies to new and existing accounts, across password sign-in,
+OAuth/OIDC (including GitHub), invite acceptance and passkeys. Normal authentication,
+email verification, allowed-domain, sign-up and account-approval gates still apply.
+Listing an address does not create an account or approve a pending one. Listed
+local accounts may use their password even when SSO is enabled; listed accounts
+may use SSO even when their stored role is `Owner`. Unlisted stored Owners retain
+the password-only SSO protection.
+
+`ADMIN_USERS` overrides permissions without changing the role stored in the
+database. The current-user profile reports the effective role; **Admin → Users**
+shows and edits the stored role. Only an Owner can edit or delete a listed account.
+An Owner can change its stored role while the environment grant remains active.
+After changing the list, restart the service: removing an address immediately
+restores its stored role on subsequent requests, including existing sessions.
+Roles assigned through the UI are preserved. Last-Owner protection continues to
+count stored Owners, ensuring that the setup/recovery account remains available
+independently of this configuration.
+
 ### Team membership and team roles
 
 **Project access is team-only and closed:** a user can see a project **only**
@@ -171,9 +202,8 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
   grants access to that team's projects), either directly or via a team invite.
 - Use `OAUTH_ALLOWED_EMAIL_DOMAINS` to restrict which email domains may
   auto-provision, since auto-creation trusts the provider's email claim.
-- **Only the instance `Owner`** (created on first run via the `/setup` page)
-  keeps password login, so the instance remains accessible if SSO is
-  misconfigured.
+- Stored instance Owners and local accounts listed in `ADMIN_USERS` keep
+  password login, so the instance remains accessible if SSO is misconfigured.
 
 ## Passkeys (WebAuthn)
 

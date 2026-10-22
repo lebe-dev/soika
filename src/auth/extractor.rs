@@ -84,7 +84,7 @@ impl CurrentUser {
             .map_err(|_| AuthRejection("user lookup failed".into()))?
             .ok_or_else(|| AuthRejection("user no longer exists".into()))?;
 
-        Ok(CurrentUser(user))
+        Ok(CurrentUser(state.config.admin_users.apply(user)))
     }
 }
 

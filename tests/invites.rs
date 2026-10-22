@@ -196,6 +196,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
@@ -569,4 +570,52 @@ async fn password_accept_for_new_email_is_forbidden_when_oidc_only() {
             .is_none(),
         "OIDC-only invite accept does not provision a password account"
     );
+}
+
+#[tokio::test]
+async fn admin_users_invites_grant_owner_for_new_existing_and_signed_in_accounts() {
+    for flow in ["new", "existing", "signed-in"] {
+        let mut app = Fixture::spawn().await;
+        let email = "invited-admin@example.com";
+        Arc::make_mut(&mut app.state.config).admin_users =
+            soika::config::AdminUsers::parse(email).unwrap();
+        app.router = router::build(app.state.clone());
+        let team = app.seed_team().await;
+        let token = app
+            .mint_invite(team, Role::Member, Some(email), Duration::days(1))
+            .await;
+        let mut cookie = String::new();
+        if flow != "new" {
+            let user_id = app.create_user(email).await;
+            if flow == "signed-in" {
+                let (_, header) = soika::auth::start_session(
+                    &*app.state.sessions,
+                    &*app.state.clock,
+                    &app.state.config,
+                    user_id,
+                )
+                .await
+                .unwrap();
+                cookie = header.split(';').next().unwrap().to_owned();
+            }
+        }
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/invite/{token}"))
+            .header("content-type", "application/json")
+            .header("cookie", cookie)
+            .body(Body::from(
+                json!({"email":email,"password":PASSWORD,"display_name":"Invited"}).to_string(),
+            ))
+            .unwrap();
+        let response = app.router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{flow}");
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(body["instance_role"], "owner", "{flow}");
+        let user = app.state.users.find_by_email(email).await.unwrap().unwrap();
+        assert_eq!(user.instance_role, InstanceRole::Member);
+        assert_eq!(app.membership_role(team, user.id).await, Some(Role::Member));
+    }
 }

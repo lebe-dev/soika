@@ -37,6 +37,13 @@ struct Fixture {
 }
 
 impl Fixture {
+    /// Simulate a restart with new config while retaining users and sessions.
+    fn set_admin_users(&mut self, emails: &str) {
+        std::sync::Arc::make_mut(&mut self.state.config).admin_users =
+            soika::config::AdminUsers::parse(emails).unwrap();
+        self.router = router::build(self.state.clone());
+    }
+
     async fn spawn() -> Fixture {
         let pool = common::test_db().await;
         let state = build_state(pool, test_config()).unwrap();
@@ -475,6 +482,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
@@ -491,4 +499,235 @@ fn test_config() -> Config {
         },
         timezone: "UTC".to_string(),
     }
+}
+
+#[tokio::test]
+async fn admin_users_registration_returns_owner_but_stores_member() {
+    let mut app = Fixture::spawn().await;
+    app.set_admin_users(" ALICE@EXAMPLE.COM, bob@example.com ");
+    app.state.settings.set_allow_signup(true).await.unwrap();
+    for (email, expected) in [
+        ("alice@example.com", "owner"),
+        ("bob@example.com", "owner"),
+        ("other@example.com", "member"),
+    ] {
+        let (status, user) = app
+            .post_json(
+                "/auth/register",
+                "",
+                &json!({
+                    "email": email, "password": PASSWORD, "display_name": "alice@example.com"
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(user["instance_role"], expected);
+        assert_eq!(
+            app.state
+                .users
+                .find_by_email(email)
+                .await
+                .unwrap()
+                .unwrap()
+                .instance_role,
+            InstanceRole::Member
+        );
+    }
+}
+
+#[tokio::test]
+async fn admin_users_grants_owner_operations_and_profile_without_team_membership() {
+    let mut app = Fixture::spawn().await;
+    app.set_admin_users("admin@example.com");
+    app.create_user("admin@example.com", InstanceRole::Member)
+        .await;
+    let other = app
+        .create_user("other@example.com", InstanceRole::Member)
+        .await;
+    let cookie = app.login("admin@example.com").await;
+    let (status, config) = app.get("/auth/config", &cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(config["user"]["instance_role"], "owner");
+    let (status, profile) = app
+        .patch_json("/api/profile", &cookie, &json!({"display_name": "Renamed"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(profile["instance_role"], "owner");
+    let (status, team) = app
+        .post_json("/api/teams", &cookie, &json!({"name": "Private"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = app
+        .get(
+            &format!("/api/teams/{}", team["id"].as_str().unwrap()),
+            &cookie,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, project) = app
+        .post_json(
+            "/api/projects",
+            &cookie,
+            &json!({"name": "Private Project", "team_id": team["id"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let project_path = format!("/api/projects/{}", project["id"].as_str().unwrap());
+    assert_eq!(app.get(&project_path, &cookie).await.0, StatusCode::OK);
+    app.set_admin_users("");
+    assert_eq!(
+        app.get(&project_path, &cookie).await.0,
+        StatusCode::FORBIDDEN
+    );
+    app.set_admin_users("admin@example.com");
+    let (status, _) = app
+        .patch_json(
+            &format!("/api/admin/users/{other}"),
+            &cookie,
+            &json!({"instance_role": "owner"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "environment admin can grant Owner");
+    let (status, _) = app
+        .patch_json(
+            &format!("/api/admin/users/{other}"),
+            &cookie,
+            &json!({"instance_role": "member"}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "keep the last stored Owner for recovery"
+    );
+}
+
+#[tokio::test]
+async fn admin_users_changes_affect_existing_sessions_and_preserve_ui_roles() {
+    let mut app = Fixture::spawn().await;
+    for stored in [
+        InstanceRole::Member,
+        InstanceRole::Manager,
+        InstanceRole::Owner,
+    ] {
+        let email = format!("{}@example.com", stored.as_str());
+        app.create_user(&email, stored).await;
+        let cookie = app.login(&email).await;
+        app.set_admin_users(&email);
+        let (_, config) = app.get("/auth/config", &cookie).await;
+        assert_eq!(config["user"]["instance_role"], "owner");
+        assert_eq!(app.get("/api/settings", &cookie).await.0, StatusCode::OK);
+        app.set_admin_users("");
+        let (_, config) = app.get("/auth/config", &cookie).await;
+        assert_eq!(config["user"]["instance_role"], stored.as_str());
+        assert_eq!(
+            app.get("/api/settings", &cookie).await.0,
+            if stored == InstanceRole::Member {
+                StatusCode::FORBIDDEN
+            } else {
+                StatusCode::OK
+            }
+        );
+        assert_eq!(
+            app.state
+                .users
+                .find_by_email(&email)
+                .await
+                .unwrap()
+                .unwrap()
+                .instance_role,
+            stored
+        );
+    }
+}
+
+#[tokio::test]
+async fn admin_users_keeps_role_assigned_in_ui_during_override() {
+    let mut app = Fixture::spawn().await;
+    let id = app
+        .create_user("admin@example.com", InstanceRole::Member)
+        .await;
+    app.set_admin_users("admin@example.com");
+    let cookie = app.login("admin@example.com").await;
+    let (status, row) = app
+        .patch_json(
+            &format!("/api/admin/users/{id}"),
+            &cookie,
+            &json!({"instance_role": "manager"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        row["instance_role"], "manager",
+        "admin UI edits the stored role"
+    );
+    assert_eq!(
+        app.get("/auth/config", &cookie).await.1["user"]["instance_role"],
+        "owner"
+    );
+    app.set_admin_users("");
+    assert_eq!(
+        app.get("/auth/config", &cookie).await.1["user"]["instance_role"],
+        "manager"
+    );
+}
+
+#[tokio::test]
+async fn admin_users_manager_cannot_delete_or_edit_environment_owner() {
+    let mut app = Fixture::spawn().await;
+    let target = app
+        .create_user("admin@example.com", InstanceRole::Member)
+        .await;
+    app.create_user("manager@example.com", InstanceRole::Manager)
+        .await;
+    app.set_admin_users("admin@example.com");
+    let cookie = app.login("manager@example.com").await;
+    assert_eq!(
+        app.delete(&format!("/api/admin/users/{target}"), &cookie)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.patch_json(
+            &format!("/api/admin/users/{target}"),
+            &cookie,
+            &json!({"instance_role": "manager"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn admin_users_does_not_bypass_credentials_or_signup_gate() {
+    let mut app = Fixture::spawn().await;
+    app.create_user("admin@example.com", InstanceRole::Member)
+        .await;
+    app.set_admin_users("admin@example.com");
+    assert_eq!(
+        app.post_json(
+            "/auth/login",
+            "",
+            &json!({"email":"admin@example.com", "password":"wrong-password"})
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        app.post_json(
+            "/auth/register",
+            "",
+            &json!({"email":"new@example.com", "password":PASSWORD, "display_name":"New"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.get("/api/settings", "").await.0,
+        StatusCode::UNAUTHORIZED
+    );
 }
