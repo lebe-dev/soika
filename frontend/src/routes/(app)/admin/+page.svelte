@@ -274,7 +274,7 @@
         </Card.Content>
       </Card.Root>
 
-      <Card.Root>
+      <Card.Root class={!smtp.enabled ? 'opacity-50 grayscale' : undefined}>
         <Card.Header>
           <Card.Title>SMTP</Card.Title>
           <Card.Description>
@@ -283,11 +283,13 @@
         </Card.Header>
         <Card.Content class="space-y-3">
           <div class="flex items-center gap-2">
-            {#if smtp.configured}
+            {#if smtp.enabled && smtp.configured}
               <Badge variant="secondary">
                 <Mail class="size-3" />
                 {$t('configured')}
               </Badge>
+            {:else if !smtp.enabled}
+              <Badge variant="outline">{$t('disabled')}</Badge>
             {:else}
               <Badge variant="outline">
                 <MailX class="size-3" />
@@ -295,7 +297,7 @@
               </Badge>
             {/if}
           </div>
-          {#if smtp.configured}
+          {#if smtp.enabled && smtp.configured}
             <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
               <dt class="text-muted-foreground">{$t('host')}</dt>
               <dd class="font-mono">{smtp.host ?? '—'}</dd>
@@ -323,12 +325,16 @@
                 </Button>
               </div>
             </div>
-          {:else}
+          {:else if smtp.enabled}
             <p class="text-muted-foreground text-sm">
               {$t('set')} <code class="font-mono">SMTP_HOST</code>
               {$t(
                 'and_related_variables_to_enable_email_notifications_and_invite_delivery_invite_l'
               )}
+            </p>
+          {:else}
+            <p class="text-muted-foreground text-sm">
+              {$t('email_delivery_disabled_by_smtp_enabled')}
             </p>
           {/if}
         </Card.Content>

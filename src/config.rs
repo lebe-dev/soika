@@ -381,6 +381,8 @@ pub struct Config {
     pub retention_cron: String,
     /// Whether outgoing email is enabled (`SMTP_ENABLED`, default `false`).
     pub smtp_enabled: bool,
+    /// Whether outgoing webhooks are enabled (`WEBHOOKS_ENABLED`, default `false`).
+    pub webhooks_enabled: bool,
     /// Optional SMTP settings (`SMTP_*`).
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
@@ -413,6 +415,7 @@ impl std::fmt::Debug for Config {
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
             .field("smtp_enabled", &self.smtp_enabled)
+            .field("webhooks_enabled", &self.webhooks_enabled)
             .field("smtp", &self.smtp)
             .field("oidc", &self.oidc)
             .field("passkey", &self.passkey)
@@ -455,6 +458,7 @@ impl Config {
         let retention_cron = env_or("RETENTION_CRON", "0 */15 * * * *");
 
         let smtp_enabled = parse_bool(&env_or("SMTP_ENABLED", "false"));
+        let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
@@ -475,6 +479,7 @@ impl Config {
             default_retention_days,
             retention_cron,
             smtp_enabled,
+            webhooks_enabled,
             smtp,
             oidc,
             passkey,
@@ -1449,12 +1454,14 @@ mod tests {
     }
 
     const SMTP_KEYS: &[&str] = &[
+        "SMTP_ENABLED",
         "SMTP_HOST",
         "SMTP_PORT",
         "SMTP_USERNAME",
         "SMTP_PASSWORD",
         "SMTP_FROM",
         "SMTP_TLS",
+        "WEBHOOKS_ENABLED",
     ];
 
     fn clear_smtp_env() {

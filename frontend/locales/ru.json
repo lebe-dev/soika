@@ -94,6 +94,8 @@
   "when_off_accounts_are_created_only_via_invite": "Если отключено, аккаунты создаются только по приглашению.",
   "enabled": "Включено",
   "disabled": "Отключено",
+  "email_delivery_disabled_by_smtp_enabled": "Отправка почты отключена: SMTP_ENABLED=false.",
+  "webhooks_disabled_by_webhooks_enabled": "Отправка вебхуков отключена: WEBHOOKS_ENABLED=false.",
   "email_delivery_is_configured_via_environment_variables_and_shown_here_read_only": "Отправка почты настраивается через переменные окружения. Здесь настройки доступны только для просмотра.",
   "configured": "Настроено",
   "not_configured": "Не настроено",

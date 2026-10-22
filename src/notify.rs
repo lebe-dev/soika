@@ -188,10 +188,14 @@ async fn dispatch(
         }
     }
 
-    // Webhook channel: fires independently of SMTP, so deployments
-    // with no mailer configured still get notified. Failures are swallowed.
-    if let Some(url) = project.webhook_url.as_deref() {
+    // Webhook delivery is independent of SMTP and controlled by its own
+    // instance-wide switch. Failures are swallowed.
+    if state.config.webhooks_enabled
+        && let Some(url) = project.webhook_url.as_deref()
+    {
         send_webhook(state, project, issue, trigger, url).await;
+    } else if !state.config.webhooks_enabled {
+        tracing::debug!(issue_id = %issue.id, "webhooks disabled; skipping webhook notification");
     }
 
     // If email isn't even configured, skip the member lookup entirely.
@@ -577,6 +581,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".into(),
             // No SMTP: the mailer is disabled, proving the webhook fires
             // independently of SMTP configuration.
+            webhooks_enabled: true,
             smtp_enabled: false,
             smtp: None,
             oidc: None,
@@ -591,9 +596,15 @@ mod tests {
     /// database. The DB is only queried once the mailer is enabled, so a muted /
     /// webhook-only dispatch never touches it.
     async fn test_state(base_url: String) -> AppState {
+        test_state_with_webhooks(base_url, true).await
+    }
+
+    async fn test_state_with_webhooks(base_url: String, webhooks_enabled: bool) -> AppState {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::MIGRATOR.run(&pool).await.unwrap();
-        let state = crate::build_state(pool, test_config(base_url)).unwrap();
+        let mut config = test_config(base_url);
+        config.webhooks_enabled = webhooks_enabled;
+        let state = crate::build_state(pool, config).unwrap();
         assert!(
             !state.mailer.is_enabled(),
             "test state must use the disabled mailer to prove SMTP-independent webhook delivery"
@@ -639,6 +650,22 @@ mod tests {
                 "{url}/projects/{}/issues/{}",
                 project.short_id, issue.short_id
             )
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_skips_webhook_when_globally_disabled() {
+        let (url, captured) = spawn_test_server(200).await;
+        let state = test_state_with_webhooks(url.clone(), false).await;
+        let project = project_at(&url, false);
+        let issue = issue(IssueStatus::Unresolved);
+
+        notify_new_issue(&state, &project, &issue).await.unwrap();
+        tokio::task::yield_now().await;
+
+        assert!(
+            captured.body.lock().unwrap().is_none(),
+            "globally disabled webhooks must not receive a POST"
         );
     }
 

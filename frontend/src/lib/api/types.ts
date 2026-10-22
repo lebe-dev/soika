@@ -123,6 +123,7 @@ export interface ClientConfig {
   release: string;
   /** IANA timezone name for displaying timestamps (e.g. `Europe/Moscow`). */
   timezone: string;
+  webhooks_enabled: boolean;
 }
 
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */
@@ -430,6 +431,7 @@ export interface SetTeamMemberRoleRequest {
 // --- Service settings & admin (src/api/settings.rs) ---
 
 export interface SmtpStatus {
+  enabled: boolean;
   configured: boolean;
   host: string | null;
   port: number | null;

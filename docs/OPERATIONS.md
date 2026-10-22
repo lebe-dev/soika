@@ -126,6 +126,19 @@ invite makes the user a member of that team. Issuing or revoking a team's
 invites is allowed for an instance `Owner`/`Manager` or a team `Admin` of that
 team.
 
+## Email and webhook notifications
+
+Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
+`SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,
+invite delivery and the admin test-email action. The Admin → SMTP card shows
+whether delivery is enabled and configured.
+
+Project webhooks are also disabled by default. Set `WEBHOOKS_ENABLED=true` to
+send project issue and regression notifications to configured webhook URLs.
+When disabled, the webhook URL field in project settings is visually disabled
+and the service does not send webhook requests. These switches are read at
+startup; restart the service after changing them.
+
 ## SSO via OIDC
 
 soika can delegate sign-in to an external OpenID Connect (OIDC) provider such as

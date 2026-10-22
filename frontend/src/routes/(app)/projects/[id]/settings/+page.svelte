@@ -34,6 +34,7 @@
   // (instance Owner/Manager, or a Team Admin of the owning team). Resolved in
   // the layout load; the API enforces the real check on every write.
   const isAdmin = $derived(data.effectiveRole === 'admin');
+  const webhooksEnabled = $derived(data.telemetry?.webhooks_enabled ?? false);
 
   // --- General: name + retention -----------------------------------------
   // Editable fields are seeded once from the project and re-seeded by
@@ -289,20 +290,31 @@
         {/if}
       </div>
 
-      <form onsubmit={saveWebhook} class="space-y-2">
+      <form
+        onsubmit={saveWebhook}
+        class={cn('space-y-2', !webhooksEnabled && 'opacity-50 grayscale')}
+      >
+        {#if !webhooksEnabled}
+          <Badge variant="outline">{$t('disabled')}</Badge>
+          <p class="text-muted-foreground text-xs">{$t('webhooks_disabled_by_webhooks_enabled')}</p>
+        {/if}
         <label for="webhook-url" class="text-sm font-medium">{$t('webhook_url')}</label>
         <Input
           id="webhook-url"
           type="url"
           placeholder="https://..."
           bind:value={webhookUrl}
-          disabled={!isAdmin}
+          disabled={!isAdmin || !webhooksEnabled}
         />
         <p class="text-muted-foreground text-xs">
           {$t('post_new_issue_and_regression_notifications_as_json_to_this_url_leave_empty_to_d')}
         </p>
         {#if isAdmin}
-          <Button type="submit" variant="outline" disabled={savingWebhook || !webhookDirty}>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={!webhooksEnabled || savingWebhook || !webhookDirty}
+          >
             {savingWebhook ? $t('saving') : $t('save_webhook')}
           </Button>
         {/if}

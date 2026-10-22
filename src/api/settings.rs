@@ -30,8 +30,9 @@ pub struct SettingsView {
 /// Read-only SMTP status derived from runtime config. Secrets are never echoed.
 #[derive(Debug, Serialize)]
 pub struct SmtpStatus {
-    /// Whether SMTP is configured (`SMTP_HOST` set). When false, email features
-    /// degrade to UI-only.
+    /// Whether outgoing email delivery is enabled (`SMTP_ENABLED`).
+    pub enabled: bool,
+    /// Whether SMTP is configured (`SMTP_HOST` set), independently of `enabled`.
     pub configured: bool,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -77,12 +78,14 @@ impl From<User> for AdminUserRow {
 fn smtp_status(state: &AppState) -> SmtpStatus {
     match &state.config.smtp {
         Some(smtp) => SmtpStatus {
+            enabled: state.config.smtp_enabled,
             configured: true,
             host: Some(smtp.host.clone()),
             port: Some(smtp.port),
             from: smtp.from.clone(),
         },
         None => SmtpStatus {
+            enabled: state.config.smtp_enabled,
             configured: false,
             host: None,
             port: None,
@@ -343,6 +346,7 @@ mod tests {
     #[test]
     fn smtp_status_unconfigured_serializes_nulls() {
         let status = SmtpStatus {
+            enabled: false,
             configured: false,
             host: None,
             port: None,
@@ -360,6 +364,7 @@ mod tests {
             org_name: "Acme".into(),
             updated_at: chrono::Utc::now(),
             smtp: SmtpStatus {
+                enabled: true,
                 configured: true,
                 host: Some("smtp.example.com".into()),
                 port: Some(587),

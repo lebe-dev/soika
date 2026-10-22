@@ -94,6 +94,8 @@
   "when_off_accounts_are_created_only_via_invite": "When off, accounts are created only via invite.",
   "enabled": "Enabled",
   "disabled": "Disabled",
+  "email_delivery_disabled_by_smtp_enabled": "Email delivery is disabled by SMTP_ENABLED=false.",
+  "webhooks_disabled_by_webhooks_enabled": "Webhook delivery is disabled by WEBHOOKS_ENABLED=false.",
   "email_delivery_is_configured_via_environment_variables_and_shown_here_read_only": "Email delivery is configured via environment variables and shown here read-only.",
   "configured": "Configured",
   "not_configured": "Not configured",

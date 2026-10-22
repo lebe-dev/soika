@@ -29,6 +29,8 @@ pub struct ClientConfigView {
     /// IANA timezone name the SPA uses to display timestamps (`TIMEZONE`).
     /// The backend stores everything in UTC; this is purely a display hint.
     pub timezone: String,
+    /// Whether outgoing webhooks are enabled (`WEBHOOKS_ENABLED`).
+    pub webhooks_enabled: bool,
 }
 
 impl ClientConfigView {
@@ -48,6 +50,7 @@ impl ClientConfigView {
             sentry_environment,
             release: concat!("soika@", env!("CARGO_PKG_VERSION")).to_string(),
             timezone: state.config.timezone.clone(),
+            webhooks_enabled: state.config.webhooks_enabled,
         }
     }
 }

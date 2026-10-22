@@ -369,6 +369,7 @@ mod tests {
             default_events_retention: 1000,
             default_retention_days: 0,
             retention_cron: "0 */15 * * * *".to_string(),
+            webhooks_enabled: false,
             smtp_enabled: false,
             smtp: None,
             oidc: None,
