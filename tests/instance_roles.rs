@@ -536,6 +536,51 @@ async fn admin_users_registration_returns_owner_but_stores_member() {
 }
 
 #[tokio::test]
+async fn admin_users_registration_and_password_login_ignore_email_case() {
+    let mut app = Fixture::spawn().await;
+    app.set_admin_users("alice@example.com");
+    app.state.settings.set_allow_signup(true).await.unwrap();
+    let (status, user) = app
+        .post_json(
+            "/auth/register",
+            "",
+            &json!({
+                "email": "AlIcE@ExAmPlE.CoM", "password": PASSWORD, "display_name": "Alice"
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(user["instance_role"], "owner");
+    assert_eq!(user["email"], "alice@example.com");
+
+    let (status, user) = app
+        .post_json(
+            "/auth/login",
+            "",
+            &json!({"email": "ALICE@EXAMPLE.COM", "password": PASSWORD}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(user["instance_role"], "owner");
+    let cookie = app.login("aLiCe@eXaMpLe.cOm").await;
+    assert_eq!(app.get("/api/settings", &cookie).await.0, StatusCode::OK);
+    assert_eq!(
+        app.get("/auth/config", &cookie).await.1["user"]["instance_role"],
+        "owner"
+    );
+    assert_eq!(
+        app.state
+            .users
+            .find_by_email("alice@example.com")
+            .await
+            .unwrap()
+            .unwrap()
+            .instance_role,
+        InstanceRole::Member
+    );
+}
+
+#[tokio::test]
 async fn admin_users_grants_owner_operations_and_profile_without_team_membership() {
     let mut app = Fixture::spawn().await;
     app.set_admin_users("admin@example.com");

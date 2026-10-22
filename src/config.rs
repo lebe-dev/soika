@@ -851,6 +851,28 @@ mod tests {
     }
 
     #[test]
+    fn admin_users_case_insensitive_for_both_local_part_and_domain() {
+        let variants = [
+            "alice@example.com",
+            "ALICE@example.com",
+            "alice@EXAMPLE.COM",
+            "ALICE@EXAMPLE.COM",
+            "AlIcE@ExAmPlE.CoM",
+        ];
+        for configured in variants {
+            let admins = AdminUsers::parse(configured).unwrap();
+            for email in variants {
+                assert!(admins.contains(email), "{configured} must match {email}");
+                assert_eq!(
+                    admins.effective_role(email, InstanceRole::Member),
+                    InstanceRole::Owner,
+                    "{configured} must grant Owner to {email}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn admin_users_empty_list_preserves_every_stored_role() {
         for raw in ["", "  ", ", ,"] {
             let admins = AdminUsers::parse(raw).unwrap();

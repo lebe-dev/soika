@@ -1080,6 +1080,38 @@ async fn admin_users_sso_grants_owner_on_first_and_repeat_login_without_persisti
 }
 
 #[tokio::test]
+async fn admin_users_sso_matches_mixed_case_email_with_lowercase_configuration() {
+    let email = "SsO-AdMiN@ExAmPlE.CoM";
+    let (_, state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(email))))).await;
+    let (router, state) = with_admin_users(state, "sso-admin@example.com");
+    let (status, location, cookies) = run_callback(&router, email).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location.as_deref(), Some("/"));
+    let cookie = cookies
+        .iter()
+        .find(|c| c.starts_with("soika_session="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let (status, config) = get_json_with_cookie(&router, "/auth/config", cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(config["user"]["instance_role"], "owner");
+    assert_eq!(
+        get_json_with_cookie(&router, "/api/settings", cookie)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let user = state.users.find_by_email(email).await.unwrap().unwrap();
+    assert_eq!(
+        user.email, email,
+        "the grant must not rewrite the stored identity"
+    );
+    assert_eq!(user.instance_role, InstanceRole::Member);
+}
+
+#[tokio::test]
 async fn admin_users_sso_accepts_existing_accounts_with_any_stored_role() {
     for role in [
         InstanceRole::Member,
