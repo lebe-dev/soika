@@ -55,11 +55,11 @@ export const load: LayoutLoad = async ({ fetch, url, untrack }) => {
   if (config) {
     const onSetup = pathname === '/setup';
     // First run: no admin yet → force the operator through setup.
-    if (!config.initialized && !onSetup) {
+    if (config.admin_enabled && !config.initialized && !onSetup) {
       redirect(307, '/setup');
     }
     // Already initialized: setup is closed → send stray visitors to login.
-    if (config.initialized && onSetup) {
+    if ((!config.admin_enabled || config.initialized) && onSetup) {
       redirect(307, '/login');
     }
   }

@@ -37,6 +37,10 @@ Every user has one instance-wide role (`Owner | Manager | Member`):
 
 The first user, created on the `/setup` page on first run, is an `Owner`. Users
 created by self-registration or auto-provisioned via SSO start as `Member`.
+Set `ADMIN_ENABLED=false` to hide and disable first-run setup; then use
+`ADMIN_USERS` to grant Owner permissions to an existing account. If OAuth is
+also disabled, the service logs a startup warning so the operator can verify
+that an admin account can authenticate.
 
 ### Administrators from environment configuration
 

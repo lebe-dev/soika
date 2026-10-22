@@ -372,6 +372,8 @@ pub struct Config {
     pub allow_signup: bool,
     /// Temporary Owner grants by full email (`ADMIN_USERS`), independent of DB roles.
     pub admin_users: AdminUsers,
+    /// Whether first-run admin setup is available (`ADMIN_ENABLED`, default `true`).
+    pub admin_enabled: bool,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
     /// Default age-based retention in days when a project's own value is 0
@@ -411,6 +413,7 @@ impl std::fmt::Debug for Config {
             .field("secret_key", &"***")
             .field("allow_signup", &self.allow_signup)
             .field("admin_users", &self.admin_users)
+            .field("admin_enabled", &self.admin_enabled)
             .field("default_events_retention", &self.default_events_retention)
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
@@ -475,6 +478,7 @@ impl Config {
             secret_key,
             allow_signup,
             admin_users: AdminUsers::parse(&env_or("ADMIN_USERS", ""))?,
+            admin_enabled: parse_bool(&env_or("ADMIN_ENABLED", "true")),
             default_events_retention,
             default_retention_days,
             retention_cron,

@@ -62,6 +62,8 @@ pub struct CallbackQuery {
 #[derive(Debug, Serialize)]
 pub struct AuthConfig {
     pub oauth_enabled: bool,
+    /// Whether first-run admin setup is available (`ADMIN_ENABLED`).
+    pub admin_enabled: bool,
     pub oauth_provider_name: String,
     pub password_login_enabled: bool,
     /// Whether passkey (WebAuthn) sign-in is configured on this instance
@@ -69,8 +71,8 @@ pub struct AuthConfig {
     /// passkey section of the profile page.
     pub passkey_enabled: bool,
     pub allow_signup: bool,
-    /// Whether the instance admin has been provisioned. When `false` the
-    /// SPA routes the operator to `/setup`; when `true`, `/setup` bounces to login.
+    /// Whether a stored Owner exists. Setup routing only applies when
+    /// `admin_enabled` is true.
     pub initialized: bool,
     /// Current user when the request carries a valid session; `null` otherwise.
     pub user: Option<ProfileView>,
@@ -149,6 +151,7 @@ pub async fn auth_config(
 
     Json(AuthConfig {
         oauth_enabled,
+        admin_enabled: state.config.admin_enabled,
         oauth_provider_name,
         password_login_enabled: !oauth_enabled,
         passkey_enabled,

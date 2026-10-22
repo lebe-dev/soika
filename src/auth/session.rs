@@ -204,6 +204,7 @@ mod tests {
             base_url: "http://localhost:8080".into(),
             secret_key: "secret".into(),
             allow_signup: false,
+            admin_enabled: true,
             admin_users: Default::default(),
             default_events_retention: 1000,
             default_retention_days: 0,

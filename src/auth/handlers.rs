@@ -294,6 +294,10 @@ pub async fn setup(
     State(state): State<AppState>,
     Json(body): Json<SetupRequest>,
 ) -> Result<Response, AuthError> {
+    if !state.config.admin_enabled {
+        return Err(AuthError(Error::not_found("setup is disabled")));
+    }
+
     // Gate on current state: refuse once any admin exists. This is the same
     // check the SPA uses via `/auth/config`, re-enforced server-side so the
     // endpoint is safe even if called directly.

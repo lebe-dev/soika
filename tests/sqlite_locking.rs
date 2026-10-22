@@ -299,6 +299,7 @@ fn test_config(database_url: &str, db: DbConfig) -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        admin_enabled: true,
         admin_users: Default::default(),
         // Match the project's retention so the sweep prunes on every pass.
         default_events_retention: 5,

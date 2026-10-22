@@ -44,6 +44,7 @@ vi.mock('$lib/api', () => ({
 function authConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
   return {
     oauth_enabled: false,
+    admin_enabled: true,
     oauth_provider_name: '',
     password_login_enabled: true,
     allow_signup: false,
@@ -198,6 +199,13 @@ describe('+layout load: first-run redirect routing', () => {
     const data = await call(load, '/setup');
 
     expect(data.config?.initialized).toBe(false);
+  });
+
+  it('does not show setup routing when ADMIN_ENABLED is false', async () => {
+    configMock.mockResolvedValue(authConfig({ initialized: false, admin_enabled: false }));
+    const load = await importLoad();
+    const data = await call(load, '/login');
+    expect(data.config?.admin_enabled).toBe(false);
   });
 
   it('redirects 307 -> /login when initialized and on /setup', async () => {

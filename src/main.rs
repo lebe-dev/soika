@@ -28,6 +28,12 @@ async fn main() -> Result<()> {
     init_tracing();
 
     tracing::info!(org = %config.organization_name, bind = %config.bind_addr, "starting soika");
+    if !config.admin_enabled && config.oidc.is_none() {
+        tracing::warn!(
+            "ADMIN_ENABLED=false while OAuth is not configured: first-run setup is disabled; \
+             ensure an ADMIN_USERS account can authenticate"
+        );
+    }
 
     let backend = DbBackend::from_url(&config.database_url).context("reading DATABASE_URL")?;
     tracing::info!(backend = backend.name(), "using database backend");

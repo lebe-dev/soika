@@ -73,6 +73,7 @@ export interface User {
  */
 export interface AuthConfig {
   oauth_enabled: boolean;
+  admin_enabled: boolean;
   oauth_provider_name: string;
   password_login_enabled: boolean;
   /**

@@ -31,6 +31,7 @@ fn test_config(passkey: Option<PasskeyConfig>) -> Config {
         base_url: "http://localhost".into(),
         secret_key: SECRET.into(),
         allow_signup: false,
+        admin_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,

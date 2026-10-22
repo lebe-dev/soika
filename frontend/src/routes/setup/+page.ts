@@ -7,5 +7,5 @@ import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ parent }) => {
   const { config } = await parent();
-  if (config?.initialized) redirect(307, '/login');
+  if (!config?.admin_enabled || config.initialized) redirect(307, '/login');
 };
