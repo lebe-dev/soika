@@ -24,6 +24,8 @@ envs:
   # Removing an email restores its stored role after the Helm-triggered rollout.
   - name: ADMIN_USERS
     value: ""
+  - name: SMTP_ENABLED
+    value: "false"
 
 # Set SECRET_KEY before installing. An empty key causes Soika to reject startup.
 # Alternatively, set create: false and existingSecret to a Secret containing

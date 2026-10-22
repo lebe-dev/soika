@@ -379,6 +379,8 @@ pub struct Config {
     pub default_retention_days: i64,
     /// Cron schedule for the retention cleanup job (`RETENTION_CRON`).
     pub retention_cron: String,
+    /// Whether outgoing email is enabled (`SMTP_ENABLED`, default `false`).
+    pub smtp_enabled: bool,
     /// Optional SMTP settings (`SMTP_*`).
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
@@ -410,6 +412,7 @@ impl std::fmt::Debug for Config {
             .field("default_events_retention", &self.default_events_retention)
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
+            .field("smtp_enabled", &self.smtp_enabled)
             .field("smtp", &self.smtp)
             .field("oidc", &self.oidc)
             .field("passkey", &self.passkey)
@@ -451,6 +454,7 @@ impl Config {
 
         let retention_cron = env_or("RETENTION_CRON", "0 */15 * * * *");
 
+        let smtp_enabled = parse_bool(&env_or("SMTP_ENABLED", "false"));
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
@@ -470,6 +474,7 @@ impl Config {
             default_events_retention,
             default_retention_days,
             retention_cron,
+            smtp_enabled,
             smtp,
             oidc,
             passkey,

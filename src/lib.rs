@@ -46,9 +46,9 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
     use ingest::{DEFAULT_LIMIT, DEFAULT_WINDOW, RateLimiter};
     use ports::Mailer;
 
-    let mailer: Arc<dyn Mailer> = match config.smtp.clone() {
-        Some(smtp) => Arc::new(SmtpMailer::new(smtp)),
-        None => Arc::new(NoopMailer),
+    let mailer: Arc<dyn Mailer> = match (config.smtp_enabled, config.smtp.clone()) {
+        (true, Some(smtp)) => Arc::new(SmtpMailer::new(smtp)),
+        _ => Arc::new(NoopMailer),
     };
 
     let templates = Arc::new(mail::Templates::load(&mail::templates_dir())?);
