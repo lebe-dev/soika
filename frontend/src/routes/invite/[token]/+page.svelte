@@ -3,6 +3,7 @@
   import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { invites, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -23,6 +24,11 @@
   let displayName = $state('');
   let password = $state('');
   let submitting = $state(false);
+
+  const needsSignIn = $derived(
+    !authStore.isAuthenticated && $page.data.config?.password_login_enabled === false
+  );
+  const signInHref = $derived(`/login?next=${encodeURIComponent(`/invite/${data.token}`)}`);
 
   const requiresRegistration = $derived(data.preview?.requires_registration ?? false);
 
@@ -69,40 +75,48 @@
         </Card.Description>
         <p class="text-muted-foreground text-xs">{teamRoleDescription(data.preview.role)}</p>
       </Card.Header>
-      <form onsubmit={accept} class="contents">
-        <Card.Content class="space-y-4">
-          <div class="space-y-2">
-            <label for="email" class="text-sm font-medium">{$t('email')}</label>
-            <Input id="email" type="email" bind:value={email} required />
-          </div>
-          {#if requiresRegistration}
-            <div class="space-y-2">
-              <label for="name" class="text-sm font-medium">{$t('display_name')}</label>
-              <Input
-                id="name"
-                bind:value={displayName}
-                required
-                minlength={MIN_DISPLAY_NAME_LENGTH}
-              />
-            </div>
-          {/if}
-          <div class="space-y-2">
-            <label for="password" class="text-sm font-medium">{$t('password')}</label>
-            <Input
-              id="password"
-              type="password"
-              autocomplete={requiresRegistration ? 'new-password' : 'current-password'}
-              bind:value={password}
-              required
-            />
-          </div>
-        </Card.Content>
+      {#if needsSignIn}
         <Card.Footer>
-          <Button type="submit" class="w-full" disabled={submitting}>
-            {submitting ? $t('joining') : $t('accept_invite')}
-          </Button>
+          <Button href={signInHref} class="w-full">{$t('go_to_sign_in')}</Button>
         </Card.Footer>
-      </form>
+      {:else}
+        <form onsubmit={accept} class="contents">
+          {#if !authStore.isAuthenticated}
+            <Card.Content class="space-y-4">
+              <div class="space-y-2">
+                <label for="email" class="text-sm font-medium">{$t('email')}</label>
+                <Input id="email" type="email" bind:value={email} required />
+              </div>
+              {#if requiresRegistration}
+                <div class="space-y-2">
+                  <label for="name" class="text-sm font-medium">{$t('display_name')}</label>
+                  <Input
+                    id="name"
+                    bind:value={displayName}
+                    required
+                    minlength={MIN_DISPLAY_NAME_LENGTH}
+                  />
+                </div>
+              {/if}
+              <div class="space-y-2">
+                <label for="password" class="text-sm font-medium">{$t('password')}</label>
+                <Input
+                  id="password"
+                  type="password"
+                  autocomplete={requiresRegistration ? 'new-password' : 'current-password'}
+                  bind:value={password}
+                  required
+                />
+              </div>
+            </Card.Content>
+          {/if}
+          <Card.Footer>
+            <Button type="submit" class="w-full" disabled={submitting}>
+              {submitting ? $t('joining') : $t('accept_invite')}
+            </Button>
+          </Card.Footer>
+        </form>
+      {/if}
     {/if}
   </Card.Root>
 </div>

@@ -57,9 +57,8 @@
 
   const canSubmit = $derived(email.trim() !== '' && password !== '');
 
-  // Password login stays a first-class option on the form even when SSO is on:
-  // the built-in admin (and any account allowed to use a password) signs in here,
-  // while SSO is offered as an additional button rather than replacing the form.
+  // SSO and passkeys remain available when email/password sign-in is disabled.
+  const showPassword = $derived(config?.password_login_enabled ?? true);
   const showSso = $derived(config?.oauth_enabled ?? false);
 
   // Passkeys are offered alongside the password form whenever the instance has
@@ -148,49 +147,55 @@
     </Card.Header>
 
     <form onsubmit={submit} class="contents">
-      <Card.Content class="space-y-4">
-        <div class="space-y-2">
-          <label for="email" class="text-sm font-medium">{$t('email')}</label>
-          <Input
-            id="email"
-            type="email"
-            autocomplete="email"
-            bind:value={email}
-            bind:ref={emailInput}
-            required
-          />
-        </div>
-        <div class="space-y-2">
-          <label for="password" class="text-sm font-medium">{$t('password')}</label>
-          <Input
-            id="password"
-            type="password"
-            autocomplete="current-password"
-            bind:value={password}
-            bind:ref={passwordInput}
-            required
-          />
-        </div>
-      </Card.Content>
+      {#if showPassword}
+        <Card.Content class="space-y-4">
+          <div class="space-y-2">
+            <label for="email" class="text-sm font-medium">{$t('email')}</label>
+            <Input
+              id="email"
+              type="email"
+              autocomplete="email"
+              bind:value={email}
+              bind:ref={emailInput}
+              required
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="password" class="text-sm font-medium">{$t('password')}</label>
+            <Input
+              id="password"
+              type="password"
+              autocomplete="current-password"
+              bind:value={password}
+              bind:ref={passwordInput}
+              required
+            />
+          </div>
+        </Card.Content>
+      {/if}
       <Card.Footer class="flex-col items-stretch gap-3">
-        <Button type="submit" disabled={submitting || !canSubmit}>
-          {submitting ? $t('signing_in') : $t('sign_in')}
-        </Button>
-        {#if config?.allow_signup ?? true}
-          <p class="text-muted-foreground text-center text-sm">
-            {$t('no_account')}
-            <a href="/register" class="text-foreground underline-offset-4 hover:underline">
-              {$t('register')}
-            </a>
-          </p>
+        {#if showPassword}
+          <Button type="submit" disabled={submitting || !canSubmit}>
+            {submitting ? $t('signing_in') : $t('sign_in')}
+          </Button>
+          {#if config?.allow_signup ?? true}
+            <p class="text-muted-foreground text-center text-sm">
+              {$t('no_account')}
+              <a href="/register" class="text-foreground underline-offset-4 hover:underline">
+                {$t('register')}
+              </a>
+            </p>
+          {/if}
         {/if}
 
         {#if showPasskey}
-          <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
-            <span class="bg-border h-px flex-1"></span>
-            {$t('or')}
-            <span class="bg-border h-px flex-1"></span>
-          </div>
+          {#if showPassword}
+            <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
+              <span class="bg-border h-px flex-1"></span>
+              {$t('or')}
+              <span class="bg-border h-px flex-1"></span>
+            </div>
+          {/if}
           <Button
             type="button"
             variant="outline"
@@ -203,13 +208,13 @@
         {/if}
 
         {#if showSso}
-          <!-- SSO is offered as an additional option, not a replacement for the
-               password form (the built-in admin always needs the password path). -->
-          <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
-            <span class="bg-border h-px flex-1"></span>
-            {$t('or')}
-            <span class="bg-border h-px flex-1"></span>
-          </div>
+          {#if showPassword || showPasskey}
+            <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
+              <span class="bg-border h-px flex-1"></span>
+              {$t('or')}
+              <span class="bg-border h-px flex-1"></span>
+            </div>
+          {/if}
           <Button variant="outline" href={ssoHref} class="w-full" data-sveltekit-reload>
             {$t('sign_in_with')}
             {config?.oauth_provider_name || 'SSO'}

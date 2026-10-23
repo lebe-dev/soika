@@ -32,6 +32,7 @@ fn test_config(passkey: Option<PasskeyConfig>) -> Config {
         secret_key: SECRET.into(),
         allow_signup: false,
         admin_enabled: true,
+        email_login_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
@@ -533,4 +534,20 @@ async fn deleting_a_user_removes_their_passkeys() {
         .await
         .expect("lookup");
     assert!(found.is_none(), "passkeys must not outlive their account");
+}
+
+#[tokio::test]
+async fn email_login_disabled_keeps_passkey_challenges_available() {
+    let (_, mut state) = build_app(true).await;
+    std::sync::Arc::make_mut(&mut state.config).email_login_enabled = false;
+    let app = router::build(state);
+    let (status, cookies, body) =
+        send(&app, "POST", "/auth/passkey/login/options", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["publicKey"]["challenge"].is_string());
+    assert!(
+        cookies
+            .iter()
+            .any(|cookie| cookie.starts_with("soika_passkey_auth="))
+    );
 }

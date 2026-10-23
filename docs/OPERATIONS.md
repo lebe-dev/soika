@@ -167,8 +167,8 @@ startup; restart the service after changing them.
 
 soika can delegate sign-in to an external OpenID Connect (OIDC) provider such as
 GitLab, Keycloak, Authentik, Google, or Okta. SSO is **disabled by default**
-(`OAUTH_ENABLED=false`); while disabled, the built-in password login behaves
-exactly as before.
+(`OAUTH_ENABLED=false`). Email/password login is enabled by default
+(`EMAIL_LOGIN_ENABLED=true`).
 
 ### 1. Register an OAuth application at your provider
 
@@ -231,8 +231,8 @@ production.
 
 When SSO is enabled, OAuth replaces the password login for all regular users:
 
-- The login screen shows a **"Sign in with {OAUTH_PROVIDER_NAME}"** button and
-  hides the email/password form and self-registration.
+- The login screen shows a **"Sign in with {OAUTH_PROVIDER_NAME}"** button
+  alongside the email/password form for Owners. Self-registration is disabled.
 - A user is matched by the verified email from the provider; if no account
   exists, a new user is auto-provisioned with the `Member` instance role and no
   team membership — access is granted later by adding the user to a team (which
@@ -240,7 +240,22 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
 - Use `OAUTH_ALLOWED_EMAIL_DOMAINS` to restrict which email domains may
   auto-provision, since auto-creation trusts the provider's email claim.
 - Stored instance Owners and local accounts listed in `ADMIN_USERS` keep
-  password login, so the instance remains accessible if SSO is misconfigured.
+  password login while `EMAIL_LOGIN_ENABLED=true`, so the instance remains
+  accessible if SSO is misconfigured.
+
+### Disable email/password sign-in
+
+Set `EMAIL_LOGIN_ENABLED=false` and restart soika to hide the email/password form
+and reject `POST /auth/login` with `403` for every account, including Owners and
+accounts listed in `ADMIN_USERS`. The public `/auth/config` response exposes this
+setting as `password_login_enabled`. SSO and passkeys remain available.
+
+This also disables public password registration and anonymous password-based
+invite acceptance, preventing alternative password sign-in paths. Invitees must
+sign in via SSO or a passkey first, then accept the invite. Existing sessions and
+first-run administrator setup are unaffected. Configure SSO or passkeys before
+disabling email login; if no other sign-in method is available, restore
+`EMAIL_LOGIN_ENABLED=true` and restart. The default is `true`.
 
 ## Passkeys (WebAuthn)
 

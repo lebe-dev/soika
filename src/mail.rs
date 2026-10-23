@@ -366,6 +366,7 @@ mod tests {
             secret_key: "secret".to_string(),
             allow_signup: false,
             admin_enabled: true,
+            email_login_enabled: true,
             admin_users: Default::default(),
             default_events_retention: 1000,
             default_retention_days: 0,

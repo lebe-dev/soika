@@ -65,6 +65,7 @@ pub struct AuthConfig {
     /// Whether first-run admin setup is available (`ADMIN_ENABLED`).
     pub admin_enabled: bool,
     pub oauth_provider_name: String,
+    /// Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`).
     pub password_login_enabled: bool,
     /// Whether passkey (WebAuthn) sign-in is configured on this instance
     /// (`PASSKEY_ENABLED`). Drives the "Sign in with a passkey" button and the
@@ -95,8 +96,8 @@ pub struct AuthConfig {
 
 /// `GET /auth/config` — bootstrap config for the SPA (public + session slice).
 ///
-/// `password_login_enabled = !oauth_enabled`: when SSO is on the password form
-/// is hidden (the built-in admin still reaches it via a direct link).
+/// `password_login_enabled` reflects `EMAIL_LOGIN_ENABLED` independently of SSO.
+/// With SSO enabled, the password endpoint still restricts access to Owners.
 ///
 /// Optionally authenticated ([`OptionalAuthUser`]): an anonymous caller still
 /// gets the public config (with `user`/`telemetry` `null`), while a signed-in
@@ -153,9 +154,9 @@ pub async fn auth_config(
         oauth_enabled,
         admin_enabled: state.config.admin_enabled,
         oauth_provider_name,
-        password_login_enabled: !oauth_enabled,
+        password_login_enabled: state.config.email_login_enabled,
         passkey_enabled,
-        allow_signup,
+        allow_signup: allow_signup && state.config.email_login_enabled && !oauth_enabled,
         initialized,
         user,
         telemetry,

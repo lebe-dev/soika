@@ -151,6 +151,7 @@ fn test_config(lockout: LockoutConfig) -> Config {
         secret_key: "test-secret-key".into(),
         allow_signup: false,
         admin_enabled: true,
+        email_login_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,

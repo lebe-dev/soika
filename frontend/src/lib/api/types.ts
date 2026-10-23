@@ -75,6 +75,7 @@ export interface AuthConfig {
   oauth_enabled: boolean;
   admin_enabled: boolean;
   oauth_provider_name: string;
+  /** Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`). */
   password_login_enabled: boolean;
   /**
    * Whether passkey (WebAuthn) sign-in is configured on this instance

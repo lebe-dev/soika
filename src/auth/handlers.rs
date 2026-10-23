@@ -208,6 +208,7 @@ pub async fn login(
     PeerAddr(peer): PeerAddr,
     Json(body): Json<LoginRequest>,
 ) -> Result<Response, AuthError> {
+    require_email_login(&state)?;
     let email = normalize_email(&body.email)?;
 
     let ip = client_ip(&headers, peer);
@@ -368,6 +369,8 @@ pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<Response, AuthError> {
+    require_email_login(&state)?;
+
     // Coexistence with SSO: when OAuth is enabled, self-registration
     // is disabled regardless of `allow_signup` — new accounts are provisioned via
     // SSO sign-in. Admin is bootstrapped at startup, not via this endpoint.
@@ -506,6 +509,16 @@ pub async fn accept_invite(
 // Shared logic
 // ---------------------------------------------------------------------------
 
+/// Gate every anonymous password flow, including registration and invites.
+fn require_email_login(state: &AppState) -> Result<(), Error> {
+    if !state.config.email_login_enabled {
+        return Err(Error::Forbidden(
+            "email/password sign-in is disabled".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Create a user with validated inputs and a hashed password. Maps a duplicate
 /// email to `Error::Conflict`.
 async fn create_user(
@@ -558,6 +571,8 @@ async fn resolve_or_register_invitee(
     invite: &Invite,
     req: &AcceptInviteRequest,
 ) -> Result<(User, String), Error> {
+    require_email_login(state)?;
+
     let email = req
         .email
         .as_deref()

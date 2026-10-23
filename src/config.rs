@@ -374,6 +374,8 @@ pub struct Config {
     pub admin_users: AdminUsers,
     /// Whether first-run admin setup is available (`ADMIN_ENABLED`, default `true`).
     pub admin_enabled: bool,
+    /// Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`, default `true`).
+    pub email_login_enabled: bool,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
     /// Default age-based retention in days when a project's own value is 0
@@ -414,6 +416,7 @@ impl std::fmt::Debug for Config {
             .field("allow_signup", &self.allow_signup)
             .field("admin_users", &self.admin_users)
             .field("admin_enabled", &self.admin_enabled)
+            .field("email_login_enabled", &self.email_login_enabled)
             .field("default_events_retention", &self.default_events_retention)
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
@@ -479,6 +482,7 @@ impl Config {
             allow_signup,
             admin_users: AdminUsers::parse(&env_or("ADMIN_USERS", ""))?,
             admin_enabled: parse_bool(&env_or("ADMIN_ENABLED", "true")),
+            email_login_enabled: parse_bool(&env_or("EMAIL_LOGIN_ENABLED", "true")),
             default_events_retention,
             default_retention_days,
             retention_cron,
@@ -997,6 +1001,33 @@ mod tests {
         assert!(matches!(Config::from_env(), Err(Error::Validation(_))));
         for (key, previous) in [
             ("ADMIN_USERS", previous_admins),
+            ("SECRET_KEY", previous_secret),
+        ] {
+            unsafe {
+                match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn email_login_from_env_defaults_to_enabled_and_can_be_disabled() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_login = std::env::var_os("EMAIL_LOGIN_ENABLED");
+        let previous_secret = std::env::var_os("SECRET_KEY");
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var("EMAIL_LOGIN_ENABLED");
+        }
+        assert!(Config::from_env().unwrap().email_login_enabled);
+        for (value, enabled) in [("false", false), ("true", true), ("0", false)] {
+            unsafe { std::env::set_var("EMAIL_LOGIN_ENABLED", value) };
+            assert_eq!(Config::from_env().unwrap().email_login_enabled, enabled);
+        }
+        for (key, previous) in [
+            ("EMAIL_LOGIN_ENABLED", previous_login),
             ("SECRET_KEY", previous_secret),
         ] {
             unsafe {

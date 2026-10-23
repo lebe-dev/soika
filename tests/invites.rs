@@ -197,6 +197,7 @@ fn test_config() -> Config {
         secret_key: "test-secret-key".into(),
         allow_signup: false,
         admin_enabled: true,
+        email_login_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
@@ -668,4 +669,78 @@ async fn default_teams_on_invite_apply_only_to_new_accounts_and_preserve_invited
             }
         );
     }
+}
+
+#[tokio::test]
+async fn email_login_disabled_blocks_anonymous_invite_authentication() {
+    let mut fixture = Fixture::spawn().await;
+    let team_id = fixture.seed_team().await;
+    fixture.create_user("existing@example.com").await;
+    Arc::make_mut(&mut fixture.state.config).email_login_enabled = false;
+    fixture.router = router::build(fixture.state.clone());
+    for email in ["existing@example.com", "new@example.com"] {
+        let token = fixture
+            .mint_invite(team_id, Role::Member, Some(email), Duration::days(1))
+            .await;
+        let (status, _) = fixture
+            .accept(
+                &token,
+                Some(json!({
+                    "email": email, "password": PASSWORD, "display_name": "Invitee"
+                })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(
+            fixture
+                .state
+                .invites
+                .find_by_token(&token)
+                .await
+                .unwrap()
+                .unwrap()
+                .accepted_at
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn email_login_disabled_allows_signed_in_invite_acceptance() {
+    let mut fixture = Fixture::spawn().await;
+    let team = fixture.seed_team().await;
+    let email = "signed-in@example.com";
+    let user_id = fixture.create_user(email).await;
+    Arc::make_mut(&mut fixture.state.config).email_login_enabled = false;
+    fixture.router = router::build(fixture.state.clone());
+    let token = fixture
+        .mint_invite(team, Role::Member, Some(email), Duration::days(1))
+        .await;
+    let (_, cookie) = soika::auth::start_session(
+        &*fixture.state.sessions,
+        &*fixture.state.clock,
+        &fixture.state.config,
+        user_id,
+    )
+    .await
+    .unwrap();
+    let response = fixture
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/invite/{token}"))
+                .header("cookie", cookie.split(';').next().unwrap())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!response.headers().contains_key("set-cookie"));
+    assert_eq!(
+        fixture.membership_role(team, user_id).await,
+        Some(Role::Member)
+    );
 }

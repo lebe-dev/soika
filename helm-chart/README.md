@@ -71,6 +71,13 @@ sign-in. The default is empty; matching ignores ASCII letter case and surroundin
 spaces. Authentication and account-approval checks still apply. The stored role
 shown in **Admin → Users** stays independent of this grant.
 
+`EMAIL_LOGIN_ENABLED` defaults to `"true"` in `envs`. Set it to `"false"` to
+hide the email/password form and reject password sign-in for all accounts,
+including Owners and `ADMIN_USERS`. Public registration and anonymous
+password-based invite acceptance are disabled too. Configure SSO or passkeys
+before disabling it; existing sessions and first-run setup remain available.
+See [email login configuration](../docs/OPERATIONS.md#disable-emailpassword-sign-in).
+
 Changing `envs` changes the ConfigMap checksum and automatically rolls out the
 Deployment on `helm upgrade`. Removing an address restores its stored role,
 including existing sessions, after the rollout. Helm replaces the entire `envs`

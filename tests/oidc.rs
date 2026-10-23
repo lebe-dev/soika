@@ -107,6 +107,7 @@ fn test_config() -> Config {
         secret_key: SECRET.into(),
         allow_signup: false,
         admin_enabled: true,
+        email_login_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,
         default_retention_days: 0,
@@ -339,7 +340,7 @@ async fn auth_config_reflects_enabled_mode() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["oauth_enabled"], true);
     assert_eq!(json["oauth_provider_name"], "GitLab");
-    assert_eq!(json["password_login_enabled"], false);
+    assert_eq!(json["password_login_enabled"], true);
 }
 
 #[tokio::test]
@@ -517,6 +518,70 @@ async fn callback_when_disabled_is_not_found() {
     let (status, _l, _c) = get(&router, "/auth/oidc/callback?code=x&state=y", None).await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn email_login_disabled_blocks_passwords_in_every_sso_mode() {
+    for oauth_enabled in [false, true] {
+        let pool = common::test_db().await;
+        let mut config = test_config();
+        config.email_login_enabled = false;
+        config.allow_signup = true;
+        let state = build_state(pool, config)
+            .unwrap()
+            .with_oidc(oauth_enabled.then(enabled_provider));
+        seed_user(&state, "owner@example.com", "supersecret", true).await;
+        seed_user(&state, "member@example.com", "supersecret", false).await;
+        let app = router::build(state);
+        let (_, config) = get_json(&app, "/auth/config").await;
+        assert_eq!(config["password_login_enabled"], false);
+        assert_eq!(config["allow_signup"], false);
+        for email in [
+            "owner@example.com",
+            "member@example.com",
+            "unknown@example.com",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/auth/login")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::json!({"email": email, "password": "supersecret"})
+                                .to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            assert!(!response.headers().contains_key("set-cookie"));
+        }
+        let (status, _) = post_json(
+            &app,
+            "/auth/register",
+            serde_json::json!({
+                "email": "new@example.com", "password": "supersecret", "display_name": "New User"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        if oauth_enabled {
+            let (status, location, _) = get(&app, "/auth/oidc/login", None).await;
+            assert_eq!(status, StatusCode::FOUND);
+            assert!(location.unwrap().starts_with("https://idp.example.com/"));
+            let (status, location, cookies) = run_callback(&app, "sso@example.com").await;
+            assert_eq!(status, StatusCode::FOUND);
+            assert_eq!(location.as_deref(), Some("/"));
+            assert!(
+                cookies
+                    .iter()
+                    .any(|cookie| cookie.starts_with("soika_session="))
+            );
+        }
+    }
 }
 
 // --- Coexistence gating (Story S5) ------------------------------
