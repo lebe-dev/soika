@@ -129,6 +129,47 @@ stop-env:
 docker-push:
     docker push {{ IMAGE }}:{{ TAG }}
 
+# List tagged images in a Harbor repository, newest push first.
+# Set HARBOR_URL and, for a private registry, HARBOR_USERNAME/HARBOR_PASSWORD.
+# Example: just harbor-images my-project my-repository
+harbor-images project repository:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${HARBOR_URL:?Set HARBOR_URL to the Harbor base URL}"
+    if [[ -n "${HARBOR_USERNAME:-}" || -n "${HARBOR_PASSWORD:-}" ]]; then
+        : "${HARBOR_USERNAME:?Set both HARBOR_USERNAME and HARBOR_PASSWORD}"
+        : "${HARBOR_PASSWORD:?Set both HARBOR_USERNAME and HARBOR_PASSWORD}"
+    fi
+    encoded_project=$(jq -rn --arg value '{{ project }}' '$value | @uri')
+    encoded_repository=$(jq -rn --arg value '{{ repository }}' '$value | @uri')
+    endpoint="${HARBOR_URL%/}/api/v2.0/projects/$encoded_project/repositories/$encoded_repository/artifacts"
+    curl_args=(-fsS)
+    if [[ -n "${HARBOR_USERNAME:-}" ]]; then
+        curl_args+=(--user "$HARBOR_USERNAME:$HARBOR_PASSWORD")
+    fi
+    page=1
+    page_size=100
+    printf 'IMAGE\tPUSHED\tDIGEST\n'
+    while true; do
+        response=$(curl "${curl_args[@]}" -G "$endpoint" \
+            --data-urlencode 'sort=-push_time' \
+            --data-urlencode "page=$page" \
+            --data-urlencode "page_size=$page_size")
+        count=$(jq 'length' <<< "$response")
+        jq -r --arg image "{{ project }}/{{ repository }}" '
+            .[] as $artifact
+            | ($artifact.tags // []) as $tags
+            | if ($tags | length) == 0 then
+                "\($image)@\($artifact.digest)\t\($artifact.push_time // \"\")\t\($artifact.digest)"
+              else
+                $tags[]
+                | "\($image):\(.name)\t\(.push_time // $artifact.push_time // \"\")\t\($artifact.digest)"
+              end
+        ' <<< "$response"
+        (( count < page_size )) && break
+        ((page += 1))
+    done
+
 # Scan the most recently updated Docker Hub tag and save the report.
 trivy:
     mkdir -p docs
