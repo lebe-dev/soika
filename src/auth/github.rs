@@ -155,13 +155,10 @@ impl OidcProvider for GithubProvider {
         let access_token = match token.access_token {
             Some(t) if !t.is_empty() => t,
             _ => {
-                let detail = token
-                    .error_description
-                    .or(token.error)
-                    .unwrap_or_else(|| "no access_token returned".into());
-                return Err(Error::Auth(format!(
-                    "GitHub token exchange failed: {detail}"
-                )));
+                // Provider descriptions may echo the code or client secret.
+                return Err(Error::Auth(
+                    "GitHub token exchange failed: provider rejected request".into(),
+                ));
             }
         };
 
@@ -214,8 +211,6 @@ impl OidcProvider for GithubProvider {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: Option<String>,
-    error: Option<String>,
-    error_description: Option<String>,
 }
 
 /// Subset of `GET /user` we consume.

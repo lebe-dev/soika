@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use axum::Router;
+use axum::extract::MatchedPath;
 use axum::http::{Method, Request, Response};
 use axum::routing::{delete, get, patch, post};
 use tower_http::compression::CompressionLayer;
@@ -177,24 +178,34 @@ pub fn build(state: AppState) -> Router {
         .fallback(web::spa_fallback)
         .layer(CompressionLayer::new())
         // Per-request span for correlation: every log emitted while handling a
-        // request inherits `request_id` (a generated UUID), `method`, and `path`.
-        // The default `TraceLayer` emits nothing at the `info` filter, so we add
-        // an explicit `on_response` event carrying status + latency.
+        // request inherits `request_id` (a generated UUID), `method`, and the
+        // matched route template.
+        // Never log raw paths: invites and SPA URLs can contain credentials.
+        // Unmatched/SPA paths use a constant label; queries and headers are omitted.
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &Request<_>| {
                     tracing::info_span!(
                         "http",
                         method = %req.method(),
-                        path = %req.uri().path(),
+                        route = req.extensions().get::<MatchedPath>()
+                            .map(MatchedPath::as_str).unwrap_or("<fallback>"),
+                        user_id = tracing::field::Empty,
+                        project_id = tracing::field::Empty,
                         request_id = %Uuid::new_v4(),
                     )
                 })
+                .on_request(|_req: &Request<_>, _span: &tracing::Span| {
+                    tracing::info!("request received");
+                })
+                // Causes are logged by the handling boundary; avoid a second
+                // generic ERROR for the same 5xx response.
+                .on_failure(())
                 .on_response(
                     |res: &Response<_>, latency: Duration, _span: &tracing::Span| {
                         tracing::info!(
-                            status = %res.status(),
-                            latency_ms = latency.as_millis(),
+                            status = res.status().as_u16(),
+                            duration_ms = latency.as_millis(),
                             "request completed"
                         );
                     },

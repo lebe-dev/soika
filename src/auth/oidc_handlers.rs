@@ -119,7 +119,10 @@ pub async fn auth_config(
         .get()
         .await
         .map(|s| s.allow_signup)
-        .unwrap_or(state.config.allow_signup);
+        .unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "bootstrap settings unavailable; using configured signup policy");
+            state.config.allow_signup
+        });
 
     // First-run detection: the instance is "initialized" once an Owner
     // exists. On a DB error default to `true` so we never expose `/setup` (and a
@@ -130,7 +133,10 @@ pub async fn auth_config(
         .count_owners()
         .await
         .map(|count| count > 0)
-        .unwrap_or(true);
+        .unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "bootstrap owner count unavailable; assuming initialized");
+            true
+        });
 
     // Telemetry is gated on the session so the DSN stays off anonymous responses.
     let telemetry = current_user
@@ -142,8 +148,18 @@ pub async fn auth_config(
     // with the resilient defaults above (`initialized`, `allow_signup`).
     let (projects, teams) = match current_user.as_ref() {
         Some(user) => (
-            crate::api::projects::overviews(&state, user).await.ok(),
-            crate::api::teams::summaries(&state, user).await.ok(),
+            crate::api::projects::overviews(&state, user)
+                .await
+                .map_err(|err| {
+                    tracing::warn!(error = %err, "bootstrap project overview unavailable");
+                })
+                .ok(),
+            crate::api::teams::summaries(&state, user)
+                .await
+                .map_err(|err| {
+                    tracing::warn!(error = %err.0, "bootstrap team summaries unavailable");
+                })
+                .ok(),
         ),
         None => (None, None),
     };

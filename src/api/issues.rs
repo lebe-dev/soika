@@ -422,7 +422,10 @@ pub async fn mute(
     };
 
     match state.issues.mute(issue.id, spec, state.clock.now()).await {
-        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
+        Ok(issue) => {
+            tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
+            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+        }
         Err(err) => error_response(err),
     }
 }
@@ -476,7 +479,10 @@ pub async fn update_fingerprint(
     {
         // The surviving issue stays in the same project, so its short id is the
         // one we already loaded.
-        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
+        Ok(issue) => {
+            tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
+            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+        }
         Err(err) => error_response(err),
     }
 }
@@ -494,7 +500,10 @@ async fn set_status(
     };
 
     match state.issues.set_status(issue.id, status).await {
-        Ok(issue) => Json(IssueView::from_issue(issue, project.short_id)).into_response(),
+        Ok(issue) => {
+            tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
+            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+        }
         Err(err) => error_response(err),
     }
 }

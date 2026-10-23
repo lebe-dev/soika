@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use croner::Cron;
 use croner::parser::{CronParser, Seconds};
+use tracing::Instrument;
 
 use crate::domain::Timestamp;
 use crate::error::{Error, Result};
@@ -62,15 +63,27 @@ async fn run_loop(state: &AppState) -> Result<()> {
             continue;
         }
 
-        if let Err(err) = run_retention(state).await {
-            // A failed sweep must not kill the scheduler; log and continue.
-            tracing::warn!(error = %err, "scheduler: retention sweep failed");
-        }
-
-        if let Err(err) = run_mute_expiry(state).await {
+        async {
+            let started = std::time::Instant::now();
+            tracing::info!("scheduler sweep started");
+            let retention = run_retention(state).await;
+            if let Err(err) = &retention {
+                tracing::warn!(error = %err, "scheduler: retention sweep failed");
+            }
             // Independent of retention: a failure here must not stop the loop.
-            tracing::warn!(error = %err, "scheduler: mute-expiry sweep failed");
+            let mute_expiry = run_mute_expiry(state).await;
+            if let Err(err) = &mute_expiry {
+                tracing::warn!(error = %err, "scheduler: mute-expiry sweep failed");
+            }
+            tracing::info!(
+                duration_ms = started.elapsed().as_millis(),
+                retention_ok = retention.is_ok(),
+                mute_expiry_ok = mute_expiry.is_ok(),
+                "scheduler sweep completed"
+            );
         }
+        .instrument(tracing::info_span!("scheduler", job_id = %uuid::Uuid::new_v4()))
+        .await;
 
         // Schedule the following occurrence relative to the one we just fired, so
         // a slow sweep can't cause us to skip an interval back-to-back.

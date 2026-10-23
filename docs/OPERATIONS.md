@@ -17,6 +17,34 @@ high throughput.
 - Ships as a **single binary** with the frontend embedded, plus a minimal
   Alpine container image — no Redis, no broker, no separate worker.
 
+## Application logs
+
+Logs use `tracing` and are written to stdout. `RUST_LOG` defaults to `info`;
+set `RUST_LOG=info,soika=debug` temporarily for application diagnostics.
+Avoid enabling dependency-wide DEBUG/TRACE in production: dependency logs may
+include SQL bind values or external request details outside the application's
+redaction rules.
+
+At INFO, lifecycle events include the application version and readiness;
+each HTTP request emits `request received` and `request completed` with a
+server-generated `request_id`, HTTP `method`, route template (`route`), numeric
+`status`, and `duration_ms`. Authenticated request logs also carry `user_id`
+after authentication; project authorization adds `project_id`. Search by
+`request_id` to follow an individual request. URLs, query strings, headers,
+bodies, invite tokens, and recipient email addresses are omitted. SPA and
+unmatched paths use `<fallback>` instead of the raw URL.
+
+Sign-ins, access changes, issue/project updates and notification delivery
+outcomes are logged with entity IDs. Scheduler sweeps have a separate `job_id`
+and report their duration and the outcome of retention and mute expiry even
+when no rows change. Per-project pruning and retry attempts are DEBUG details.
+Transient database contention and handled delivery failures use WARN; terminal
+server faults use ERROR, at the boundary handling the failure. When self-reporting
+is enabled, ERROR events also go to Sentry. OAuth errors retain failure categories
+instead of provider descriptions or token/claim values; webhook failures omit
+the destination URL, and SMTP failures retain status and transport categories
+instead of relay response text.
+
 ## Roles & access
 
 soika has two independent role axes plus a derived per-project access level.

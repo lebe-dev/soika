@@ -24,9 +24,9 @@ use openidconnect::core::{
 };
 use openidconnect::url::Url;
 use openidconnect::{
-    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
-    EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
-    TokenResponse,
+    AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret, CsrfToken, DiscoveryError,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, RequestTokenError, Scope, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -48,6 +48,50 @@ type DiscoveredClient = CoreClient<
     EndpointMaybeSet, // token endpoint
     EndpointMaybeSet, // userinfo endpoint
 >;
+
+// Provider descriptions, response bodies, URLs and claim values can contain
+// tokens or PII. Retain the failure category rather than their Display/Debug.
+fn safe_token_error<RE, T>(error: RequestTokenError<RE, T>) -> Error
+where
+    RE: std::error::Error + 'static,
+    T: openidconnect::ErrorResponse + 'static,
+{
+    let reason = match error {
+        RequestTokenError::ServerResponse(_) => "provider rejected request",
+        RequestTokenError::Request(_) => "transport failure",
+        RequestTokenError::Parse(_, _) => "invalid response",
+        RequestTokenError::Other(_) => "unexpected response",
+    };
+    Error::Auth(format!("OIDC token exchange failed: {reason}"))
+}
+
+fn safe_discovery_error<RE: std::error::Error + 'static>(error: DiscoveryError<RE>) -> Error {
+    let reason = match error {
+        DiscoveryError::Request(_) => "transport failure".to_string(),
+        DiscoveryError::Response(status, _, _) => format!("HTTP status {status}"),
+        DiscoveryError::Parse(_) => "invalid response".to_string(),
+        DiscoveryError::UrlParse(_) => "invalid URL".to_string(),
+        DiscoveryError::Validation(_) => "invalid metadata".to_string(),
+        _ => "unexpected response".to_string(),
+    };
+    Error::internal(format!("OIDC discovery failed: {reason}"))
+}
+
+fn safe_claims_error(error: ClaimsVerificationError) -> Error {
+    let reason = match error {
+        ClaimsVerificationError::Expired(_) => "expired",
+        ClaimsVerificationError::InvalidAudience(_) => "invalid audience",
+        ClaimsVerificationError::InvalidAuthContext(_) => "invalid auth context",
+        ClaimsVerificationError::InvalidAuthTime(_) => "invalid auth time",
+        ClaimsVerificationError::InvalidIssuer(_) => "invalid issuer",
+        ClaimsVerificationError::InvalidNonce(_) => "invalid nonce",
+        ClaimsVerificationError::InvalidSubject(_) => "invalid subject",
+        ClaimsVerificationError::SignatureVerification(_) => "invalid signature",
+        ClaimsVerificationError::Unsupported(_) => "unsupported value",
+        _ => "invalid claims",
+    };
+    Error::Auth(format!("ID token verification failed: {reason}"))
+}
 
 /// Lifetime of the transient OIDC state cookie: the browser only
 /// needs it for the brief redirect round-trip to the provider.
@@ -132,7 +176,7 @@ impl OidcClient {
         let http_client = build_http_client()?;
         let metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
             .await
-            .map_err(|e| Error::internal(format!("OIDC discovery failed: {e}")))?;
+            .map_err(safe_discovery_error)?;
 
         let client = CoreClient::from_provider_metadata(
             metadata,
@@ -188,7 +232,7 @@ impl OidcProvider for OidcClient {
             .set_pkce_verifier(pkce_verifier)
             .request_async(&http_client)
             .await
-            .map_err(|e| Error::Auth(format!("OIDC token exchange failed: {e}")))?;
+            .map_err(safe_token_error)?;
 
         let id_token = token_response
             .id_token()
@@ -197,7 +241,7 @@ impl OidcProvider for OidcClient {
         // Validates signature (JWKS), `aud`, `iss`, `exp` and `nonce`.
         let claims = id_token
             .claims(&self.client.id_token_verifier(), &nonce)
-            .map_err(|e| Error::Auth(format!("ID token verification failed: {e}")))?;
+            .map_err(safe_claims_error)?;
 
         normalize_claims(claims)
     }
@@ -646,5 +690,44 @@ mod tests {
     fn clearing_state_cookie_expires_immediately() {
         let cookie = build_clearing_state_cookie(false);
         assert!(cookie.contains("Max-Age=0"));
+    }
+}
+
+#[cfg(test)]
+mod logging_tests {
+    use super::*;
+
+    #[test]
+    fn provider_errors_do_not_expose_secrets_or_claims() {
+        type CoreErrorResponse =
+            openidconnect::StandardErrorResponse<openidconnect::core::CoreErrorResponseType>;
+        let error: RequestTokenError<std::io::Error, CoreErrorResponse> =
+            RequestTokenError::Other("access_token=secret-token".into());
+        assert_eq!(
+            safe_token_error(error).to_string(),
+            "authentication error: OIDC token exchange failed: unexpected response"
+        );
+        let discovery: DiscoveryError<std::io::Error> = DiscoveryError::Response(
+            reqwest::StatusCode::BAD_GATEWAY,
+            b"secret-token".to_vec(),
+            "secret-url".into(),
+        );
+        assert!(
+            !safe_discovery_error(discovery)
+                .to_string()
+                .contains("secret-")
+        );
+        let error = ClaimsVerificationError::InvalidNonce("secret-nonce".into());
+        assert_eq!(
+            safe_claims_error(error).to_string(),
+            "authentication error: ID token verification failed: invalid nonce"
+        );
+        let response: CoreErrorResponse = serde_json::from_value(serde_json::json!({
+            "error": "invalid_grant", "error_description": "secret-client-password"
+        }))
+        .unwrap();
+        let error: RequestTokenError<std::io::Error, CoreErrorResponse> =
+            RequestTokenError::ServerResponse(response);
+        assert!(!safe_token_error(error).to_string().contains("secret-"));
     }
 }

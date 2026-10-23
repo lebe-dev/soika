@@ -217,9 +217,16 @@ pub async fn create(
             html_body: None,
         };
         // Swallow send errors: the copyable link still works.
-        email_sent = state.mailer.send(message).await.is_ok();
+        email_sent = match state.mailer.send(message).await {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!(error = %err, %team_id, "invite email delivery failed; link remains available");
+                false
+            }
+        };
     }
 
+    tracing::info!(%team_id, ?role, email_sent, "invite created");
     let view = InviteView::from_invite(invite, &state.config.base_url, email_sent);
     (StatusCode::CREATED, Json(view)).into_response()
 }
@@ -248,7 +255,10 @@ pub async fn revoke(
     }
 
     match state.invites.delete(&token).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            tracing::info!(%team_id, "invite revoked");
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(err) => error_response(err),
     }
 }

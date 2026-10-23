@@ -30,12 +30,6 @@ where
             Ok(value) => return Ok(value),
             Err(err) if err.is_busy() => {
                 if attempt >= policy.max_retries {
-                    tracing::warn!(
-                        operation = what,
-                        attempts = attempt + 1,
-                        error = %err,
-                        "database stayed locked; giving up on the write"
-                    );
                     return Err(Error::db_busy(what, err));
                 }
                 let delay = policy.backoff(attempt);

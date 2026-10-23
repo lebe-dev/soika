@@ -242,11 +242,16 @@ pub async fn send_via_smtp(smtp: &SmtpConfig, email: OutboundEmail) -> Result<()
     let message = build_message(from, email)?;
 
     let transport = build_transport(smtp)?;
+    // Relay response text may echo credentials or recipient addresses. Keep
+    // only the SMTP status/classification, and let the caller log once.
     transport.send(message).await.map_err(|e| {
-        // Surface transport failures (connect/TLS/auth-rejected/timeout) here.
-        // NEVER log credentials or the message body — `e` is the transport error.
-        tracing::warn!(error = %e, "smtp send failed");
-        Error::Mail(format!("sending message: {e}"))
+        Error::Mail(format!(
+            "SMTP delivery failed (status={:?}, timeout={}, tls={}, transient={})",
+            e.status(),
+            e.is_timeout(),
+            e.is_tls(),
+            e.is_transient()
+        ))
     })?;
     Ok(())
 }
@@ -261,7 +266,7 @@ fn build_message(from: Mailbox, email: OutboundEmail) -> Result<Message> {
     let to: Mailbox = email
         .to
         .parse()
-        .map_err(|e| Error::Mail(format!("invalid recipient address {:?}: {e}", email.to)))?;
+        .map_err(|e| Error::Mail(format!("invalid recipient address: {e}")))?;
 
     let builder = Message::builder().from(from).to(to).subject(email.subject);
     let built = match email.html_body {
@@ -272,13 +277,7 @@ fn build_message(from: Mailbox, email: OutboundEmail) -> Result<Message> {
         ),
         None => builder.header(ContentType::TEXT_PLAIN).body(email.body),
     };
-    built.map_err(|e| {
-        // Log the failure at the adapter so a misconfigured relay is visible
-        // even though the caller log-and-continues. NEVER log credentials or
-        // the message body — `e` carries only the lettre build error.
-        tracing::warn!(error = %e, "smtp send failed");
-        Error::Mail(format!("building message: {e}"))
-    })
+    built.map_err(|e| Error::Mail(format!("building message: {e}")))
 }
 
 /// The SMTP submissions port (465) uses implicit TLS; other ports (587, 25) use
@@ -304,7 +303,7 @@ fn build_transport(smtp: &SmtpConfig) -> Result<AsyncSmtpTransport<Tokio1Executo
     } else {
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)
     }
-    .map_err(|e| Error::Mail(format!("configuring SMTP relay {:?}: {e}", smtp.host)))?;
+    .map_err(|e| Error::Mail(format!("configuring SMTP relay: {e}")))?;
 
     Ok(with_credentials(builder.port(smtp.port), smtp).build())
 }
@@ -329,7 +328,7 @@ fn smtp_from_mailbox(smtp: &SmtpConfig) -> Result<Mailbox> {
         .clone()
         .unwrap_or_else(|| format!("soika@{}", smtp.host));
     raw.parse()
-        .map_err(|e| Error::Mail(format!("invalid SMTP_FROM address {raw:?}: {e}")))
+        .map_err(|e| Error::Mail(format!("invalid SMTP_FROM address: {e}")))
 }
 
 /// Build the public `{BASE_URL}/invite/{token}` link.

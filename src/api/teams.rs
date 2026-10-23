@@ -164,7 +164,10 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<User, Error> {
         .find_by_id(session.user_id)
         .await?
         .ok_or_else(|| Error::Auth("session user no longer exists".into()))
-        .map(|user| state.config.admin_users.apply(user))
+        .map(|user| {
+            tracing::Span::current().record("user_id", tracing::field::display(user.id));
+            state.config.admin_users.apply(user)
+        })
 }
 
 /// Parse a path id segment into a domain [`Id`], mapping a bad UUID to a 400.
@@ -329,6 +332,7 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<TeamView>), ApiError> {
     let name = validate_team_name(&body.name)?;
     let team = state.teams.create(name).await?;
+    tracing::info!(team_id = %team.id, "team created");
     let view = load_team_view(&state, team).await?;
     Ok((StatusCode::CREATED, Json(view)))
 }
@@ -367,6 +371,7 @@ pub async fn update(
     let id = parse_id(&id)?;
     let name = validate_team_name(&body.name)?;
     let team = state.teams.rename(id, name).await?;
+    tracing::info!(team_id = %id, "team updated");
     let view = load_team_view(&state, team).await?;
     Ok(Json(view))
 }
@@ -379,6 +384,7 @@ pub async fn delete(
 ) -> Result<StatusCode, ApiError> {
     let id = parse_id(&id)?;
     state.teams.delete(id).await?;
+    tracing::info!(team_id = %id, "team deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -418,6 +424,7 @@ pub async fn add_member(
     }
     let role = body.role.unwrap_or(TeamRole::Contributor);
     state.teams.add_member(id, body.user_id, role).await?;
+    tracing::info!(team_id = %id, target_user_id = %body.user_id, ?role, "team member added");
     let view = load_team_view(&state, team).await?;
     Ok(Json(view))
 }
@@ -461,6 +468,7 @@ pub async fn set_member_role(
     }
 
     state.teams.set_member_role(id, user_id, body.role).await?;
+    tracing::info!(team_id = %id, target_user_id = %user_id, role = ?body.role, "team member role changed");
     let view = load_team_view(&state, team).await?;
     Ok(Json(view))
 }
@@ -494,6 +502,7 @@ pub async fn remove_member(
     }
 
     state.teams.remove_member(id, user_id).await?;
+    tracing::info!(team_id = %id, target_user_id = %user_id, "team member removed");
     Ok(StatusCode::NO_CONTENT)
 }
 
