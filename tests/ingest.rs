@@ -56,8 +56,8 @@ impl TestApp {
         Self::spawn_with(limit, None).await
     }
 
-    /// Like [`spawn`], but seeds the project with a `webhook_url` so tests can
-    /// observe (or assert the absence of) notification delivery.
+    /// Like [`spawn`], but enables webhooks and seeds the project with a
+    /// `webhook_url` so tests can observe notification delivery or suppression.
     async fn spawn_with_webhook(webhook_url: String) -> TestApp {
         Self::spawn_with(None, Some(webhook_url)).await
     }
@@ -66,7 +66,9 @@ impl TestApp {
     async fn spawn_with(limit: Option<u32>, webhook_url: Option<String>) -> TestApp {
         let pool = common::test_db().await;
 
-        let mut state = build_state(pool, test_config()).unwrap();
+        let mut config = test_config();
+        config.webhooks_enabled = webhook_url.is_some();
+        let mut state = build_state(pool, config).unwrap();
         if let Some(limit) = limit {
             // A short window keeps the test fast while still exercising the real
             // fixed-window counter the handler consults.

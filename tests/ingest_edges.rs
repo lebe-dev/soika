@@ -50,8 +50,8 @@ struct TestApp {
 }
 
 impl TestApp {
-    /// Build a fresh in-memory app with one seeded project that carries a
-    /// `webhook_url` (so notification delivery is observable) and no DB override.
+    /// Build a fresh in-memory app with webhooks enabled, one seeded project
+    /// carrying a `webhook_url`, and no DB override.
     async fn spawn_with_webhook(webhook_url: String) -> TestApp {
         Self::spawn_with(webhook_url, None).await
     }
@@ -74,7 +74,9 @@ impl TestApp {
     ) -> TestApp {
         let pool = common::test_db().await;
 
-        let mut state = build_state(pool, test_config()).unwrap();
+        let mut config = test_config();
+        config.webhooks_enabled = true;
+        let mut state = build_state(pool, config).unwrap();
 
         let team = state
             .teams
