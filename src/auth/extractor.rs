@@ -74,16 +74,23 @@ impl CurrentUser {
             .sessions
             .find(&session_id)
             .await
-            .map_err(|_| AuthRejection("session lookup failed".into()))?
+            .map_err(|err| {
+                tracing::warn!(error = %err, "session lookup failed");
+                AuthRejection("session lookup failed".into())
+            })?
             .ok_or_else(|| AuthRejection("session not found or expired".into()))?;
 
         let user = state
             .users
             .find_by_id(session.user_id)
             .await
-            .map_err(|_| AuthRejection("user lookup failed".into()))?
+            .map_err(|err| {
+                tracing::warn!(error = %err, "session user lookup failed");
+                AuthRejection("user lookup failed".into())
+            })?
             .ok_or_else(|| AuthRejection("user no longer exists".into()))?;
 
+        tracing::Span::current().record("user_id", tracing::field::display(user.id));
         Ok(CurrentUser(state.config.admin_users.apply(user)))
     }
 }

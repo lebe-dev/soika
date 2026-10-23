@@ -213,6 +213,8 @@ async fn dispatch(
         return Ok(());
     }
 
+    let mut delivered = 0u64;
+    let mut failed = 0u64;
     for to in recipients {
         let email = match trigger {
             Trigger::NewIssue => {
@@ -233,9 +235,13 @@ async fn dispatch(
         };
         // A failure to one recipient must not block the others or fail ingestion.
         if let Err(err) = state.mailer.send(email).await {
-            tracing::warn!(error = %err, recipient = %to, issue_id = %issue.id, "notification delivery failed");
+            failed += 1;
+            tracing::warn!(error = %err, issue_id = %issue.id, "notification delivery failed");
+        } else {
+            delivered += 1;
         }
     }
+    tracing::info!(issue_id = %issue.id, project_id = %project.id, delivered, failed, channel = "email", "notification delivery completed");
 
     Ok(())
 }
@@ -265,11 +271,13 @@ async fn send_webhook(
 
     if let Err(err) = result {
         tracing::warn!(
-            error = %err,
+            error = %err.without_url(),
             issue_id = %issue.id,
             project_id = %project.id,
             "webhook delivery failed",
         );
+    } else {
+        tracing::info!(issue_id = %issue.id, project_id = %project.id, channel = "webhook", "notification delivered");
     }
 }
 
@@ -727,10 +735,38 @@ mod tests {
         // the error is logged, mirroring per-recipient email behaviour.
         let (url, captured) = spawn_test_server(500).await;
         let state = test_state(url.clone()).await;
-        let project = project_at(&url, false);
+        let project = project_at(
+            &format!("{url}/secret-webhook-path?token=secret-webhook-token"),
+            false,
+        );
         let issue = issue(IssueStatus::Unresolved);
 
-        let result = notify_new_issue(&state, &project, &issue).await;
+        use tracing::instrument::WithSubscriber;
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let capture = Capture::default();
+        let writer = capture.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+        let result = notify_new_issue(&state, &project, &issue)
+            .with_subscriber(subscriber)
+            .await;
+        let logs = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+        assert!(logs.contains("webhook delivery failed"), "{logs}");
+        assert!(logs.contains("500"), "{logs}");
+        assert!(!logs.contains("secret-webhook"), "{logs}");
         assert!(
             result.is_ok(),
             "a 500 webhook response must not fail ingestion, got {result:?}"

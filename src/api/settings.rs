@@ -201,6 +201,7 @@ pub async fn test_email(
 
     let email = crate::mail::test_email(&state.config, &to);
     state.mailer.send(email).await?;
+    tracing::info!("test email delivered");
     Ok(Json(TestEmailResult { sent_to: to }))
 }
 
@@ -238,6 +239,7 @@ pub async fn approve_user(
             },
         )
         .await?;
+    tracing::info!(target_user_id = %user.id, "user approved");
     Ok(Json(AdminUserRow::from(user)))
 }
 
@@ -286,6 +288,7 @@ pub async fn delete_user(
     }
 
     state.users.delete(user_id).await?;
+    tracing::info!(target_user_id = %user_id, "user deleted");
     Ok(Json(DeletedUser { id: user_id }))
 }
 
@@ -334,6 +337,7 @@ pub async fn set_user_role(
     }
 
     let updated = state.users.set_instance_role(user_id, new_role).await?;
+    tracing::info!(target_user_id = %user_id, instance_role = ?new_role, "instance role changed");
     Ok(Json(AdminUserRow::from(updated)))
 }
 

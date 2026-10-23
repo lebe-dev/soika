@@ -60,6 +60,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             .map_err(error_response)?
             .ok_or_else(auth_rejection)?;
 
+        tracing::Span::current().record("user_id", tracing::field::display(user.id));
         Ok(CurrentUser(state.config.admin_users.apply(user)))
     }
 }
@@ -115,6 +116,11 @@ pub fn error_response(err: Error) -> Response {
             StatusCode::INTERNAL_SERVER_ERROR
         }
     };
+    if err.is_busy() {
+        tracing::warn!(error = %err, "request failed: database is busy");
+    } else if status.is_server_error() {
+        tracing::error!(error = %err, "request failed");
+    }
     json_error(status, err.to_string())
 }
 
@@ -162,6 +168,7 @@ pub async fn effective_role(
     user: &User,
     project_id: Id,
 ) -> std::result::Result<Option<Role>, Response> {
+    tracing::Span::current().record("project_id", tracing::field::display(project_id));
     if user.instance_role.can_manage_instance() {
         return Ok(Some(Role::Admin));
     }
@@ -517,6 +524,7 @@ pub async fn create(
 
     match state.projects.create(new).await {
         Ok(project) => {
+            tracing::info!(project_id = %project.id, team_id = %project.team_id, "project created");
             // No project-level membership under Variant A: the creator already
             // has access (and Admin role) via their team membership / instance role.
             let view = ProjectView::from_project(project, &state.config.base_url);
@@ -639,6 +647,7 @@ pub async fn update(
 
     match state.projects.update(project_id, update).await {
         Ok(project) => {
+            tracing::info!(project_id = %project.id, team_id = %project.team_id, muted = project.muted, "project updated");
             let view = ProjectView::from_project(project, &state.config.base_url);
             Json(view).into_response()
         }
@@ -688,6 +697,7 @@ pub async fn change_team(
 
     match state.projects.update(project_id, update).await {
         Ok(project) => {
+            tracing::info!(project_id = %project.id, team_id = %project.team_id, muted = project.muted, "project updated");
             let view = ProjectView::from_project(project, &state.config.base_url);
             Json(view).into_response()
         }
@@ -711,7 +721,10 @@ pub async fn delete(
     }
 
     match state.projects.delete(project_id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            tracing::info!(%project_id, "project deleted");
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(err) => error_response(err),
     }
 }
@@ -935,6 +948,7 @@ pub async fn mute(
 
     match state.projects.update(project.id, update).await {
         Ok(project) => {
+            tracing::info!(project_id = %project.id, team_id = %project.team_id, muted = project.muted, "project updated");
             let view = ProjectView::from_project(project, &state.config.base_url);
             Json(view).into_response()
         }
@@ -960,6 +974,7 @@ pub async fn regenerate_dsn(
     let new_key = generate_dsn_key();
     match state.projects.regenerate_dsn(project_id, new_key).await {
         Ok(project) => {
+            tracing::info!(%project_id, "project DSN rotated");
             let dsn = build_dsn(&state.config.base_url, &project.dsn_public_key, project.id);
             Json(DsnView {
                 dsn,

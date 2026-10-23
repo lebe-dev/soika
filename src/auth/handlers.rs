@@ -46,7 +46,9 @@ impl IntoResponse for AuthError {
         // Mirror `api::ApiError`: 5xx faults carry their cause only in the
         // response body (which the operator never sees), so log it here to
         // surface the real reason in tracing and Sentry.
-        if status.is_server_error() {
+        if self.0.is_busy() {
+            tracing::warn!(error = %self.0, "auth request failed: database is busy");
+        } else if status.is_server_error() {
             tracing::error!(error = %self.0, "auth request failed");
         }
         (
@@ -67,6 +69,7 @@ fn status_for(err: &Error) -> StatusCode {
         Error::Forbidden(_) => StatusCode::FORBIDDEN,
         Error::Conflict(_) => StatusCode::CONFLICT,
         Error::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+        Error::DbBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -339,6 +342,7 @@ pub async fn setup(
     };
 
     state.settings.set_org_name(org_name.to_string()).await?;
+    tracing::info!(user_id = %user.id, "instance initialized");
 
     let (_, cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
@@ -354,6 +358,7 @@ pub async fn logout(
     headers: HeaderMap,
 ) -> Result<Response, AuthError> {
     let clearing = end_session(&*state.sessions, &state.config, &headers).await?;
+    tracing::info!("logout completed");
     let mut out = HeaderMap::new();
     set_cookie_header(&mut out, &clearing)?;
     Ok((out, StatusCode::NO_CONTENT).into_response())
@@ -385,6 +390,7 @@ pub async fn register(
     }
 
     let user = create_user(&state, &body.email, &body.password, &body.display_name).await?;
+    tracing::info!(user_id = %user.id, "user registered");
     let (_, cookie) =
         start_session(&*state.sessions, &*state.clock, &state.config, user.id).await?;
 
@@ -491,6 +497,7 @@ pub async fn accept_invite(
         .mark_accepted(&invite.token, state.clock.now())
         .await?;
 
+    tracing::info!(user_id = %user.id, team_id = %invite.team_id, role = ?invite.role, "invite accepted");
     let view = Json(UserView::from(state.config.admin_users.apply(user)));
     match set_cookie {
         Some(cookie) => {

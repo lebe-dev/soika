@@ -84,7 +84,7 @@ pub async fn envelope(
                 }
             }
             Err(e) => {
-                return failed_response(&state, &project, &meta, "envelope", payload_event_id, &e);
+                return failed_response(&state, &project, "envelope", payload_event_id, &e);
             }
         }
     }
@@ -134,7 +134,7 @@ pub async fn store(
         // `process_event` derives the id from the payload's `event_id` (or
         // synthesizes one), matching the envelope path's behavior.
         Ok(event_id) => (StatusCode::OK, Json(json!({ "id": event_id }))).into_response(),
-        Err(e) => failed_response(&state, &project, &meta, "store", payload_event_id, &e),
+        Err(e) => failed_response(&state, &project, "store", payload_event_id, &e),
     }
 }
 
@@ -153,13 +153,11 @@ pub async fn store(
 fn failed_response(
     state: &AppState,
     project: &Project,
-    meta: &RequestMeta,
     endpoint: &'static str,
     payload_event_id: Option<String>,
     err: &crate::error::Error,
 ) -> Response {
     let event_id = payload_event_id.as_deref().unwrap_or("<none>");
-    let sdk = meta.user_agent.as_deref().unwrap_or("<unknown>");
 
     if err.is_busy() {
         let retry_after = state.config.db.busy_retry_after.as_secs().max(1);
@@ -169,7 +167,6 @@ fn failed_response(
             project_slug = %project.slug,
             event_id,
             endpoint,
-            sdk,
             retry_after,
             "ingest deferred an event: database is busy"
         );
@@ -182,7 +179,6 @@ fn failed_response(
         project_slug = %project.slug,
         event_id,
         endpoint,
-        sdk,
         "ingest failed to process event"
     );
     internal_error()
@@ -233,6 +229,7 @@ async fn authorize_and_decode(
 
     // --- Soft per-project rate limit. ---
     let project_key = project.id.to_string();
+    tracing::Span::current().record("project_id", tracing::field::display(project.id));
     if let Decision::Limited { retry_after_secs } = state.rate_limiter.check(&project_key) {
         tracing::debug!(project_id = %project.id, "ingest rate-limited");
         return Err(rate_limited(retry_after_secs));

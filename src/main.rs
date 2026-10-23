@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     init_tracing();
 
-    tracing::info!(org = %config.organization_name, bind = %config.bind_addr, "starting soika");
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), bind = %config.bind_addr, "starting soika");
     if !config.admin_enabled && config.oidc.is_none() {
         tracing::warn!(
             "ADMIN_ENABLED=false while OAuth is not configured: first-run setup is disabled; \
@@ -46,7 +46,6 @@ async fn main() -> Result<()> {
     // fails the boot rather than the first login attempt (fail-fast).
     let oidc: Option<Arc<dyn OidcProvider>> = match &config.oidc {
         Some(oidc_config) => {
-            tracing::info!(issuer = %oidc_config.issuer_url, "performing OIDC discovery");
             // Auto-provisioning trusts the IdP's verified email. With no domain
             // allow-list a public IdP can mint an account for any of its users.
             if oidc_config.allowed_email_domains.is_empty() {
@@ -66,7 +65,7 @@ async fn main() -> Result<()> {
                     )
                 }
                 OAuthProviderKind::Oidc => {
-                    tracing::info!(issuer = %oidc_config.issuer_url, "performing OIDC discovery");
+                    tracing::info!("performing OIDC discovery");
                     Arc::new(
                         OidcClient::discover(oidc_config)
                             .await
@@ -95,7 +94,7 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&config.bind_addr)
         .await
         .with_context(|| format!("binding to {}", config.bind_addr))?;
-    tracing::info!("listening on {}", config.bind_addr);
+    tracing::info!(bind = %config.bind_addr, "server ready");
 
     // `into_make_service_with_connect_info` exposes the TCP peer address to
     // handlers via `ConnectInfo<SocketAddr>`, used as the brute-force fallback
@@ -122,8 +121,7 @@ async fn main() -> Result<()> {
 fn init_tracing() {
     use sentry::integrations::tracing::{EventFilter, default_event_filter};
 
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,soika=debug"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let sentry_layer = sentry::integrations::tracing::layer().event_filter(|md| {
         // `tower-http`'s TraceLayer logs a generic `ERROR "response failed"` for
         // every 5xx. That carries no route or cause, so promoting it to its own
