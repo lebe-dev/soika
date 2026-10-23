@@ -36,6 +36,8 @@ pub struct UserUpdate {
 /// CRUD + lookups for users.
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    /// Atomically create the account and Contributor memberships in the currently
+    /// configured default teams. Defaults are never applied to existing users.
     async fn create(&self, new: NewUser) -> Result<User>;
     async fn find_by_id(&self, id: Id) -> Result<Option<User>>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>>;

@@ -622,3 +622,50 @@ async fn admin_users_invites_grant_owner_for_new_existing_and_signed_in_accounts
         assert_eq!(app.membership_role(team, user.id).await, Some(Role::Member));
     }
 }
+
+#[tokio::test]
+async fn default_teams_on_invite_apply_only_to_new_accounts_and_preserve_invited_role() {
+    for existing in [false, true] {
+        let app = Fixture::spawn().await;
+        let invited = app.seed_team().await;
+        let default = app.state.teams.create("Default".into()).await.unwrap().id;
+        if existing {
+            app.create_user("invitee@example.com").await;
+        }
+        // The invited team is also a default: its explicit Admin invitation must win.
+        app.state
+            .settings
+            .set_default_team_ids(vec![invited, default])
+            .await
+            .unwrap();
+        let token = app
+            .mint_invite(
+                invited,
+                Role::Admin,
+                Some("invitee@example.com"),
+                Duration::days(7),
+            )
+            .await;
+        let (status, _) = app.accept(&token, Some(json!({"email": "invitee@example.com", "password": PASSWORD, "display_name": "Invitee"}))).await;
+        assert_eq!(status, StatusCode::OK);
+        let user = app
+            .state
+            .users
+            .find_by_email("invitee@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            app.state.teams.member_role(invited, user.id).await.unwrap(),
+            Some(TeamRole::Admin)
+        );
+        assert_eq!(
+            app.state.teams.member_role(default, user.id).await.unwrap(),
+            if existing {
+                None
+            } else {
+                Some(TeamRole::Contributor)
+            }
+        );
+    }
+}

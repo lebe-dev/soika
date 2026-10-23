@@ -1191,3 +1191,69 @@ async fn admin_users_sso_still_requires_account_approval() {
     assert_eq!(user.instance_role, InstanceRole::Member);
     assert_eq!(user.status, UserStatus::Pending);
 }
+
+#[tokio::test]
+async fn oidc_default_teams_apply_at_first_provisioning_only_including_pending_accounts() {
+    use soika::domain::TeamRole;
+    for approval in [false, true] {
+        let email = "defaults@example.com";
+        let provider = if approval {
+            FakeProvider::with_approval(verified_claims(email))
+        } else {
+            FakeProvider::new(verified_claims(email))
+        };
+        let (router, state) = build_app(Some(Arc::new(provider))).await;
+        let first = state.teams.create("First".into()).await.unwrap().id;
+        let later = state.teams.create("Later".into()).await.unwrap().id;
+        state
+            .settings
+            .set_default_team_ids(vec![first])
+            .await
+            .unwrap();
+        let (_, location, cookies) = run_callback(&router, email).await;
+        let user = state.users.find_by_email(email).await.unwrap().unwrap();
+        assert_eq!(
+            user.status,
+            if approval {
+                UserStatus::Pending
+            } else {
+                UserStatus::Active
+            }
+        );
+        assert_eq!(
+            cookies.iter().any(|c| c.starts_with("soika_session=")),
+            !approval
+        );
+        assert_eq!(
+            location.as_deref(),
+            Some(if approval { "/pending" } else { "/" })
+        );
+        assert_eq!(
+            state.teams.member_role(first, user.id).await.unwrap(),
+            Some(TeamRole::Contributor)
+        );
+        state.teams.remove_member(first, user.id).await.unwrap();
+        state
+            .settings
+            .set_default_team_ids(vec![first, later])
+            .await
+            .unwrap();
+        // Includes approval of an account created before the defaults changed.
+        if approval {
+            state
+                .users
+                .update(
+                    user.id,
+                    soika::ports::UserUpdate {
+                        status: Some(UserStatus::Active),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        run_callback(&router, email).await;
+        assert!(state.teams.list_for_user(user.id).await.unwrap().is_empty());
+        assert_eq!(state.users.count().await.unwrap(), 1);
+    }
+}

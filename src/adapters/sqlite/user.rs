@@ -1,6 +1,6 @@
 //! SQLite [`UserRepository`] adapter.
 
-use super::write::retry_write;
+use super::write::{begin_write, retry_write};
 use super::{
     Db, bool_from_db, bool_to_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db,
 };
@@ -65,23 +65,43 @@ impl UserRepository for SqliteUserRepository {
         let id = Id::new_v4();
         let now: Timestamp = chrono::Utc::now();
 
-        sqlx::query(
-            "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
-             notifications_enabled, auth_provider, status, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+        retry_write(
+            &WritePolicy::default(),
+            "create user with default teams",
+            || async {
+                let mut tx = begin_write(&self.db).await?;
+                sqlx::query(
+                    "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
+                     notifications_enabled, auth_provider, status, created_at, updated_at) \
+                     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                )
+                .bind(id_to_db(id))
+                .bind(&new.email)
+                .bind(&new.display_name)
+                .bind(&new.password_hash)
+                .bind(new.instance_role.as_str())
+                .bind(new.auth_provider.as_str())
+                .bind(new.status.as_str())
+                .bind(ts_to_db(now))
+                .bind(ts_to_db(now))
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    conflict_or_db(e, format!("user email already exists: {}", new.email))
+                })?;
+                sqlx::query(
+                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                     SELECT team_id, ?, 'contributor', ? FROM default_teams",
+                )
+                .bind(id_to_db(id))
+                .bind(ts_to_db(now))
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(())
+            },
         )
-        .bind(id_to_db(id))
-        .bind(&new.email)
-        .bind(&new.display_name)
-        .bind(&new.password_hash)
-        .bind(new.instance_role.as_str())
-        .bind(new.auth_provider.as_str())
-        .bind(new.status.as_str())
-        .bind(ts_to_db(now))
-        .bind(ts_to_db(now))
-        .execute(&self.db)
-        .await
-        .map_err(|e| conflict_or_db(e, format!("user email already exists: {}", new.email)))?;
+        .await?;
 
         Ok(User {
             id,

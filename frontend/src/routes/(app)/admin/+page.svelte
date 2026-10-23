@@ -27,6 +27,7 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import Avatar from '$lib/components/avatar.svelte';
   import TeamList from '$lib/components/team-list.svelte';
+  import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
   import type { PageData } from './$types';
 
@@ -349,7 +350,8 @@
     </Tabs.Content>
 
     <!-- Users overview: same roster layout as team members. -->
-    <Tabs.Content value="users">
+    <Tabs.Content value="users" class="space-y-6">
+      <DefaultTeams teams={data.teams} defaultTeamIds={data.settings.default_team_ids} />
       <Card.Root class="shadow-sm">
         <Card.Header>
           <div class="flex items-center gap-1.5">

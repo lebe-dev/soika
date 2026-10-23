@@ -215,3 +215,101 @@ async fn list_count_and_delete() {
     // Deleting a non-existent user is a no-op, not an error.
     repo.delete(Id::new_v4()).await.unwrap();
 }
+
+#[tokio::test]
+async fn defaults_apply_only_at_creation_and_never_reconcile_existing_memberships() {
+    let db = test_db().await;
+    let a = insert_team(&db, "A").await;
+    let b = insert_team(&db, "B").await;
+    let existing = insert_user(&db, "existing@example.com").await;
+    db.teams
+        .add_member(a, existing, TeamRole::Admin)
+        .await
+        .unwrap();
+
+    db.settings.set_default_team_ids(vec![a, b]).await.unwrap();
+    assert_eq!(
+        db.teams.member_role(a, existing).await.unwrap(),
+        Some(TeamRole::Admin)
+    );
+    assert_eq!(db.teams.member_role(b, existing).await.unwrap(), None);
+
+    let new = insert_user(&db, "new@example.com").await;
+    for team in [a, b] {
+        assert_eq!(
+            db.teams.member_role(team, new).await.unwrap(),
+            Some(TeamRole::Contributor)
+        );
+    }
+    db.teams.remove_member(a, new).await.unwrap();
+    db.users
+        .update(
+            new,
+            UserUpdate {
+                display_name: Some("Renamed".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    db.settings.set_default_team_ids(vec![a]).await.unwrap();
+    assert_eq!(db.teams.member_role(a, new).await.unwrap(), None);
+    assert_eq!(
+        db.teams.member_role(b, new).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+
+    let later = insert_user(&db, "later@example.com").await;
+    assert_eq!(
+        db.teams.member_role(a, later).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+    assert_eq!(db.teams.member_role(b, later).await.unwrap(), None);
+    db.settings.set_default_team_ids(vec![]).await.unwrap();
+    let last = insert_user(&db, "last@example.com").await;
+    assert!(db.teams.list_for_user(last).await.unwrap().is_empty());
+    assert_eq!(
+        db.teams.member_role(a, later).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+}
+
+#[tokio::test]
+async fn default_teams_apply_to_oidc_and_pending_accounts_without_approving_them() {
+    let db = test_db().await;
+    let team = insert_team(&db, "Default").await;
+    db.settings.set_default_team_ids(vec![team]).await.unwrap();
+    for status in [UserStatus::Active, UserStatus::Pending] {
+        let user = db
+            .users
+            .create(NewUser {
+                status,
+                ..oidc_sample(&format!("{status:?}@example.com"))
+            })
+            .await
+            .unwrap();
+        assert_eq!(user.status, status);
+        assert_eq!(
+            db.teams.member_role(team, user.id).await.unwrap(),
+            Some(TeamRole::Contributor)
+        );
+    }
+}
+
+#[tokio::test]
+async fn duplicate_account_does_not_gain_new_default_memberships() {
+    let db = test_db().await;
+    let existing = db
+        .users
+        .create(sample("existing@example.com"))
+        .await
+        .unwrap();
+    let team = insert_team(&db, "Default").await;
+    db.settings.set_default_team_ids(vec![team]).await.unwrap();
+    assert!(matches!(
+        db.users.create(sample("existing@example.com")).await,
+        Err(Error::Conflict(_))
+    ));
+    assert_eq!(db.teams.member_role(team, existing.id).await.unwrap(), None);
+    assert_eq!(db.users.count().await.unwrap(), 1);
+}

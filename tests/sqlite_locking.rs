@@ -347,3 +347,61 @@ fn envelope_body(event_id: &str) -> Vec<u8> {
     let payload = serde_json::to_string(&payload).expect("serialize payload");
     format!("{header}\n{item_header}\n{payload}\n").into_bytes()
 }
+
+#[tokio::test]
+async fn default_team_membership_failure_rolls_back_account_creation() {
+    use soika::domain::{AuthProvider, InstanceRole, UserStatus};
+    use soika::ports::NewUser;
+    let app = TestApp::spawn(DbConfig::default()).await;
+    let team = app.state.teams.create("Default".into()).await.unwrap().id;
+    app.state
+        .settings
+        .set_default_team_ids(vec![team])
+        .await
+        .unwrap();
+    let pool = app.foreign_pool().await;
+    // Fail after the user INSERT, while assigning its default memberships.
+    sqlx::query("CREATE TRIGGER fail_default_membership BEFORE INSERT ON team_members BEGIN SELECT RAISE(ABORT, 'membership unavailable'); END")
+        .execute(&pool).await.unwrap();
+    let new = NewUser {
+        email: "atomic@example.com".into(),
+        display_name: "Atomic".into(),
+        password_hash: "hash".into(),
+        instance_role: InstanceRole::Member,
+        auth_provider: AuthProvider::Local,
+        status: UserStatus::Active,
+    };
+    assert!(app.state.users.create(new.clone()).await.is_err());
+    assert!(
+        app.state
+            .users
+            .find_by_email(&new.email)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(app.state.teams.members(team).await.unwrap().is_empty());
+    sqlx::query("DROP TRIGGER fail_default_membership")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let user = app.state.users.create(new).await.unwrap();
+    assert!(app.state.teams.is_member(team, user.id).await.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_default_replacements_never_merge_lists() {
+    let app = TestApp::spawn(DbConfig::default()).await;
+    let a = app.state.teams.create("Default A".into()).await.unwrap().id;
+    let b = app.state.teams.create("Default B".into()).await.unwrap().id;
+    let settings_a = app.state.settings.clone();
+    let settings_b = app.state.settings.clone();
+    let (first, second) = tokio::join!(
+        settings_a.set_default_team_ids(vec![a]),
+        settings_b.set_default_team_ids(vec![b]),
+    );
+    first.unwrap();
+    second.unwrap();
+    let defaults = app.state.settings.default_team_ids().await.unwrap();
+    assert!(defaults == vec![a] || defaults == vec![b]);
+}

@@ -3,9 +3,11 @@
 //! Service settings live in a single-row table (`id = 1`), seeded by the
 //! 0001 migration, so reads never miss and updates always target row 1.
 
-use super::{Db, bool_from_db, bool_to_db, ts_from_db, ts_to_db};
-use crate::domain::ServiceSettings;
-use crate::error::Result;
+use super::write::{begin_write, retry_write};
+use super::{Db, bool_from_db, bool_to_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
+use crate::config::WritePolicy;
+use crate::domain::{Id, ServiceSettings};
+use crate::error::{Error, Result};
 use crate::ports::SettingsRepository;
 use async_trait::async_trait;
 use sqlx::FromRow;
@@ -55,6 +57,48 @@ impl SqliteSettingsRepository {
 
 #[async_trait]
 impl SettingsRepository for SqliteSettingsRepository {
+    async fn default_team_ids(&self) -> Result<Vec<Id>> {
+        let ids: Vec<String> =
+            sqlx::query_scalar("SELECT team_id FROM default_teams ORDER BY team_id")
+                .fetch_all(&self.db)
+                .await?;
+        ids.iter().map(|id| id_from_db(id)).collect()
+    }
+
+    async fn set_default_team_ids(&self, mut team_ids: Vec<Id>) -> Result<()> {
+        team_ids.sort_unstable();
+        team_ids.dedup();
+        retry_write(&WritePolicy::default(), "set default teams", || async {
+            let mut tx = begin_write(&self.db).await?;
+            // Validate before replacing anything; FK references also protect deletion races.
+            for id in &team_ids {
+                let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM teams WHERE id = ?")
+                    .bind(id_to_db(*id))
+                    .fetch_one(&mut *tx)
+                    .await?;
+                if exists == 0 {
+                    return Err(Error::validation(format!("unknown default team: {id}")));
+                }
+            }
+            sqlx::query("DELETE FROM default_teams")
+                .execute(&mut *tx)
+                .await?;
+            for id in &team_ids {
+                sqlx::query("INSERT INTO default_teams (team_id) VALUES (?)")
+                    .bind(id_to_db(*id))
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            sqlx::query("UPDATE service_settings SET updated_at = ? WHERE id = 1")
+                .bind(ts_to_db(chrono::Utc::now()))
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            Ok(())
+        })
+        .await
+    }
+
     async fn get(&self) -> Result<ServiceSettings> {
         self.read().await
     }

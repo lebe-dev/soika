@@ -779,3 +779,132 @@ async fn admin_users_does_not_bypass_credentials_or_signup_gate() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn default_team_settings_require_instance_manager_and_validate_ids() {
+    let app = Fixture::spawn().await;
+    for (email, role) in [
+        ("member@example.com", InstanceRole::Member),
+        ("manager@example.com", InstanceRole::Manager),
+        ("owner@example.com", InstanceRole::Owner),
+    ] {
+        app.create_user(email, role).await;
+    }
+    let team = app.state.teams.create("Default".into()).await.unwrap().id;
+    let (status, _) = app
+        .patch_json("/api/settings", "", &json!({"default_team_ids": [team]}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let member_cookie = app.login("member@example.com").await;
+    let (status, _) = app
+        .patch_json(
+            "/api/settings",
+            &member_cookie,
+            &json!({"default_team_ids": [team]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    for email in ["manager@example.com", "owner@example.com"] {
+        let cookie = app.login(email).await;
+        let (status, view) = app.get("/api/settings", &cookie).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["default_team_ids"], json!([]));
+        let (status, view) = app
+            .patch_json(
+                "/api/settings",
+                &cookie,
+                &json!({"default_team_ids": [team, team]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["default_team_ids"], json!([team]));
+        let (status, _) = app.patch_json("/api/settings", &cookie, &json!({"default_team_ids": [Id::new_v4()], "org_name": "Must not change", "allow_signup": true})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = app
+            .patch_json(
+                "/api/settings",
+                &cookie,
+                &json!({"default_team_ids": [], "org_name": "  "}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = app
+            .patch_json(
+                "/api/settings",
+                &cookie,
+                &json!({"default_team_ids": ["invalid-id"]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let (status, view) = app.get("/api/settings", &cookie).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["default_team_ids"], json!([team]));
+        assert_eq!(view["org_name"], "soika");
+        assert_eq!(view["allow_signup"], false);
+        // Updating unrelated fields must preserve defaults.
+        app.patch_json("/api/settings", &cookie, &json!({"org_name": "soika"}))
+            .await;
+        assert_eq!(
+            app.state.settings.default_team_ids().await.unwrap(),
+            vec![team]
+        );
+        let (status, view) = app
+            .patch_json("/api/settings", &cookie, &json!({"default_team_ids": []}))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["default_team_ids"], json!([]));
+    }
+}
+
+#[tokio::test]
+async fn registration_uses_defaults_but_existing_login_and_approval_do_not() {
+    let app = Fixture::spawn().await;
+    app.state.settings.set_allow_signup(true).await.unwrap();
+    let team = app.state.teams.create("Default".into()).await.unwrap().id;
+    let (status, old) = app
+        .post_json(
+            "/auth/register",
+            "",
+            &json!({"email": "old@example.com", "password": PASSWORD, "display_name": "Old"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let old = Id::parse_str(old["id"].as_str().unwrap()).unwrap();
+    assert!(app.state.teams.list_for_user(old).await.unwrap().is_empty());
+    app.create_user("manager@example.com", InstanceRole::Manager)
+        .await;
+    let cookie = app.login("manager@example.com").await;
+    let (status, _) = app
+        .patch_json(
+            "/api/settings",
+            &cookie,
+            &json!({"default_team_ids": [team]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    app.login("old@example.com").await;
+    app.post_json(
+        &format!("/api/admin/users/{old}/approve"),
+        &cookie,
+        &json!({}),
+    )
+    .await;
+    assert!(app.state.teams.list_for_user(old).await.unwrap().is_empty());
+    let (status, new) = app
+        .post_json(
+            "/auth/register",
+            "",
+            &json!({"email": "new@example.com", "password": PASSWORD, "display_name": "New"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let new = Id::parse_str(new["id"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        app.state.teams.member_role(team, new).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+    // Removing membership remains effective across later logins.
+    app.state.teams.remove_member(team, new).await.unwrap();
+    app.login("new@example.com").await;
+    assert!(app.state.teams.list_for_user(new).await.unwrap().is_empty());
+}

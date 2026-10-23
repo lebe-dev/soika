@@ -95,3 +95,39 @@ async fn migrations_can_be_re_run() {
         .unwrap();
     assert_eq!(applied, soika::PG_MIGRATOR.iter().count() as i64);
 }
+
+#[tokio::test]
+async fn default_team_membership_failure_rolls_back_account_creation() {
+    use soika::adapters::postgres::{PgSettingsRepository, PgTeamRepository, PgUserRepository};
+    use soika::domain::{AuthProvider, InstanceRole, UserStatus};
+    use soika::ports::{NewUser, SettingsRepository, TeamRepository, UserRepository};
+    let Some(pool) = postgres().await else {
+        return;
+    };
+    let teams = PgTeamRepository::new(pool.clone());
+    let settings = PgSettingsRepository::new(pool.clone());
+    let users = PgUserRepository::new(pool.clone());
+    let team = teams.create("Default".into()).await.unwrap().id;
+    settings.set_default_team_ids(vec![team]).await.unwrap();
+    sqlx::query("CREATE FUNCTION fail_default_membership() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'membership unavailable'; END $$")
+        .execute(&pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER fail_default_membership BEFORE INSERT ON team_members FOR EACH ROW EXECUTE FUNCTION fail_default_membership()")
+        .execute(&pool).await.unwrap();
+    let new = NewUser {
+        email: "atomic@example.com".into(),
+        display_name: "Atomic".into(),
+        password_hash: "hash".into(),
+        instance_role: InstanceRole::Member,
+        auth_provider: AuthProvider::Local,
+        status: UserStatus::Active,
+    };
+    assert!(users.create(new.clone()).await.is_err());
+    assert!(users.find_by_email(&new.email).await.unwrap().is_none());
+    assert!(teams.members(team).await.unwrap().is_empty());
+    sqlx::query("DROP TRIGGER fail_default_membership ON team_members")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let user = users.create(new).await.unwrap();
+    assert!(teams.is_member(team, user.id).await.unwrap());
+}

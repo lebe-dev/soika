@@ -87,6 +87,26 @@ instance grants nothing on its own. Each team membership carries a team role:
 
 Instance `Owner`/`Manager` implicitly act as Admin on every team and project.
 
+### Default teams for new users
+
+An instance Owner or Manager can select teams in **Admin → Users → Teams for
+new users** and save the selection. The initial selection is empty: new users
+join no teams automatically until an administrator configures it. Clear all
+checkboxes and save to disable automatic membership again.
+
+Only newly created accounts join the selected teams, with the **Contributor**
+role. This applies to password registration, new accounts created from invites,
+and first SSO sign-in. An invitation's explicit team role still takes precedence
+for its target team, including an Admin invitation to a default team. SSO
+accounts requiring approval receive memberships at creation but cannot access
+the service until approved.
+
+Saving or changing defaults never adds, removes, or changes memberships of
+existing users. Signing in again or approving an existing account does not
+apply defaults; manually removed memberships stay removed. Deleting a selected
+team removes it from the defaults automatically. Account creation and its
+default memberships are committed together.
+
 ### Effective per-project access
 
 A caller's effective access to a given project resolves as:

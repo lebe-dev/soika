@@ -440,6 +440,7 @@ export interface SmtpStatus {
 }
 
 export interface ServiceSettings {
+  default_team_ids: Id[];
   allow_signup: boolean;
   org_name: string;
   updated_at: Timestamp;
@@ -447,6 +448,7 @@ export interface ServiceSettings {
 }
 
 export interface UpdateSettingsRequest {
+  default_team_ids?: Id[];
   allow_signup?: boolean;
   org_name?: string;
 }

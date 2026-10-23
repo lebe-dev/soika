@@ -462,5 +462,8 @@
   "teams_group_users_and_grant_them_access_to_the_team_s_projects": "Teams group users and grant them access to the team’s projects.",
   "display_name_minimum": "Display name must be at least {count} characters",
   "minimum_characters": "At least {count} characters.",
-  "unknown": "Unknown"
+  "unknown": "Unknown",
+  "default_teams_title": "Teams for new users",
+  "default_teams_description": "New accounts join the selected teams as Contributors, including sign-up, invitations and first SSO sign-in. Existing users and their memberships are unchanged. Leave all teams unchecked to assign none.",
+  "default_teams_empty": "Create a team first to configure default membership."
 }

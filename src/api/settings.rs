@@ -2,7 +2,7 @@
 //!
 //! Instance-wide settings managed by the built-in/instance admin: the
 //! `allow_signup` toggle (persisted to the DB, mirrors `ALLOW_SIGNUP`) and the
-//! organization display name. SMTP is config-only in the MVP and surfaced
+//! organization display name and default teams for new users. SMTP is config-only in the MVP and surfaced
 //! READ-ONLY here. All endpoints require an instance admin.
 
 use axum::Json;
@@ -22,6 +22,8 @@ pub struct SettingsView {
     pub allow_signup: bool,
     /// Organization display name.
     pub org_name: String,
+    /// Teams assigned as Contributors only when an account is created.
+    pub default_team_ids: Vec<Id>,
     pub updated_at: Timestamp,
     /// SMTP configuration, surfaced READ-ONLY.
     pub smtp: SmtpStatus,
@@ -44,6 +46,7 @@ pub struct SmtpStatus {
 pub struct UpdateSettings {
     pub allow_signup: Option<bool>,
     pub org_name: Option<String>,
+    pub default_team_ids: Option<Vec<Id>>,
 }
 
 /// A client-safe user row for the admin users list.
@@ -94,10 +97,11 @@ fn smtp_status(state: &AppState) -> SmtpStatus {
     }
 }
 
-fn to_view(settings: ServiceSettings, state: &AppState) -> SettingsView {
+fn to_view(settings: ServiceSettings, state: &AppState, default_team_ids: Vec<Id>) -> SettingsView {
     SettingsView {
         allow_signup: settings.allow_signup,
         org_name: settings.org_name,
+        default_team_ids,
         updated_at: settings.updated_at,
         smtp: smtp_status(state),
     }
@@ -109,10 +113,14 @@ pub async fn get(
     State(state): State<AppState>,
 ) -> Result<Json<SettingsView>, ApiError> {
     let settings = state.settings.get().await?;
-    Ok(Json(to_view(settings, &state)))
+    Ok(Json(to_view(
+        settings,
+        &state,
+        state.settings.default_team_ids().await?,
+    )))
 }
 
-/// `PATCH /settings` — update `allow_signup` and/or `org_name` (admin).
+/// `PATCH /settings` — update sign-up, organization name and/or default teams (admin).
 ///
 /// SMTP fields are intentionally not writable here.
 pub async fn update(
@@ -120,18 +128,27 @@ pub async fn update(
     State(state): State<AppState>,
     Json(body): Json<UpdateSettings>,
 ) -> Result<Json<SettingsView>, ApiError> {
-    if body.allow_signup.is_none() && body.org_name.is_none() {
+    if body.allow_signup.is_none() && body.org_name.is_none() && body.default_team_ids.is_none() {
         return Err(ApiError(Error::validation("no settings fields provided")));
     }
 
-    // Apply org name first (it can fail validation), then the toggle.
+    // Validate the name before any settings are changed.
+    if body
+        .org_name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(ApiError(Error::validation(
+            "organization name must not be empty",
+        )));
+    }
+    // Default teams are validated and replaced atomically by the repository.
+    if let Some(ids) = body.default_team_ids {
+        state.settings.set_default_team_ids(ids).await?;
+    }
+
     if let Some(name) = body.org_name {
         let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(ApiError(Error::validation(
-                "organization name must not be empty",
-            )));
-        }
         state.settings.set_org_name(trimmed.to_string()).await?;
     }
 
@@ -140,7 +157,11 @@ pub async fn update(
     }
 
     let settings = state.settings.get().await?;
-    Ok(Json(to_view(settings, &state)))
+    Ok(Json(to_view(
+        settings,
+        &state,
+        state.settings.default_team_ids().await?,
+    )))
 }
 
 /// `POST /settings/test-email` body. An absent/empty `to` defaults to the
@@ -362,6 +383,7 @@ mod tests {
         let view = SettingsView {
             allow_signup: true,
             org_name: "Acme".into(),
+            default_team_ids: vec![],
             updated_at: chrono::Utc::now(),
             smtp: SmtpStatus {
                 enabled: true,

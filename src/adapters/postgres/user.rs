@@ -64,22 +64,42 @@ impl UserRepository for PgUserRepository {
         let id = Id::new_v4();
         let now = now();
 
-        sqlx::query(
-            "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
-             notifications_enabled, auth_provider, status, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $8)",
+        retry_write(
+            &WritePolicy::default(),
+            "create user with default teams",
+            || async {
+                let mut tx = self.db.begin().await?;
+                sqlx::query(
+                    "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
+                     notifications_enabled, auth_provider, status, created_at, updated_at) \
+                     VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $8)",
+                )
+                .bind(id)
+                .bind(&new.email)
+                .bind(&new.display_name)
+                .bind(&new.password_hash)
+                .bind(new.instance_role.as_str())
+                .bind(new.auth_provider.as_str())
+                .bind(new.status.as_str())
+                .bind(now)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    conflict_or_db(e, format!("user email already exists: {}", new.email))
+                })?;
+                sqlx::query(
+                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                     SELECT team_id, $1, 'contributor', $2 FROM default_teams",
+                )
+                .bind(id)
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(())
+            },
         )
-        .bind(id)
-        .bind(&new.email)
-        .bind(&new.display_name)
-        .bind(&new.password_hash)
-        .bind(new.instance_role.as_str())
-        .bind(new.auth_provider.as_str())
-        .bind(new.status.as_str())
-        .bind(now)
-        .execute(&self.db)
-        .await
-        .map_err(|e| conflict_or_db(e, format!("user email already exists: {}", new.email)))?;
+        .await?;
 
         Ok(User {
             id,
