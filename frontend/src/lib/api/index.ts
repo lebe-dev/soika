@@ -16,7 +16,6 @@ import type {
   CreateTeamRequest,
   DeletedUser,
   Dsn,
-  Id,
   Invite,
   InvitePreview,
   Issue,
@@ -87,9 +86,9 @@ export const passkeys = {
     http.post<{ publicKey: unknown }>('/passkeys/options', { fetch: ctx?.fetch }),
   register: (body: RegisterPasskeyRequest, ctx?: Ctx) =>
     http.post<Passkey>('/passkeys', { body, fetch: ctx?.fetch }),
-  rename: (id: Id, body: RenamePasskeyRequest, ctx?: Ctx) =>
+  rename: (id: string, body: RenamePasskeyRequest, ctx?: Ctx) =>
     http.patch<Passkey>(`/passkeys/${id}`, { body, fetch: ctx?.fetch }),
-  remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/passkeys/${id}`, { fetch: ctx?.fetch })
+  remove: (id: string, ctx?: Ctx) => http.delete<void>(`/passkeys/${id}`, { fetch: ctx?.fetch })
 };
 
 export const invites = {
@@ -109,77 +108,80 @@ export const projects = {
   create: (body: CreateProjectRequest, ctx?: Ctx) =>
     http.post<Project>('/projects', { body, fetch: ctx?.fetch }),
   /** Project detail with its default (unresolved) issue list embedded. */
-  get: (id: Id, ctx?: Ctx) => http.get<ProjectDetail>(`/projects/${id}`, { fetch: ctx?.fetch }),
-  update: (id: Id, body: UpdateProjectRequest, ctx?: Ctx) =>
+  get: (id: string, ctx?: Ctx) => http.get<ProjectDetail>(`/projects/${id}`, { fetch: ctx?.fetch }),
+  update: (id: string, body: UpdateProjectRequest, ctx?: Ctx) =>
     http.patch<Project>(`/projects/${id}`, { body, fetch: ctx?.fetch }),
   /** Move a project to a different owning team (instance Owner/Manager only). */
-  changeTeam: (id: Id, body: ChangeProjectTeamRequest, ctx?: Ctx) =>
+  changeTeam: (id: string, body: ChangeProjectTeamRequest, ctx?: Ctx) =>
     http.patch<Project>(`/projects/${id}/team`, { body, fetch: ctx?.fetch }),
-  remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/projects/${id}`, { fetch: ctx?.fetch }),
-  issues: (id: Id, query?: IssueListQuery, ctx?: Ctx) =>
+  remove: (id: string, ctx?: Ctx) => http.delete<void>(`/projects/${id}`, { fetch: ctx?.fetch }),
+  issues: (id: string, query?: IssueListQuery, ctx?: Ctx) =>
     http.get<Issue[]>(`/projects/${id}/issues`, { query, fetch: ctx?.fetch }),
-  dsn: (id: Id, ctx?: Ctx) => http.get<Dsn>(`/projects/${id}/dsn`, { fetch: ctx?.fetch }),
-  sdkSetup: (id: Id, ctx?: Ctx) =>
+  dsn: (id: string, ctx?: Ctx) => http.get<Dsn>(`/projects/${id}/dsn`, { fetch: ctx?.fetch }),
+  sdkSetup: (id: string, ctx?: Ctx) =>
     http.get<SdkSetup>(`/projects/${id}/sdk-setup`, { fetch: ctx?.fetch }),
-  mute: (id: Id, muted?: boolean, ctx?: Ctx) =>
+  mute: (id: string, muted?: boolean, ctx?: Ctx) =>
     http.post<Project>(`/projects/${id}/mute`, { body: { muted }, fetch: ctx?.fetch }),
   /** Project-level tag-mute rules (notification suppression by matching tags). */
-  muteRules: (id: Id, ctx?: Ctx) =>
+  muteRules: (id: string, ctx?: Ctx) =>
     http.get<TagMuteRule[]>(`/projects/${id}/mute-rules`, { fetch: ctx?.fetch }),
-  createMuteRule: (id: Id, body: CreateTagMuteRuleRequest, ctx?: Ctx) =>
+  createMuteRule: (id: string, body: CreateTagMuteRuleRequest, ctx?: Ctx) =>
     http.post<TagMuteRule>(`/projects/${id}/mute-rules`, { body, fetch: ctx?.fetch }),
-  deleteMuteRule: (id: Id, ruleId: Id, ctx?: Ctx) =>
+  deleteMuteRule: (id: string, ruleId: string, ctx?: Ctx) =>
     http.delete<void>(`/projects/${id}/mute-rules/${ruleId}`, { fetch: ctx?.fetch }),
-  favorite: (id: Id, favorited: boolean, ctx?: Ctx) =>
+  favorite: (id: string, favorited: boolean, ctx?: Ctx) =>
     http.post<{ favorited: boolean }>(`/projects/${id}/favorite`, {
       body: { favorited },
       fetch: ctx?.fetch
     }),
-  regenerateDsn: (id: Id, ctx?: Ctx) =>
+  regenerateDsn: (id: string, ctx?: Ctx) =>
     http.post<Dsn>(`/projects/${id}/regenerate-dsn`, { fetch: ctx?.fetch })
 };
 
 export const issues = {
-  get: (id: Id, ctx?: Ctx) => http.get<IssueDetail>(`/issues/${id}`, { fetch: ctx?.fetch }),
-  events: (id: Id, limit?: number, ctx?: Ctx) =>
+  get: (id: string, ctx?: Ctx) => http.get<IssueDetail>(`/issues/${id}`, { fetch: ctx?.fetch }),
+  events: (id: string, limit?: number, ctx?: Ctx) =>
     http.get<SoikaEvent[]>(`/issues/${id}/events`, { query: { limit }, fetch: ctx?.fetch }),
-  resolve: (id: Id, ctx?: Ctx) => http.post<Issue>(`/issues/${id}/resolve`, { fetch: ctx?.fetch }),
+  resolve: (id: string, ctx?: Ctx) =>
+    http.post<Issue>(`/issues/${id}/resolve`, { fetch: ctx?.fetch }),
   /** Mute an issue. Omit `body` to mute forever; pass a period/rate to auto-unmute. */
-  mute: (id: Id, body?: MuteRequest, ctx?: Ctx) =>
+  mute: (id: string, body?: MuteRequest, ctx?: Ctx) =>
     http.post<Issue>(`/issues/${id}/mute`, { body, fetch: ctx?.fetch }),
-  unresolve: (id: Id, ctx?: Ctx) =>
+  unresolve: (id: string, ctx?: Ctx) =>
     http.post<Issue>(`/issues/${id}/unresolve`, { fetch: ctx?.fetch }),
   /** Override an issue's fingerprint (merge / split). Returns the surviving issue. */
-  setFingerprint: (id: Id, fingerprint: string, ctx?: Ctx) =>
+  setFingerprint: (id: string, fingerprint: string, ctx?: Ctx) =>
     http.patch<Issue>(`/issues/${id}/fingerprint`, { body: { fingerprint }, fetch: ctx?.fetch })
 };
 
 export const events = {
-  get: (id: Id, ctx?: Ctx) => http.get<SoikaEvent>(`/events/${id}`, { fetch: ctx?.fetch })
+  get: (id: string, ctx?: Ctx) => http.get<SoikaEvent>(`/events/${id}`, { fetch: ctx?.fetch })
 };
 
 export const teams = {
   list: (ctx?: Ctx) => http.get<TeamSummary[]>('/teams', { fetch: ctx?.fetch }),
   create: (body: CreateTeamRequest, ctx?: Ctx) =>
     http.post<Team>('/teams', { body, fetch: ctx?.fetch }),
-  get: (id: Id, ctx?: Ctx) => http.get<Team>(`/teams/${id}`, { fetch: ctx?.fetch }),
-  update: (id: Id, body: UpdateTeamRequest, ctx?: Ctx) =>
+  get: (id: string, ctx?: Ctx) => http.get<Team>(`/teams/${id}`, { fetch: ctx?.fetch }),
+  update: (id: string, body: UpdateTeamRequest, ctx?: Ctx) =>
     http.patch<Team>(`/teams/${id}`, { body, fetch: ctx?.fetch }),
-  remove: (id: Id, target?: Id, ctx?: Ctx) =>
-    http.delete<void>(`/teams/${id}${target ? `?move_projects_to=${target}` : ''}`, {
+  remove: (id: string, target?: string, ctx?: Ctx) =>
+    http.delete<void>(`/teams/${id}`, {
+      query: { move_projects_to: target },
       fetch: ctx?.fetch
     }),
-  addMember: (id: Id, body: AddTeamMemberRequest, ctx?: Ctx) =>
+  addMember: (id: string, body: AddTeamMemberRequest, ctx?: Ctx) =>
     http.post<Team>(`/teams/${id}/members`, { body, fetch: ctx?.fetch }),
-  setMemberRole: (id: Id, userId: Id, body: SetTeamMemberRoleRequest, ctx?: Ctx) =>
+  setMemberRole: (id: string, userId: string, body: SetTeamMemberRoleRequest, ctx?: Ctx) =>
     http.patch<Team>(`/teams/${id}/members/${userId}`, { body, fetch: ctx?.fetch }),
-  removeMember: (id: Id, userId: Id, ctx?: Ctx) =>
+  removeMember: (id: string, userId: string, ctx?: Ctx) =>
     http.delete<void>(`/teams/${id}/members/${userId}`, { fetch: ctx?.fetch }),
   /** Team-scoped invites: grant a {@link TeamRole} on the team. */
-  invites: (id: Id, ctx?: Ctx) => http.get<Invite[]>(`/teams/${id}/invites`, { fetch: ctx?.fetch }),
-  createInvite: (id: Id, body: CreateInviteRequest, ctx?: Ctx) =>
+  invites: (id: string, ctx?: Ctx) =>
+    http.get<Invite[]>(`/teams/${id}/invites`, { fetch: ctx?.fetch }),
+  createInvite: (id: string, body: CreateInviteRequest, ctx?: Ctx) =>
     http.post<Invite>(`/teams/${id}/invites`, { body, fetch: ctx?.fetch }),
-  revokeInvite: (id: Id, token: string, ctx?: Ctx) =>
+  revokeInvite: (id: string, token: string, ctx?: Ctx) =>
     http.delete<void>(`/teams/${id}/invites/${encodeURIComponent(token)}`, {
       fetch: ctx?.fetch
     })
@@ -197,16 +199,16 @@ export const settings = {
 export const admin = {
   users: (ctx?: Ctx) => http.get<AdminUser[]>('/admin/users', { fetch: ctx?.fetch }),
   /** Approve a pending account so it can sign in. Returns the updated row. */
-  approve: (id: Id, ctx?: Ctx) =>
+  approve: (id: string, ctx?: Ctx) =>
     http.post<AdminUser>(`/admin/users/${id}/approve`, { fetch: ctx?.fetch }),
   /**
    * Change a user's instance role. Granting/revoking `owner` is Owner-only and
    * the last Owner cannot be demoted (the backend enforces both).
    */
-  setRole: (id: Id, body: SetUserRoleRequest, ctx?: Ctx) =>
+  setRole: (id: string, body: SetUserRoleRequest, ctx?: Ctx) =>
     http.patch<AdminUser>(`/admin/users/${id}`, { body, fetch: ctx?.fetch }),
   /** Reject/delete an account (used for pending sign-ups). */
-  remove: (id: Id, ctx?: Ctx) =>
+  remove: (id: string, ctx?: Ctx) =>
     http.delete<DeletedUser>(`/admin/users/${id}`, { fetch: ctx?.fetch })
 };
 

@@ -109,3 +109,13 @@ just lint                      # backend lint (also formats)
 just lint-frontend             # Prettier and Svelte checks
 ```
 
+SonarQube analysis runs with `just sonar-scan`; it regenerates both coverage
+reports before scanning. The scanner also mounts Git metadata read-only so
+linked worktrees can be analyzed. Helm charts (`helm-chart/**`) are excluded from
+SonarQube and checked separately with `just test-chart`. Frontend test helpers
+under `frontend/src/test/` are classified as test code.
+
+Configuration synchronization shares its SQL workflow in
+`src/adapters/config_sync.rs`. The SQLite and PostgreSQL modules supply only
+database representations, bind placeholders and transaction locking; keep
+SQLite's `BEGIN IMMEDIATE` and PostgreSQL's transaction advisory lock intact.

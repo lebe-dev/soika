@@ -86,13 +86,13 @@ test-postgres name="":
 # Run the backend tests with an LCOV coverage report (read by SonarQube via
 # `sonar.rust.lcov.reportPaths`). Requires `cargo install cargo-llvm-cov`.
 # `--remap-path-prefix` makes source paths workspace-relative so they resolve
-# inside the dockerized sonar-scanner (which mounts the repo at /usr/src).
+# inside the dockerized sonar-scanner (which mounts the repo at its host path).
 test-backend-coverage:
     cargo llvm-cov --lcov --remap-path-prefix --output-path lcov.info
 
 # Run the frontend tests with a V8 coverage report. The lcov paths are emitted
 # relative to `frontend/`; rewrite them to be repo-root-relative so the
-# dockerized sonar-scanner (repo mounted at /usr/src) resolves them to the
+# dockerized sonar-scanner (repo mounted at its host path) resolves them to the
 # indexed `frontend/src/...` files.
 test-frontend-coverage:
     cd frontend && yarn vitest run --coverage
@@ -255,10 +255,14 @@ sonar-scan: test-backend-coverage test-frontend-coverage
         echo "  then add it to .env:  SONAR_TOKEN=sqp_xxx" >&2
         exit 1
     fi
+    # Worktree .git files point outside the checkout; expose their common metadata.
+    git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
     docker run --rm \
         --add-host=host.docker.internal:host-gateway \
         -e SONAR_HOST_URL="{{ sonarHostUrl }}" \
         -e SONAR_TOKEN="$SONAR_TOKEN" \
-        -v "$PWD:/usr/src" \
+        -v "$PWD:$PWD" \
+        -w "$PWD" \
+        -v "$git_common_dir:$git_common_dir:ro" \
         sonarsource/sonar-scanner-cli:latest \
         -Dsonar.projectVersion="{{ version }}"

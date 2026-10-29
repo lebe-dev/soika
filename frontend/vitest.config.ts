@@ -50,7 +50,7 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       include: ['src/**/*.{ts,svelte.ts}'],
       // `components/ui` is vendored shadcn-svelte — not our code to test.
-      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/lib/components/ui/**']
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/test/**', 'src/lib/components/ui/**']
     }
   }
 });

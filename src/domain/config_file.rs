@@ -94,8 +94,14 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
     } else if file.teams.is_none() {
         return Err(Error::validation("teams section is required"));
     }
+    validate_projects(file.projects.iter().flatten())?;
+    validate_teams(file.teams.iter().flatten())?;
+    Ok(file)
+}
+
+fn validate_projects<'a>(projects: impl Iterator<Item = &'a ProjectConfig>) -> Result<()> {
     let mut slugs = BTreeSet::new();
-    for p in file.projects.iter().flatten() {
+    for p in projects {
         if p.slug.is_empty() || super::slugify(&p.slug) != p.slug || !slugs.insert(&p.slug) {
             return Err(Error::validation("invalid or duplicate project slug"));
         }
@@ -112,33 +118,40 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
             return Err(Error::validation("invalid webhook URL"));
         }
     }
+    Ok(())
+}
+fn validate_teams<'a>(teams_config: impl Iterator<Item = &'a TeamConfig>) -> Result<()> {
     let mut teams = BTreeSet::new();
-    for t in file.teams.iter().flatten() {
+    for t in teams_config {
         if t.name.trim().is_empty() || !teams.insert(&t.name) {
             return Err(Error::validation("empty or duplicate team name"));
         }
-        if t.members.is_none() && t.sso_groups.is_none() {
-            return Err(Error::validation(
-                "team requires members or sso_groups (use members: [] for an empty team)",
-            ));
-        }
-        let mut emails = BTreeSet::new();
-        for m in t.members.iter().flatten() {
-            if !m.email.contains('@')
-                || m.email.chars().any(char::is_whitespace)
-                || !emails.insert(m.email.to_lowercase())
-            {
-                return Err(Error::validation("invalid or duplicate member email"));
-            }
-        }
-        let mut groups = BTreeSet::new();
-        for g in t.sso_groups.iter().flatten() {
-            if g.group.trim().is_empty() || !groups.insert(g.group.to_lowercase()) {
-                return Err(Error::validation("empty or duplicate SSO group"));
-            }
+        validate_team_grants(t)?;
+    }
+    Ok(())
+}
+fn validate_team_grants(t: &TeamConfig) -> Result<()> {
+    if t.members.is_none() && t.sso_groups.is_none() {
+        return Err(Error::validation(
+            "team requires members or sso_groups (use members: [] for an empty team)",
+        ));
+    }
+    let mut emails = BTreeSet::new();
+    for m in t.members.iter().flatten() {
+        if !m.email.contains('@')
+            || m.email.chars().any(char::is_whitespace)
+            || !emails.insert(m.email.to_lowercase())
+        {
+            return Err(Error::validation("invalid or duplicate member email"));
         }
     }
-    Ok(file)
+    let mut groups = BTreeSet::new();
+    for g in t.sso_groups.iter().flatten() {
+        if g.group.trim().is_empty() || !groups.insert(g.group.to_lowercase()) {
+            return Err(Error::validation("empty or duplicate SSO group"));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -299,16 +312,7 @@ pub fn validate_plan(
             let remaining: Vec<&str> = projects
                 .iter()
                 .filter_map(|(slug, current_team)| {
-                    let final_team = match &file.projects {
-                        Some(desired) => match desired.iter().find(|p| &p.slug == slug) {
-                            Some(p) => &p.team,
-                            None if settings.project_orphan_policy == OrphanPolicy::Delete => {
-                                return None;
-                            }
-                            None => current_team,
-                        },
-                        None => current_team,
-                    };
+                    let final_team = final_project_team(file, settings, slug, current_team)?;
                     if final_team == team {
                         Some(slug.as_str())
                     } else {
@@ -329,4 +333,22 @@ pub fn validate_plan(
     } else {
         Err(Error::validation(errors.join("; ")))
     }
+}
+
+fn final_project_team<'a>(
+    file: &'a ConfigFile,
+    settings: &ManagementSettings,
+    slug: &str,
+    current_team: &'a str,
+) -> Option<&'a str> {
+    let Some(desired) = &file.projects else {
+        return Some(current_team);
+    };
+    if let Some(project) = desired.iter().find(|p| p.slug == slug) {
+        return Some(&project.team);
+    }
+    if settings.project_orphan_policy == OrphanPolicy::Delete {
+        return None;
+    }
+    Some(current_team)
 }

@@ -10,9 +10,6 @@
 //   * `TeamRole`    serializes lowercase: "admin" | "contributor"
 //   * `IssueStatus` serializes lowercase: "unresolved" | "resolved" | "muted"
 
-export type Id = string;
-export type Timestamp = string;
-
 /**
  * Computed *effective* access level to a project. Not stored: it is the result
  * of resolving the caller's {@link InstanceRole} against their {@link TeamRole}
@@ -51,7 +48,7 @@ export interface ApiErrorBody {
 
 /** `UserView` from the auth handlers; also the login/register response body. */
 export interface User {
-  id: Id;
+  id: string;
   email: string;
   display_name: string;
   /** Instance-wide role (`owner | manager | member`). */
@@ -112,7 +109,7 @@ export interface ProjectOverview extends Project {
   unresolved_count: number;
   favorited: boolean;
   /** RFC 3339 timestamp of the most recent unresolved issue; null when no unresolved issues. */
-  last_issue_at: Timestamp | null;
+  last_issue_at: string | null;
 }
 
 /**
@@ -145,11 +142,11 @@ export interface LoginRequest {
 
 /** `PasskeyView` — a registered WebAuthn credential; never carries key material. */
 export interface Passkey {
-  id: Id;
+  id: string;
   name: string;
-  created_at: Timestamp;
+  created_at: string;
   /** Last successful sign-in with this key; `null` until first used. */
-  last_used_at: Timestamp | null;
+  last_used_at: string | null;
 }
 
 /** `POST /passkeys` body: the browser's attestation response plus a label. */
@@ -191,7 +188,7 @@ export interface UpdateProfileRequest {
 export interface InvitePreview {
   token: string;
   /** Target team id; the accept flow redirects to `/teams/{id}` after joining. */
-  team_id: Id;
+  team_id: string;
   /** Team name, for display on the accept page. */
   team_name: string;
   /** Team role the invite grants on accept. */
@@ -209,10 +206,10 @@ export interface AcceptInviteRequest {
 // --- Projects (src/api/projects.rs) ---
 
 export interface Project {
-  orphaned_at?: Timestamp | null;
+  orphaned_at?: string | null;
   /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
-  id: Id;
-  team_id: Id;
+  id: string;
+  team_id: string;
   name: string;
   slug: string;
   dsn_public_key: string;
@@ -223,8 +220,8 @@ export interface Project {
   muted: boolean;
   /** Per-project webhook URL for notifications; null when unset. */
   webhook_url: string | null;
-  created_at: Timestamp;
-  updated_at: Timestamp;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
@@ -238,7 +235,7 @@ export interface ProjectDetail extends Project {
 
 export interface CreateProjectRequest {
   name: string;
-  team_id: Id;
+  team_id: string;
   slug?: string;
   retention_events?: number;
   retention_days?: number;
@@ -255,13 +252,13 @@ export interface UpdateProjectRequest {
 
 /** Move a project to a different owning team (instance Owner/Manager only). */
 export interface ChangeProjectTeamRequest {
-  team_id: Id;
+  team_id: string;
 }
 
 export interface Dsn {
   dsn: string;
   public_key: string;
-  project_id: Id;
+  project_id: string;
 }
 
 export interface SdkSnippet {
@@ -282,13 +279,13 @@ export interface SdkSetup {
 
 export interface Invite {
   token: string;
-  team_id: Id;
+  team_id: string;
   role: TeamRole;
   email: string | null;
   link: string;
-  created_at: Timestamp;
-  expires_at: Timestamp;
-  accepted_at: Timestamp | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
   email_sent: boolean;
 }
 
@@ -302,9 +299,9 @@ export interface CreateInviteRequest {
 
 export interface Issue {
   /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
-  id: Id;
+  id: string;
   /** Parent project's short public id (used to build the back-link), not a UUID. */
-  project_id: Id;
+  project_id: string;
   fingerprint: string;
   title: string;
   culprit: string | null;
@@ -313,13 +310,13 @@ export interface Issue {
   release: string | null;
   status: IssueStatus;
   /** Time-based mute expiry (RFC3339), if muted until a fixed time. */
-  muted_until: Timestamp | null;
+  muted_until: string | null;
   /** Event-rate mute threshold, if muted under a rate condition. */
   mute_threshold: number | null;
   /** Rolling window (seconds) paired with `mute_threshold`. */
   mute_window_seconds: number | null;
-  first_seen: Timestamp;
-  last_seen: Timestamp;
+  first_seen: string;
+  last_seen: string;
   event_count: number;
 }
 
@@ -334,12 +331,12 @@ export interface MuteRequest {
 }
 
 export interface SoikaEvent {
-  id: Id;
+  id: string;
   event_id: string;
-  issue_id: Id;
-  project_id: Id;
+  issue_id: string;
+  project_id: string;
   payload: unknown;
-  received_at: Timestamp;
+  received_at: string;
 }
 
 /** A single `key=value` tag condition within a tag-mute rule. */
@@ -354,10 +351,10 @@ export interface TagMatch {
  * notification for that event (the event is still ingested and counted).
  */
 export interface TagMuteRule {
-  id: Id;
+  id: string;
   name: string | null;
   tags: TagMatch[];
-  created_at: Timestamp;
+  created_at: string;
 }
 
 export interface CreateTagMuteRuleRequest {
@@ -389,14 +386,14 @@ export interface IssueListQuery {
 
 export interface TeamSummary {
   role?: TeamRole | null;
-  id: Id;
+  id: string;
   name: string;
   member_count: number;
   project_count: number;
 }
 
 export interface TeamMember {
-  id: Id;
+  id: string;
   email: string;
   display_name: string;
   /** Role of this user within the team (`admin | contributor`). */
@@ -404,22 +401,22 @@ export interface TeamMember {
 }
 
 export interface TeamProject {
-  id: Id;
+  id: string;
   name: string;
   slug: string;
 }
 
 export interface Team {
   grants?: {
-    members: { email: string; role: TeamRole; user_id: Id | null; local_account: boolean }[];
+    members: { email: string; role: TeamRole; user_id: string | null; local_account: boolean }[];
     groups: { group: string; role: TeamRole }[];
-    sources: { user_id: Id; source: string }[];
+    sources: { user_id: string; source: string }[];
   } | null;
-  orphaned_at?: Timestamp | null;
-  id: Id;
+  orphaned_at?: string | null;
+  id: string;
   name: string;
-  created_at: Timestamp;
-  updated_at: Timestamp;
+  created_at: string;
+  updated_at: string;
   members: TeamMember[];
   projects: TeamProject[];
 }
@@ -433,7 +430,7 @@ export interface UpdateTeamRequest {
 }
 
 export interface AddTeamMemberRequest {
-  user_id: Id;
+  user_id: string;
   /** Team role to grant. Defaults to `contributor` when omitted. */
   role?: TeamRole;
 }
@@ -464,7 +461,7 @@ export interface ManagementStatus {
   report: {
     loaded: boolean;
     default_file: boolean;
-    synced_at: Timestamp | null;
+    synced_at: string | null;
     created: number;
     updated: number;
     unchanged: number;
@@ -478,7 +475,7 @@ export interface ManagementStatus {
     local_accounts?: {
       email: string;
       role: TeamRole;
-      user_id: Id | null;
+      user_id: string | null;
       local_account: boolean;
     }[];
     orphaned_projects?: number;
@@ -498,15 +495,15 @@ export interface AuthenticationStatus {
 export interface ServiceSettings {
   authentication: AuthenticationStatus;
   management?: ManagementStatus;
-  default_team_ids: Id[];
+  default_team_ids: string[];
   allow_signup: boolean;
   org_name: string;
-  updated_at: Timestamp;
+  updated_at: string;
   smtp: SmtpStatus;
 }
 
 export interface UpdateSettingsRequest {
-  default_team_ids?: Id[];
+  default_team_ids?: string[];
   allow_signup?: boolean;
   org_name?: string;
 }
@@ -522,7 +519,7 @@ export interface TestEmailResult {
 }
 
 export interface AdminUser {
-  id: Id;
+  id: string;
   email: string;
   display_name: string;
   /** Instance-wide role (`owner | manager | member`). */
@@ -533,7 +530,7 @@ export interface AdminUser {
   notifications_enabled: boolean;
   /** Activation status: `active` or `pending` (awaiting admin approval). */
   status: UserStatus;
-  created_at: Timestamp;
+  created_at: string;
 }
 
 /** `PATCH /admin/users/{id}` body — change a user's instance role. */
@@ -543,5 +540,5 @@ export interface SetUserRoleRequest {
 
 /** `DELETE /admin/users/{id}` response: the id of the removed account. */
 export interface DeletedUser {
-  id: Id;
+  id: string;
 }
