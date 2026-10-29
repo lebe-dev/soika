@@ -345,16 +345,7 @@ async fn run_callback(
                 "owner account uses password login, not SSO".into(),
             ));
         }
-        Some(existing) => {
-            let effective = state.config.admin_users.apply(existing.clone());
-            if crate::domain::should_convert_to_sso(&effective) {
-                let converted = state.users.convert_to_sso(existing.id).await?;
-                tracing::warn!(user_id = %existing.id, "local account converted to SSO-only");
-                converted
-            } else {
-                existing
-            }
-        }
+        Some(existing) => sso_account(state, existing).await?,
         None => {
             state
                 .users
@@ -415,6 +406,20 @@ async fn run_callback(
     set_location(&mut headers_out, target)?;
 
     Ok((StatusCode::FOUND, headers_out).into_response())
+}
+
+async fn sso_account(
+    state: &AppState,
+    existing: crate::domain::User,
+) -> Result<crate::domain::User, Error> {
+    let effective = state.config.admin_users.apply(existing.clone());
+    if crate::domain::should_convert_to_sso(&effective) {
+        let converted = state.users.convert_to_sso(existing.id).await?;
+        tracing::warn!(user_id = %existing.id, "local account converted to SSO-only");
+        Ok(converted)
+    } else {
+        Ok(existing)
+    }
 }
 
 // ---------------------------------------------------------------------------

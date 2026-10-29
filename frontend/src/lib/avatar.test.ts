@@ -40,3 +40,15 @@ describe('avatarTint', () => {
     expect(used.size).toBeGreaterThan(1);
   });
 });
+
+describe('Unicode identities', () => {
+  it('keeps complete code points in initials', () => {
+    expect(initials('😀 Team')).toBe('😀T');
+    expect(initials('😀Dev')).toBe('😀D');
+    expect(initials('Team 😀')).toBe('T😀');
+  });
+
+  it('hashes supplementary characters as one code point', () => {
+    expect(avatarTint('😀')).toBe(AVATAR_TINTS[0x1f600 % AVATAR_TINTS.length]);
+  });
+});

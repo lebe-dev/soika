@@ -49,18 +49,19 @@ export function errorMessage(err: unknown, fallback: string): string {
   if (!(err instanceof ApiError)) return fallback;
   if (currentLocale() === 'en') return err.message;
   const message = err.message.replace(/^(authentication error|validation error|forbidden): /, '');
-  const known: Record<string, string> = {
-    'invalid email or password': 'error_invalid_credentials',
-    'display name must be at least 3 characters': 'display_name_minimum',
-    'current password is incorrect': 'error_incorrect_password',
-    'new password must be at least 8 characters': 'error_password_short',
-    'new password must differ from the current one': 'error_password_unchanged',
-    'password login is disabled; use SSO': 'error_password_sso',
-    'display name must not be empty': 'display_name_cannot_be_empty',
-    'too many failed attempts; try again later': 'error_rate_limit',
-    'public sign-up is disabled': 'error_signup_disabled'
-  };
-  return known[message] ? translate(known[message], { count: 3 }) : err.message;
+  const known = new Map<string, string>([
+    ['invalid email or password', 'error_invalid_credentials'],
+    ['display name must be at least 3 characters', 'display_name_minimum'],
+    ['current password is incorrect', 'error_incorrect_password'],
+    ['new password must be at least 8 characters', 'error_password_short'],
+    ['new password must differ from the current one', 'error_password_unchanged'],
+    ['password login is disabled; use SSO', 'error_password_sso'],
+    ['display name must not be empty', 'display_name_cannot_be_empty'],
+    ['too many failed attempts; try again later', 'error_rate_limit'],
+    ['public sign-up is disabled', 'error_signup_disabled']
+  ]);
+  const key = known.get(message);
+  return key ? translate(key, { count: 3 }) : err.message;
 }
 
 interface RequestOptions {

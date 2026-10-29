@@ -1,12 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import {
-    projects as projectsApi,
-    errorMessage,
-    type Id,
-    type TagMatch,
-    type TagMuteRule
-  } from '$lib/api';
+  import { projects as projectsApi, errorMessage, type TagMatch, type TagMuteRule } from '$lib/api';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import * as Dialog from '$lib/components/ui/dialog';
@@ -24,7 +18,7 @@
     onCreated
   }: {
     open: boolean;
-    projectId: Id;
+    projectId: string;
     prefillTags?: TagMatch[];
     onCreated?: (rule: TagMuteRule) => void;
   } = $props();

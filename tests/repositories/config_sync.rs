@@ -324,3 +324,182 @@ async fn declarative_teams_suspend_default_memberships_without_erasing_preferenc
         .unwrap();
     assert_eq!(db.settings.default_team_ids().await.unwrap(), vec![team]);
 }
+
+struct ConfigFixture(std::path::PathBuf);
+impl ConfigFixture {
+    fn new(text: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("soika-config-{}.yaml", Id::new_v4()));
+        std::fs::write(&path, text).unwrap();
+        Self(path)
+    }
+    fn configure(&self, state: &mut AppState, settings: ManagementSettings) {
+        std::sync::Arc::make_mut(&mut state.config).management = ManagementSettings {
+            path: self.0.to_str().unwrap().into(),
+            ..settings
+        };
+    }
+}
+impl Drop for ConfigFixture {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn startup_expands_yaml_scalars_and_ignores_ui_sections() {
+    let file = ConfigFixture::new(
+        "version: 1\nprojects: [{slug: api, name: '${PATH}', team: Platform}]\nteams: '${SOIKA_TEST_UNSET_IGNORED_SECTION}'\n",
+    );
+    let mut state = test_db().await;
+    insert_team(&state, "Platform").await;
+    file.configure(
+        &mut state,
+        ManagementSettings {
+            project_source: ManagementSource::Yaml,
+            ..Default::default()
+        },
+    );
+    let state = soika::config_sync::synchronize(state).await.unwrap();
+    assert_eq!(
+        state
+            .projects
+            .find_by_slug("api")
+            .await
+            .unwrap()
+            .unwrap()
+            .name,
+        std::env::var("PATH").unwrap()
+    );
+    assert!(state.sync_report.loaded);
+    assert!(!state.sync_report.default_file);
+    assert_eq!(state.sync_report.created, 1);
+}
+
+#[tokio::test]
+async fn startup_rejects_invalid_or_unexpandable_yaml_and_unsupported_groups() {
+    for text in [
+        "version: [",
+        "version: 1\nprojects: [{slug: api, name: '${SOIKA_TEST_UNSET_CONFIG_VALUE}', team: Platform}]\nteams: []",
+        "version: 1\nprojects: [{slug: api, name: '${UNFINISHED', team: Platform}]\nteams: []",
+        "version: 1\nprojects: []\nteams: [{name: Platform, sso_groups: [{group: acme, role: admin}]}]",
+    ] {
+        let file = ConfigFixture::new(text);
+        let mut state = test_db().await;
+        file.configure(&mut state, settings());
+        assert!(
+            soika::config_sync::synchronize(state.clone())
+                .await
+                .is_err()
+        );
+        assert!(state.teams.list().await.unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn startup_reports_the_shipped_default_file() {
+    let file = ConfigFixture::new(soika::config_sync::DEFAULT_FILE);
+    let mut state = test_db().await;
+    file.configure(&mut state, settings());
+    let state = soika::config_sync::synchronize(state).await.unwrap();
+    assert!(state.sync_report.default_file);
+    assert_eq!(state.sync_report.projects_in_file, 0);
+    assert_eq!(state.sync_report.teams_in_file, 0);
+}
+
+#[tokio::test]
+async fn sync_updates_transfers_and_restores_teams_and_reports_grant_bindings() {
+    let db = test_db().await;
+    let local = insert_user(&db, "local@example.com").await;
+    let mut file = desired();
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    let before = db.projects.find_by_slug("api").await.unwrap().unwrap();
+    file.teams.as_mut().unwrap().push(TeamConfig {
+        name: "New".into(),
+        members: Some(vec![]),
+        sso_groups: None,
+    });
+    let project = &mut file.projects.as_mut().unwrap()[0];
+    project.name = "Renamed".into();
+    project.team = "New".into();
+    project.retention_events = Some(50);
+    project.retention_days = Some(7);
+    project.webhook_url = Some("https://example.com/hook".into());
+    file.teams.as_mut().unwrap()[1].members = Some(vec![
+        EmailGrant {
+            email: "LOCAL@example.com".into(),
+            role: TeamRole::Admin,
+        },
+        EmailGrant {
+            email: "pending@example.com".into(),
+            role: TeamRole::Contributor,
+        },
+    ]);
+    let report = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(report.updated, 1);
+    assert_eq!(report.pending_grants, 1);
+    assert_eq!(report.local_grants, 1);
+    assert_eq!(report.local_accounts[0].user_id, Some(local));
+    let after = db.projects.find_by_slug("api").await.unwrap().unwrap();
+    assert_eq!(before.id, after.id);
+    assert_eq!(before.dsn_public_key, after.dsn_public_key);
+    assert_eq!(after.name, "Renamed");
+    assert_eq!(after.retention_events, 50);
+    assert_eq!(after.retention_days, 7);
+    let new_team = db.teams.find_by_id(after.team_id).await.unwrap().unwrap();
+    assert_eq!(new_team.name, "New");
+    let grants = db.config_sync.inspect_team(after.team_id).await.unwrap();
+    assert_eq!(grants.members.len(), 2);
+    assert_eq!(grants.sources.len(), 1);
+    assert!(
+        grants
+            .members
+            .iter()
+            .any(|g| g.user_id == Some(local) && g.local_account)
+    );
+    // Removing a declaration freezes team access; restoring it reapplies grants.
+    file.teams
+        .as_mut()
+        .unwrap()
+        .retain(|t| t.name != "Platform");
+    let orphaned = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(orphaned.orphaned_teams, 1);
+    let again = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(again.orphaned, 0);
+    file.teams.as_mut().unwrap().push(TeamConfig {
+        name: "Platform".into(),
+        members: Some(vec![]),
+        sso_groups: None,
+    });
+    let restored = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(restored.restored, 1);
+    file.teams.as_mut().unwrap()[0].members.as_mut().unwrap()[0].role = TeamRole::Contributor;
+    let changed = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(changed.updated, 1);
+    assert_eq!(
+        db.teams.member_role(after.team_id, local).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+}

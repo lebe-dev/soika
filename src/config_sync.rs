@@ -21,6 +21,44 @@ fn expand(value: &str) -> Result<String> {
     out.push_str(remaining);
     Ok(out)
 }
+fn visit(value: &mut serde_yaml_ng::Value) -> Result<()> {
+    match value {
+        serde_yaml_ng::Value::String(s) => *s = expand(s)?,
+        serde_yaml_ng::Value::Sequence(seq) => {
+            for v in seq {
+                visit(v)?;
+            }
+        }
+        serde_yaml_ng::Value::Mapping(map) => {
+            for (_, v) in map {
+                visit(v)?;
+            }
+        }
+        _ => {}
+    };
+    Ok(())
+}
+fn read_configuration(settings: &ManagementSettings) -> Result<(ConfigFile, bool)> {
+    let text = std::fs::read_to_string(&settings.path).map_err(|_| {
+        Error::validation(format!(
+            "configuration file not found or unreadable at {}",
+            settings.path
+        ))
+    })?;
+    let default_file = text == DEFAULT_FILE;
+    if default_file {
+        tracing::warn!("using the default configuration file shipped with the image");
+    }
+    // Parse to generic YAML then expand only scalar strings, keeping secrets out of errors.
+    let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text)
+        .map_err(|_| Error::validation("invalid configuration YAML"))?;
+    discard_ui_sections(&mut value, settings);
+    visit(&mut value)?;
+    let expanded = serde_yaml_ng::to_string(&value)
+        .map_err(|_| Error::validation("invalid configuration YAML"))?;
+    let desired = parse(&expanded, settings)?;
+    Ok((desired, default_file))
+}
 pub async fn synchronize(mut state: AppState) -> Result<AppState> {
     let settings = &state.config.management;
     let enabled = settings.project_source == ManagementSource::Yaml
@@ -31,41 +69,7 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
     };
     let mut default_file = false;
     if enabled {
-        let text = std::fs::read_to_string(&settings.path).map_err(|_| {
-            Error::validation(format!(
-                "configuration file not found or unreadable at {}",
-                settings.path
-            ))
-        })?;
-        default_file = text == DEFAULT_FILE;
-        if default_file {
-            tracing::warn!("using the default configuration file shipped with the image");
-        }
-        // Parse to generic YAML then expand only scalar strings, keeping secrets out of errors.
-        let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text)
-            .map_err(|_| Error::validation("invalid configuration YAML"))?;
-        fn visit(value: &mut serde_yaml_ng::Value) -> Result<()> {
-            match value {
-                serde_yaml_ng::Value::String(s) => *s = expand(s)?,
-                serde_yaml_ng::Value::Sequence(seq) => {
-                    for v in seq {
-                        visit(v)?;
-                    }
-                }
-                serde_yaml_ng::Value::Mapping(map) => {
-                    for (_, v) in map {
-                        visit(v)?;
-                    }
-                }
-                _ => {}
-            };
-            Ok(())
-        }
-        discard_ui_sections(&mut value, settings);
-        visit(&mut value)?;
-        let expanded = serde_yaml_ng::to_string(&value)
-            .map_err(|_| Error::validation("invalid configuration YAML"))?;
-        desired = parse(&expanded, settings)?;
+        (desired, default_file) = read_configuration(settings)?;
         let has_groups = desired
             .teams
             .iter()

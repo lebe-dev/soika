@@ -103,25 +103,7 @@ impl UserRepository for SqliteUserRepository {
         // Apply only the provided fields; always bump updated_at.
         let now: Timestamp = chrono::Utc::now();
 
-        let mut sql = String::from("UPDATE users SET updated_at = ?");
-        if update.display_name.is_some() {
-            sql.push_str(", display_name = ?");
-        }
-        if update.password_hash.is_some() {
-            sql.push_str(", password_hash = ?");
-        }
-        if update.notifications_enabled.is_some() {
-            sql.push_str(", notifications_enabled = ?");
-        }
-        if update.locale.is_some() {
-            sql.push_str(", locale = ?");
-        } else if update.initial_locale.is_some() {
-            sql.push_str(", locale = COALESCE(locale, ?)");
-        }
-        if update.status.is_some() {
-            sql.push_str(", status = ?");
-        }
-        sql.push_str(" WHERE id = ?");
+        let sql = profile_update_sql(&update);
 
         let result = retry_write(&WritePolicy::default(), "update user profile", || async {
             let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql)).bind(ts_to_db(now));
@@ -386,4 +368,28 @@ impl SqliteUserRepository {
             updated_at: now,
         })
     }
+}
+
+fn profile_update_sql(update: &UserUpdate) -> String {
+    let mut sql = String::from("UPDATE users SET updated_at = ?");
+    if update.display_name.is_some() {
+        sql.push_str(", display_name = ?");
+    }
+    if update.password_hash.is_some() {
+        sql.push_str(", password_hash = ?");
+    }
+    if update.notifications_enabled.is_some() {
+        sql.push_str(", notifications_enabled = ?");
+    }
+    if update.locale.is_some() {
+        sql.push_str(", locale = ?");
+    } else if update.initial_locale.is_some() {
+        sql.push_str(", locale = COALESCE(locale, ?)");
+    }
+    if update.status.is_some() {
+        sql.push_str(", status = ?");
+    }
+    sql.push_str(" WHERE id = ?");
+
+    sql
 }
