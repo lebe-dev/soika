@@ -764,6 +764,13 @@ mod tests {
             .without_time()
             .with_writer(move || writer.clone())
             .finish();
+        // Without any global subscriber, a parallel test that hits the same
+        // `warn!` first caches its interest as "never", and the scoped
+        // subscriber below would then see no events.
+        static GLOBAL_SUBSCRIBER: std::sync::Once = std::sync::Once::new();
+        GLOBAL_SUBSCRIBER.call_once(|| {
+            let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+        });
         let result = notify_new_issue(&state, &project, &issue)
             .with_subscriber(subscriber)
             .await;
