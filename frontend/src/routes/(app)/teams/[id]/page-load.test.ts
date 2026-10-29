@@ -11,7 +11,7 @@ vi.mock('$lib/api', async () => {
   const actual = await vi.importActual<typeof import('$lib/api')>('$lib/api');
   return {
     ...actual,
-    teams: { get: vi.fn() },
+    teams: { list: vi.fn().mockResolvedValue([]), get: vi.fn() },
     admin: { users: vi.fn() }
   };
 });

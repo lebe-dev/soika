@@ -119,6 +119,8 @@ export interface ProjectOverview extends Project {
  * error reporting after sign-in. Sentry fields are `null` when disabled.
  */
 export interface ClientConfig {
+  project_management_source?: 'ui' | 'yaml';
+  team_management_source?: 'ui' | 'yaml';
   sentry_dsn: string | null;
   sentry_environment: string | null;
   /** Release identifier, matching the backend (`soika@<version>`). */
@@ -204,6 +206,7 @@ export interface AcceptInviteRequest {
 // --- Projects (src/api/projects.rs) ---
 
 export interface Project {
+  orphaned_at?: Timestamp | null;
   /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
   id: Id;
   team_id: Id;
@@ -403,6 +406,12 @@ export interface TeamProject {
 }
 
 export interface Team {
+  grants?: {
+    members: { email: string; role: TeamRole; user_id: Id | null; local_account: boolean }[];
+    groups: { group: string; role: TeamRole }[];
+    sources: { user_id: Id; source: string }[];
+  } | null;
+  orphaned_at?: Timestamp | null;
   id: Id;
   name: string;
   created_at: Timestamp;
@@ -440,7 +449,41 @@ export interface SmtpStatus {
   from: string | null;
 }
 
+export interface ManagementStatus {
+  settings: {
+    path: string;
+    project_source: 'ui' | 'yaml';
+    team_source: 'ui' | 'yaml';
+    project_orphan_policy: 'readonly' | 'delete';
+    team_orphan_policy: 'readonly' | 'delete';
+  };
+  report: {
+    loaded: boolean;
+    default_file: boolean;
+    synced_at: Timestamp | null;
+    created: number;
+    updated: number;
+    unchanged: number;
+    restored: number;
+    orphaned: number;
+    deleted: number;
+    projects_in_file: number;
+    teams_in_file: number;
+    pending_grants: number;
+    local_grants: number;
+    local_accounts?: {
+      email: string;
+      role: TeamRole;
+      user_id: Id | null;
+      local_account: boolean;
+    }[];
+    orphaned_projects?: number;
+    orphaned_teams?: number;
+  };
+  oauth_enabled: boolean;
+}
 export interface ServiceSettings {
+  management?: ManagementStatus;
   default_team_ids: Id[];
   allow_signup: boolean;
   org_name: string;

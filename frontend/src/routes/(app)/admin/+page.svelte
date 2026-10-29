@@ -27,6 +27,7 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import Avatar from '$lib/components/avatar.svelte';
   import TeamList from '$lib/components/team-list.svelte';
+  import ManagementCard from '$lib/components/management-card.svelte';
   import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
   import type { PageData } from './$types';
@@ -229,6 +230,7 @@
 
     <!-- Service settings -->
     <Tabs.Content value="settings" class="space-y-6">
+      {#if data.settings.management}<ManagementCard management={data.settings.management} />{/if}
       <Card.Root>
         <Card.Header>
           <Card.Title>{$t('organization')}</Card.Title>
@@ -260,7 +262,7 @@
             <Button
               variant={allowSignup ? 'default' : 'outline'}
               size="sm"
-              disabled={saving}
+              disabled={saving || data.telemetry?.team_management_source === 'yaml'}
               aria-pressed={allowSignup}
               onclick={() => (allowSignup = !allowSignup)}
             >
@@ -351,7 +353,9 @@
 
     <!-- Users overview: same roster layout as team members. -->
     <Tabs.Content value="users" class="space-y-6">
-      <DefaultTeams teams={data.teams} defaultTeamIds={data.settings.default_team_ids} />
+      {#if data.telemetry?.team_management_source !== 'yaml'}
+        <DefaultTeams teams={data.teams} defaultTeamIds={data.settings.default_team_ids} />
+      {/if}
       <Card.Root class="shadow-sm">
         <Card.Header>
           <div class="flex items-center gap-1.5">

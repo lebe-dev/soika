@@ -153,7 +153,8 @@
     }
   });
 
-  const canCreate = $derived(teams.length > 0);
+  const projectsManaged = $derived(data.telemetry?.project_management_source === 'yaml');
+  const canCreate = $derived(teams.length > 0 && !projectsManaged);
 
   async function createProject(event: SubmitEvent) {
     event.preventDefault();
@@ -209,7 +210,7 @@
         </Dialog.Description>
       </Dialog.Header>
 
-      {#if !canCreate}
+      {#if !canCreate && !projectsManaged}
         <p class="text-muted-foreground text-sm">
           {$t('you_need_a_team_before_creating_a_project')}
           <a href="/teams" class="text-foreground underline-offset-4 hover:underline">
@@ -252,15 +253,19 @@
       <Card.Header>
         <Card.Title>{$t('no_projects')}</Card.Title>
         <Card.Description>
-          {$t('create_a_project_to_get_a_dsn_and_start_sending_events_from_your_application')}
+          {projectsManaged
+            ? $t('managed_by_configuration')
+            : $t('create_a_project_to_get_a_dsn_and_start_sending_events_from_your_application')}
         </Card.Description>
       </Card.Header>
       <Card.Content>
-        <Button class="gap-2" onclick={() => (createOpen = true)} disabled={!canCreate}>
-          <FolderPlus class="size-4" />
-          {$t('new_project')}
-        </Button>
-        {#if !canCreate}
+        {#if !projectsManaged}
+          <Button class="gap-2" onclick={() => (createOpen = true)} disabled={!canCreate}>
+            <FolderPlus class="size-4" />
+            {$t('new_project')}
+          </Button>
+        {/if}
+        {#if !canCreate && !projectsManaged}
           <p class="text-muted-foreground mt-3 text-sm">
             {$t('no_teams_available_yet')}
             <a href="/teams" class="text-foreground underline-offset-4 hover:underline">

@@ -20,7 +20,8 @@
   // creating a team is restricted to instance managers (Owner | Manager).
   let { data }: { data: PageData } = $props();
 
-  const canManageInstance = $derived(authStore.canManageInstance);
+  const teamsManaged = $derived(data.telemetry?.team_management_source === 'yaml');
+  const canManageInstance = $derived(authStore.canManageInstance && !teamsManaged);
 
   let createOpen = $state(false);
   let newName = $state('');

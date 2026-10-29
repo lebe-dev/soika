@@ -33,7 +33,9 @@
   // The caller administers this project when their effective role is `admin`
   // (instance Owner/Manager, or a Team Admin of the owning team). Resolved in
   // the layout load; the API enforces the real check on every write.
+  const projectsManaged = $derived(data.telemetry?.project_management_source === 'yaml');
   const isAdmin = $derived(data.effectiveRole === 'admin');
+  const canEdit = $derived(isAdmin && !projectsManaged);
   const webhooksEnabled = $derived(data.telemetry?.webhooks_enabled ?? false);
 
   // --- General: name + retention -----------------------------------------
@@ -195,6 +197,9 @@
 </script>
 
 <PageTitle title={`${project.name} · ${$t('settings')}`} />
+{#if projectsManaged}<p class="text-muted-foreground text-sm">
+    {$t('managed_by_configuration')}
+  </p>{/if}
 
 <div class="space-y-6">
   <!-- General settings -->
@@ -207,7 +212,7 @@
       <Card.Content class="space-y-4">
         <div class="space-y-2">
           <label for="name" class="text-sm font-medium">{$t('name')}</label>
-          <Input id="name" bind:value={name} disabled={!isAdmin} required />
+          <Input id="name" bind:value={name} disabled={!canEdit} required />
         </div>
         <div class="space-y-2">
           <label for="retention" class="text-sm font-medium">{$t('retention_max_events')}</label>
@@ -216,7 +221,7 @@
             type="number"
             min={1}
             bind:value={retention}
-            disabled={!isAdmin}
+            disabled={!canEdit}
             required
           />
           <p class="text-muted-foreground text-xs">
@@ -230,14 +235,14 @@
             type="number"
             min={0}
             bind:value={retentionDays}
-            disabled={!isAdmin}
+            disabled={!canEdit}
           />
           <p class="text-muted-foreground text-xs">
             {$t('0_keep_events_regardless_of_age_otherwise_events_older_than_this_many_days_are_p')}
           </p>
         </div>
       </Card.Content>
-      {#if isAdmin}
+      {#if canEdit}
         <Card.Footer>
           <Button type="submit" disabled={savingGeneral || !generalDirty}>
             {savingGeneral ? $t('saving') : $t('save_changes')}
@@ -304,12 +309,12 @@
           type="url"
           placeholder="https://..."
           bind:value={webhookUrl}
-          disabled={!isAdmin || !webhooksEnabled}
+          disabled={!canEdit || !webhooksEnabled}
         />
         <p class="text-muted-foreground text-xs">
           {$t('post_new_issue_and_regression_notifications_as_json_to_this_url_leave_empty_to_d')}
         </p>
-        {#if isAdmin}
+        {#if canEdit}
           <Button
             type="submit"
             variant="outline"
@@ -378,7 +383,7 @@
   </Card.Root>
 
   <!-- Owning team (instance Owner/Manager only) -->
-  {#if canMoveTeam}
+  {#if canMoveTeam && !projectsManaged}
     <Card.Root>
       <Card.Header>
         <Card.Title>{$t('owning_team')}</Card.Title>
@@ -423,7 +428,7 @@
   </Card.Root>
 
   <!-- Danger zone (admin only) -->
-  {#if isAdmin}
+  {#if canEdit}
     <!-- Danger zone -->
     <Card.Root class="border-destructive/40">
       <Card.Header>

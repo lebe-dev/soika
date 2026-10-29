@@ -49,6 +49,13 @@
   const path = $derived($page.url.pathname);
 </script>
 
+{#if project.orphaned_at}<div
+    role="status"
+    class="border-destructive bg-destructive/10 mb-4 rounded border p-4"
+  >
+    {$t('orphaned_project')}
+  </div>{/if}
+
 <div class="space-y-6">
   <EntityHeader
     title={project.name}

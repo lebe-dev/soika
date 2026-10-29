@@ -48,7 +48,8 @@
 
   // Instance-level management (Owner | Manager): create/rename/delete teams and
   // manage any team.
-  const canManageInstance = $derived(authStore.canManageInstance);
+  const teamsManaged = $derived(data.telemetry?.team_management_source === 'yaml');
+  const canManageInstance = $derived(authStore.canManageInstance && !teamsManaged);
 
   // The current user's role within *this* team (if a member).
   const myRole = $derived<TeamRole | null>(
@@ -57,7 +58,7 @@
 
   // Whether the current user may manage this team's membership, roles, and
   // invites: an instance manager OR a Team Admin of this team.
-  const canManageMembers = $derived(canManageInstance || myRole === 'admin');
+  const canManageMembers = $derived((canManageInstance || myRole === 'admin') && !teamsManaged);
 
   // Count of Team Admins — used for last-Team-Admin protection: the only
   // remaining Admin cannot be demoted or removed.
@@ -258,6 +259,8 @@
 </script>
 
 <PageTitle title={team.name} />
+{#if teamsManaged}<p class="text-muted-foreground text-sm">{$t('managed_by_configuration')}</p>{/if}
+{#if team.orphaned_at}<p role="status" class="rounded border p-4">{$t('orphaned_team')}</p>{/if}
 
 <div class="space-y-6">
   <!-- Identity: team chip + soft stat pills. The pills carry the at-a-glance
@@ -416,6 +419,12 @@
               <div class="min-w-0 flex-1">
                 <p class="truncate font-medium">{member.display_name}</p>
                 <p class="text-muted-foreground truncate text-sm">{member.email}</p>
+                {#if teamsManaged && team.grants}<p class="text-muted-foreground text-xs">
+                    {team.grants.sources
+                      .filter((s) => s.user_id === member.id)
+                      .map((s) => s.source)
+                      .join(', ')}
+                  </p>{/if}
               </div>
               {#if canManageMembers}
                 <NativeSelect
@@ -492,6 +501,20 @@
   </Card.Root>
 </div>
 
+{#if teamsManaged && team.grants}
+  <Card.Root>
+    <Card.Header><Card.Title>{$t('configuration_file')}</Card.Title></Card.Header>
+    <Card.Content class="space-y-2 text-sm">
+      {#each team.grants.members.filter((grant) => !grant.user_id) as grant}
+        <p>{grant.email} · {$t(grant.role)} · {$t('not_signed_in_yet')}</p>
+      {/each}
+      {#each team.grants.groups as grant}
+        <p>{grant.group} · {$t(grant.role)}</p>
+      {/each}
+    </Card.Content>
+  </Card.Root>
+{/if}
+
 <!-- Rename dialog (admin) -->
 <Dialog.Root bind:open={renameOpen}>
   <Dialog.Content>
@@ -542,7 +565,9 @@
       >
       <Button
         variant="destructive"
-        disabled={deleting || (team.projects.length > 0 && !transferTarget)}
+        disabled={deleting ||
+          (team.projects.length > 0 &&
+            (!transferTarget || data.telemetry?.project_management_source === 'yaml'))}
         onclick={deleteTeam}
       >
         {deleting ? $t('deleting') : $t('delete_team')}
