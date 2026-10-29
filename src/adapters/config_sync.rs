@@ -547,20 +547,7 @@ where
         }
         Ok(role.is_some())
     }
-}
-#[async_trait]
-impl<DB> ConfigSync for SqlConfigSync<DB>
-where
-    DB: ConfigDatabase,
-    DB::Arguments: sqlx::IntoArguments<DB>,
-    String: DbValue<DB>,
-    Option<String>: for<'q> Encode<'q, DB>,
-    i64: DbValue<DB>,
-    for<'e> &'e mut DB::Connection: Executor<'e, Database = DB>,
-    for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
-    usize: sqlx::ColumnIndex<DB::Row>,
-{
-    async fn apply(
+    async fn apply_with_retry(
         &self,
         desired: &ConfigFile,
         settings: &ManagementSettings,
@@ -571,7 +558,7 @@ where
         })
         .await
     }
-    async fn inspect_team(&self, team: Id) -> Result<TeamGrantView> {
+    async fn team_grants(&self, team: Id) -> Result<TeamGrantView> {
         let mut result = TeamGrantView::default();
         let rows = sqlx::query::<DB>(DB::sql("SELECT g.email, g.role, u.id AS user_id, u.auth_provider FROM team_member_grants g LEFT JOIN \
             users u ON LOWER(u.email) = g.email WHERE g.team_id = ?"))
@@ -621,7 +608,7 @@ where
         }
         Ok(result)
     }
-    async fn reconcile_user(&self, user: Id, groups: &[String]) -> Result<bool> {
+    async fn reconcile_user_grants(&self, user: Id, groups: &[String]) -> Result<bool> {
         retry_write(&self.write, "reconcile SSO grants", || async {
             let mut transaction = DB::begin(&self.db).await?;
             let tx = &mut transaction;
@@ -666,3 +653,28 @@ where
         .await
     }
 }
+// Instantiate the port for each supported driver; the workflow and its SQLx
+// bounds stay in one generic implementation above.
+macro_rules! impl_config_sync {
+    ($driver:ty) => {
+        #[async_trait]
+        impl ConfigSync for SqlConfigSync<$driver> {
+            async fn apply(
+                &self,
+                desired: &ConfigFile,
+                settings: &ManagementSettings,
+                retention: i64,
+            ) -> Result<SyncReport> {
+                self.apply_with_retry(desired, settings, retention).await
+            }
+            async fn inspect_team(&self, team: Id) -> Result<TeamGrantView> {
+                self.team_grants(team).await
+            }
+            async fn reconcile_user(&self, user: Id, groups: &[String]) -> Result<bool> {
+                self.reconcile_user_grants(user, groups).await
+            }
+        }
+    };
+}
+impl_config_sync!(sqlx::Sqlite);
+impl_config_sync!(sqlx::Postgres);
