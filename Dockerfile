@@ -17,7 +17,9 @@ FROM node:24-alpine AS frontend
 WORKDIR /build/frontend
 
 # Install deps first for layer caching (only re-runs when manifests change).
+# `vendor/` holds file: dependencies that yarn resolves during install.
 COPY frontend/package.json frontend/yarn.lock ./
+COPY frontend/vendor ./vendor
 RUN yarn install --frozen-lockfile
 
 COPY frontend/ ./
