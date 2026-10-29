@@ -1,8 +1,3 @@
-// Tests for the project-settings page load: it always loads the project's
-// tag-mute rules, and additionally fetches the full team list (for the "move
-// project" control) only for instance Owner/Manager. A failed team list must
-// not break the page — it falls back to an empty `teamOptions`.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$lib/api', async () => {
@@ -20,10 +15,10 @@ import { load } from './+page';
 const muteRules = vi.mocked(projects.muteRules);
 const teamsList = vi.mocked(teams.list);
 
-function callLoad(user: unknown) {
+function callLoad(user: unknown, teams: unknown[] = [{ id: 't1' }, { id: 't2' }]) {
   return (load as (e: unknown) => Promise<unknown>)({
     params: { id: 'p1' },
-    parent: async () => ({ user }),
+    parent: async () => ({ user, config: { teams } }),
     fetch: vi.fn()
   });
 }
@@ -52,25 +47,25 @@ describe('(app)/projects/[id]/settings +page load', () => {
       teamOptions: unknown[];
     };
 
-    expect(teamsList).toHaveBeenCalledTimes(1);
+    expect(teamsList).not.toHaveBeenCalled();
     expect(data.teamOptions).toEqual([{ id: 't1' }, { id: 't2' }]);
   });
 
   it('loads the team list for an owner too', async () => {
     teamsList.mockResolvedValue([{ id: 't1' }] as never);
 
-    const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'owner' }, [{ id: 't1' }])) as {
       teamOptions: unknown[];
     };
 
-    expect(teamsList).toHaveBeenCalledTimes(1);
+    expect(teamsList).not.toHaveBeenCalled();
     expect(data.teamOptions).toEqual([{ id: 't1' }]);
   });
 
   it('falls back to empty teamOptions when the team list fetch fails', async () => {
     teamsList.mockRejectedValue(new Error('boom'));
 
-    const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'owner' }, [])) as {
       teamOptions: unknown[];
     };
 

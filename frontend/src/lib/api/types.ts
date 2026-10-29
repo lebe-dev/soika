@@ -63,7 +63,7 @@ export interface User {
 }
 
 /**
- * Bootstrap config (`GET /auth/config`), fetched once per page load.
+ * Bootstrap config (`GET /api/config`), fetched once per page load.
  *
  * The first block is public (read before rendering the login page). `user` and
  * `telemetry` are the session slice: populated for a signed-in caller, `null`
@@ -72,6 +72,8 @@ export interface User {
  * separately).
  */
 export interface AuthConfig {
+  admin?: { settings: ServiceSettings; users: AdminUser[] };
+  passkeys?: Passkey[];
   oauth_enabled: boolean;
   admin_enabled: boolean;
   oauth_provider_name: string;
@@ -105,7 +107,7 @@ export interface AuthConfig {
   teams: TeamSummary[] | null;
 }
 
-/** A project plus its unresolved-issue count (the `/auth/config` dashboard slice). */
+/** A project plus its unresolved-issue count (the `/api/config` dashboard slice). */
 export interface ProjectOverview extends Project {
   unresolved_count: number;
   favorited: boolean;
@@ -115,7 +117,7 @@ export interface ProjectOverview extends Project {
 
 /**
  * Client telemetry config, delivered as the `telemetry` field of the
- * authenticated `GET /auth/config` bootstrap (not a standalone endpoint). The
+ * authenticated `GET /api/config` bootstrap (not a standalone endpoint). The
  * Sentry DSN is only served to a logged-in session, so the SPA initializes
  * error reporting after sign-in. Sentry fields are `null` when disabled.
  */
@@ -386,6 +388,7 @@ export interface IssueListQuery {
 // --- Teams (src/api/teams.rs) ---
 
 export interface TeamSummary {
+  role?: TeamRole | null;
   id: Id;
   name: string;
   member_count: number;

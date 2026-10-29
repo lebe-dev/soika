@@ -50,7 +50,7 @@
   let emailInput = $state<HTMLInputElement | null>(null);
   let passwordInput = $state<HTMLInputElement | null>(null);
 
-  // The root layout (`+layout.ts`) already fetches GET /auth/config once and
+  // The root layout (`+layout.ts`) already fetches GET /api/config once and
   // memoizes it, exposing it as `data.config` — read that instead of issuing a
   // duplicate request from this page.
   const config = $derived($page.data.config);

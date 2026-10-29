@@ -12,25 +12,21 @@ import { translate } from '$lib/i18n';
 // members/roles but cannot add arbitrary users (the picker is hidden).
 
 import { error } from '@sveltejs/kit';
-import { admin, teams, ApiError, type AdminUser } from '$lib/api';
+import { teams, ApiError } from '$lib/api';
 import { requireUser } from '$lib/guards';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, parent, url, fetch }) => {
-  const { user } = await parent();
+  const { user, config } = await parent();
   const authed = requireUser(user, url.pathname + url.search);
 
   try {
     const team = await teams.get(params.id, { fetch });
 
-    let users: AdminUser[] = [];
-    if (authed.instance_role === 'owner' || authed.instance_role === 'manager') {
-      users = await admin.users({ fetch });
-    }
-
+    const users = config?.admin?.users ?? [];
     const targets =
       authed.instance_role === 'owner' || authed.instance_role === 'manager'
-        ? await teams.list({ fetch })
+        ? (config?.teams ?? [])
         : [];
     return { team, users, targets };
   } catch (err) {

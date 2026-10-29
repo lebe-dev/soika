@@ -29,7 +29,7 @@ const teamsList = vi.mocked(teams.list);
 
 function callLoad(user: unknown) {
   return (load as (e: unknown) => Promise<unknown>)({
-    parent: async () => ({ user }),
+    parent: async () => ({ user, config: { teams: [{ id: 't1' }, { id: 't2' }] } }),
     url: new URL('https://app.test/teams'),
     fetch: vi.fn()
   });
@@ -50,7 +50,7 @@ describe('(app)/teams +page load', () => {
 
     const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as { teams: unknown[] };
 
-    expect(teamsList).toHaveBeenCalledTimes(1);
+    expect(teamsList).not.toHaveBeenCalled();
     expect(data.teams).toEqual([{ id: 't1' }, { id: 't2' }]);
   });
 });

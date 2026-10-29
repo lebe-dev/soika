@@ -4,6 +4,7 @@
 //! a `501` stub until feature agents fill in the bodies.
 
 pub mod client_config;
+pub mod config;
 pub mod events;
 pub mod invites;
 pub mod issues;

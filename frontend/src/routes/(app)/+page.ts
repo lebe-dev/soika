@@ -2,7 +2,7 @@
 //
 // All the data the dashboard needs (projects with their unresolved-issue
 // counts, plus team summaries for the create-project picker) is embedded in the
-// `/auth/config` bootstrap fetched once by the root layout. We read it from the
+// `/api/config` bootstrap fetched once by the root layout. We read it from the
 // parent layout data instead of fanning out to `/projects`, `/teams` and one
 // `/issues` call per project.
 

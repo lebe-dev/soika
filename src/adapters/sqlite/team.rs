@@ -1,6 +1,8 @@
 //! SQLite [`TeamRepository`] adapter.
 
 use super::{Db, bool_from_db, conflict_or_db, id_from_db, id_to_db, ts_from_db, ts_to_db};
+use crate::adapters::retry::retry_write;
+use crate::config::WritePolicy;
 use crate::domain::{
     AuthProvider, Id, InstanceRole, Team, TeamMember, TeamRole, Timestamp, User, UserStatus,
 };
@@ -215,10 +217,30 @@ impl TeamRepository for SqliteTeamRepository {
     }
 
     async fn add_member(&self, team_id: Id, user_id: Id, role: TeamRole) -> Result<TeamMember> {
-        let now: Timestamp = chrono::Utc::now();
-        // Idempotent join: on a duplicate (team_id, user_id) update the role so a
-        // re-add can also re-assign the team role.
-        sqlx::query(
+        retry_write(&WritePolicy::default(), "team add_member", || async {
+            let mut tx = super::write::begin_write(&self.db).await?;
+            if role != TeamRole::Admin {
+                let last_admin: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM team_members m WHERE m.team_id = ? AND m.user_id = ? \
+                     AND m.role = 'admin' AND NOT EXISTS (SELECT 1 FROM team_members other WHERE \
+                     other.team_id = m.team_id AND other.role = 'admin' AND other.user_id <> \
+                     m.user_id)",
+                )
+                .bind(id_to_db(team_id))
+                .bind(id_to_db(user_id))
+                .fetch_one(&mut *tx)
+                .await?;
+                if last_admin > 0 {
+                    return Err(Error::Conflict(
+                        "cannot remove or demote the last admin of the team".into(),
+                    ));
+                }
+            }
+            let result = async {
+                let now: Timestamp = chrono::Utc::now();
+                // Idempotent join: on a duplicate (team_id, user_id) update the role so a
+                // re-add can also re-assign the team role.
+                sqlx::query(
             "INSERT INTO team_members (team_id, user_id, role, created_at) VALUES (?, ?, ?, ?) \
              ON CONFLICT (team_id, user_id) DO UPDATE SET role = excluded.role",
         )
@@ -226,15 +248,21 @@ impl TeamRepository for SqliteTeamRepository {
         .bind(id_to_db(user_id))
         .bind(role.as_str())
         .bind(ts_to_db(now))
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
 
-        Ok(TeamMember {
-            team_id,
-            user_id,
-            role,
-            created_at: now,
+                Ok::<TeamMember, Error>(TeamMember {
+                    team_id,
+                    user_id,
+                    role,
+                    created_at: now,
+                })
+            }
+            .await?;
+            tx.commit().await?;
+            Ok(result)
         })
+        .await
     }
 
     async fn set_member_role(
@@ -243,42 +271,93 @@ impl TeamRepository for SqliteTeamRepository {
         user_id: Id,
         role: TeamRole,
     ) -> Result<TeamMember> {
-        let result =
-            sqlx::query("UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?")
+        retry_write(&WritePolicy::default(), "team set_member_role", || async {
+            let mut tx = super::write::begin_write(&self.db).await?;
+            if role != TeamRole::Admin {
+                let last_admin: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM team_members m WHERE m.team_id = ? AND m.user_id = ? \
+                     AND m.role = 'admin' AND NOT EXISTS (SELECT 1 FROM team_members other WHERE \
+                     other.team_id = m.team_id AND other.role = 'admin' AND other.user_id <> \
+                     m.user_id)",
+                )
+                .bind(id_to_db(team_id))
+                .bind(id_to_db(user_id))
+                .fetch_one(&mut *tx)
+                .await?;
+                if last_admin > 0 {
+                    return Err(Error::Conflict(
+                        "cannot remove or demote the last admin of the team".into(),
+                    ));
+                }
+            }
+            let result = async {
+                let result = sqlx::query(
+                    "UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?",
+                )
                 .bind(role.as_str())
                 .bind(id_to_db(team_id))
                 .bind(id_to_db(user_id))
-                .execute(&self.db)
+                .execute(&mut *tx)
                 .await?;
-        if result.rows_affected() == 0 {
-            return Err(Error::not_found(format!(
-                "team membership not found: team {team_id}, user {user_id}"
-            )));
-        }
+                if result.rows_affected() == 0 {
+                    return Err(Error::not_found(format!(
+                        "team membership not found: team {team_id}, user {user_id}"
+                    )));
+                }
 
-        // Re-read so the returned value carries the authoritative created_at.
-        let row = sqlx::query_as::<_, (String,)>(
-            "SELECT created_at FROM team_members WHERE team_id = ? AND user_id = ?",
-        )
-        .bind(id_to_db(team_id))
-        .bind(id_to_db(user_id))
-        .fetch_one(&self.db)
-        .await?;
-        Ok(TeamMember {
-            team_id,
-            user_id,
-            role,
-            created_at: ts_from_db(&row.0)?,
+                // Re-read so the returned value carries the authoritative created_at.
+                let row = sqlx::query_as::<_, (String,)>(
+                    "SELECT created_at FROM team_members WHERE team_id = ? AND user_id = ?",
+                )
+                .bind(id_to_db(team_id))
+                .bind(id_to_db(user_id))
+                .fetch_one(&mut *tx)
+                .await?;
+                Ok::<TeamMember, Error>(TeamMember {
+                    team_id,
+                    user_id,
+                    role,
+                    created_at: ts_from_db(&row.0)?,
+                })
+            }
+            .await?;
+            tx.commit().await?;
+            Ok(result)
         })
+        .await
     }
 
     async fn remove_member(&self, team_id: Id, user_id: Id) -> Result<()> {
-        sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
+        retry_write(&WritePolicy::default(), "team remove_member", || async {
+            let mut tx = super::write::begin_write(&self.db).await?;
+            let last_admin: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM team_members m WHERE m.team_id = ? AND m.user_id = ? \
+                 AND m.role = 'admin' AND NOT EXISTS (SELECT 1 FROM team_members other WHERE \
+                 other.team_id = m.team_id AND other.role = 'admin' AND other.user_id <> \
+                 m.user_id)",
+            )
             .bind(id_to_db(team_id))
             .bind(id_to_db(user_id))
-            .execute(&self.db)
+            .fetch_one(&mut *tx)
             .await?;
-        Ok(())
+            if last_admin > 0 {
+                return Err(Error::Conflict(
+                    "cannot remove or demote the last admin of the team".into(),
+                ));
+            }
+            let result = async {
+                sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
+                    .bind(id_to_db(team_id))
+                    .bind(id_to_db(user_id))
+                    .execute(&mut *tx)
+                    .await?;
+                Ok::<(), Error>(())
+            }
+            .await?;
+            tx.commit().await?;
+            Ok(result)
+        })
+        .await
     }
 
     async fn member_role(&self, team_id: Id, user_id: Id) -> Result<Option<TeamRole>> {

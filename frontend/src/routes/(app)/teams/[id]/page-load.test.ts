@@ -1,9 +1,3 @@
-// Tests for the team-detail page load: it always loads the team, but only
-// fetches the instance-wide user list (manager-only endpoint) when the current
-// user is an instance manager (Owner | Manager). Plain members get an empty
-// `users` array and admin.users is never called. 404/403 on the team map to
-// SvelteKit errors.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/client';
 
@@ -40,7 +34,15 @@ const team = { id: 't1', name: 'Team' } as unknown as Awaited<ReturnType<typeof 
 function callLoad(user: unknown) {
   return (load as (e: unknown) => Promise<unknown>)({
     params: { id: 't1' },
-    parent: async () => ({ user }),
+    parent: async () => ({
+      user,
+      config: {
+        admin:
+          (user as { instance_role?: string })?.instance_role !== 'member'
+            ? { users: [{ id: 'u1' }, { id: 'u2' }] }
+            : undefined
+      }
+    }),
     url: new URL('https://app.test/teams/t1'),
     fetch: vi.fn()
   });
@@ -64,7 +66,7 @@ describe('(app)/teams/[id] +page load', () => {
     expect(adminUsers).not.toHaveBeenCalled();
   });
 
-  it('calls admin.users for a manager and returns the resolved list', async () => {
+  it('uses bootstrap users for a manager without another request', async () => {
     teamGet.mockResolvedValue(team);
     adminUsers.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }] as never);
 
@@ -73,18 +75,18 @@ describe('(app)/teams/[id] +page load', () => {
       users: unknown[];
     };
 
-    expect(adminUsers).toHaveBeenCalledTimes(1);
+    expect(adminUsers).not.toHaveBeenCalled();
     expect(data.users).toEqual([{ id: 'u1' }, { id: 'u2' }]);
   });
 
-  it('calls admin.users for an owner too', async () => {
+  it('uses bootstrap users for an owner too', async () => {
     teamGet.mockResolvedValue(team);
     adminUsers.mockResolvedValue([{ id: 'u1' }] as never);
 
     const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as { users: unknown[] };
 
-    expect(adminUsers).toHaveBeenCalledTimes(1);
-    expect(data.users).toEqual([{ id: 'u1' }]);
+    expect(adminUsers).not.toHaveBeenCalled();
+    expect(data.users).toEqual([{ id: 'u1' }, { id: 'u2' }]);
   });
 
   it('redirects to /login when there is no authenticated user', async () => {

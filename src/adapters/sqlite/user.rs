@@ -65,7 +65,7 @@ impl UserRow {
 }
 
 const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, instance_role, \
-    notifications_enabled, locale, auth_provider, status, created_at, updated_at FROM users";
+ notifications_enabled, locale, auth_provider, status, created_at, updated_at FROM users";
 
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
@@ -100,7 +100,7 @@ impl UserRepository for SqliteUserRepository {
                 if self.assign_default_teams {
                     sqlx::query(
                         "INSERT INTO team_members (team_id, user_id, role, created_at) \
-                     SELECT team_id, ?, 'contributor', ? FROM default_teams",
+                         SELECT team_id, ?, 'contributor', ? FROM default_teams",
                     )
                     .bind(id_to_db(id))
                     .bind(ts_to_db(now))
@@ -204,20 +204,53 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn set_instance_role(&self, id: Id, role: InstanceRole) -> Result<User> {
-        let now: Timestamp = chrono::Utc::now();
-        let result = sqlx::query("UPDATE users SET instance_role = ?, updated_at = ? WHERE id = ?")
-            .bind(role.as_str())
-            .bind(ts_to_db(now))
-            .bind(id_to_db(id))
-            .execute(&self.db)
-            .await?;
-        if result.rows_affected() == 0 {
-            return Err(Error::not_found(format!("user not found: {id}")));
-        }
+        retry_write(
+            &WritePolicy::default(),
+            "user set_instance_role",
+            || async {
+                let mut tx = super::write::begin_write(&self.db).await?;
+                if role != InstanceRole::Owner {
+                    let last_owner: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM users WHERE id = ? AND instance_role = 'owner' AND \
+                         (SELECT COUNT(*) FROM users WHERE instance_role = 'owner') <= 1",
+                    )
+                    .bind(id_to_db(id))
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    if last_owner > 0 {
+                        return Err(Error::Conflict(
+                            "cannot remove or demote the last owner".into(),
+                        ));
+                    }
+                }
+                let result = async {
+                    let now: Timestamp = chrono::Utc::now();
+                    let result = sqlx::query(
+                        "UPDATE users SET instance_role = ?, updated_at = ? WHERE id = ?",
+                    )
+                    .bind(role.as_str())
+                    .bind(ts_to_db(now))
+                    .bind(id_to_db(id))
+                    .execute(&mut *tx)
+                    .await?;
+                    if result.rows_affected() == 0 {
+                        return Err(Error::not_found(format!("user not found: {id}")));
+                    }
 
-        self.find_by_id(id)
-            .await?
-            .ok_or_else(|| Error::not_found(format!("user not found: {id}")))
+                    let row = sqlx::query_as::<_, UserRow>(sqlx::AssertSqlSafe(format!(
+                        "{SELECT_USER} WHERE id = ?"
+                    )))
+                    .bind(id_to_db(id))
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    row.into_domain()
+                }
+                .await?;
+                tx.commit().await?;
+                Ok(result)
+            },
+        )
+        .await
     }
 
     async fn list(&self) -> Result<Vec<User>> {
@@ -230,11 +263,45 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn delete(&self, id: Id) -> Result<()> {
-        sqlx::query("DELETE FROM users WHERE id = ?")
+        retry_write(&WritePolicy::default(), "user delete", || async {
+            let mut tx = super::write::begin_write(&self.db).await?;
+            let last_owner: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM users WHERE id = ? AND instance_role = 'owner' AND \
+                 (SELECT COUNT(*) FROM users WHERE instance_role = 'owner') <= 1",
+            )
             .bind(id_to_db(id))
-            .execute(&self.db)
+            .fetch_one(&mut *tx)
             .await?;
-        Ok(())
+            if last_owner > 0 {
+                return Err(Error::Conflict(
+                    "cannot remove or demote the last owner".into(),
+                ));
+            }
+            let last_admin: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM team_members m WHERE m.user_id = ? AND m.role = 'admin' \
+                 AND NOT EXISTS (SELECT 1 FROM team_members other WHERE other.team_id = \
+                 m.team_id AND other.role = 'admin' AND other.user_id <> m.user_id)",
+            )
+            .bind(id_to_db(id))
+            .fetch_one(&mut *tx)
+            .await?;
+            if last_admin > 0 {
+                return Err(Error::Conflict(
+                    "user is the last admin of a team; assign another admin first".into(),
+                ));
+            }
+            let result = async {
+                sqlx::query("DELETE FROM users WHERE id = ?")
+                    .bind(id_to_db(id))
+                    .execute(&mut *tx)
+                    .await?;
+                Ok::<(), Error>(())
+            }
+            .await?;
+            tx.commit().await?;
+            Ok(result)
+        })
+        .await
     }
 
     async fn convert_to_sso(&self, id: Id) -> Result<User> {

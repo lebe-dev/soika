@@ -1,9 +1,3 @@
-// Tests for the authenticated app-shell layout load: it requires a session
-// (redirect to /login otherwise) and, only for instance managers (Owner |
-// Manager), fetches the user list to surface the count of accounts awaiting
-// approval on the Admin nav item. A failure of that supplementary call must
-// not break the shell — it falls back to 0.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$lib/api', async () => {
@@ -36,11 +30,11 @@ const adminUsers = vi.mocked(api.admin.users);
 // reruns the load — and its user-list request — on every navigation.
 let trackedUrlReads = 0;
 
-function callLoad(user: unknown) {
+function callLoad(user: unknown, users: unknown[] = []) {
   const url = new URL('https://app.test/');
   let untracked = false;
   return (load as (e: unknown) => Promise<unknown>)({
-    parent: async () => ({ user }),
+    parent: async () => ({ user, config: { admin: { users } } }),
     // Like SvelteKit, a read of any URL property is what registers the
     // dependency, so the proxy counts reads made outside `untrack`.
     url: new Proxy(url, {
@@ -90,22 +84,28 @@ describe('(app) +layout load', () => {
       { id: 'u3', status: 'pending' }
     ] as never);
 
-    const data = (await callLoad({ id: 'u1', instance_role: 'manager' })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'manager' }, [
+      { status: 'pending' },
+      { status: 'active' },
+      { status: 'pending' }
+    ])) as {
       pendingApprovals: number;
     };
 
-    expect(adminUsers).toHaveBeenCalledTimes(1);
+    expect(adminUsers).not.toHaveBeenCalled();
     expect(data.pendingApprovals).toBe(2);
   });
 
   it('counts pending accounts for an owner too', async () => {
     adminUsers.mockResolvedValue([{ id: 'u1', status: 'pending' }] as never);
 
-    const data = (await callLoad({ id: 'u1', instance_role: 'owner' })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'owner' }, [
+      { status: 'pending' }
+    ])) as {
       pendingApprovals: number;
     };
 
-    expect(adminUsers).toHaveBeenCalledTimes(1);
+    expect(adminUsers).not.toHaveBeenCalled();
     expect(data.pendingApprovals).toBe(1);
   });
 

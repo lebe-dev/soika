@@ -631,3 +631,25 @@ Passkeys and SSO are mutually exclusive: disable one before upgrading if both
 were enabled. Under SSO, old local non-Owner sessions are rejected and the first
 SSO login converts matching local accounts to SSO-only, revoking their password,
 passkeys and previous sessions. Effective Owners retain the documented fallback.
+
+## SPA configuration API
+
+`GET /api/config` returns the public sign-in policy and, for a signed-in
+session, the profile, telemetry, accessible project summaries and team summaries.
+Each team summary includes the caller's team `role`; instance Owner/Manager
+privileges are carried by the profile. When enabled, `passkeys` lists only the
+caller's credential metadata. Only instance Owners and Managers receive the
+`admin` object (service settings and user directory); this key is omitted for
+other callers. Responses use `Cache-Control: private, no-store` and `Vary: Cookie`.
+The SPA reuses this configuration across navigation and reloads it after mutations
+that invalidate page data. Existing resource GET routes and `/auth/config` remain
+available for compatibility. Team details, filtered issues, event payloads and
+invite previews continue to load on demand. Hovering a navigation link does not
+prefetch page data.
+
+Membership writes and account deletion enforce last-team-Admin protection in the
+repository transaction, including re-adding an existing member and accepting an
+invite. Before deleting an account that is a team's last Admin, assign another
+Admin. Removing or demoting the last stored instance Owner is also refused within
+the write transaction. SQLite takes an immediate write lock; PostgreSQL serializes
+these infrequent administrative changes with table locks.

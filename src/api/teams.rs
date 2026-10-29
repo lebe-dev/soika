@@ -199,6 +199,8 @@ pub struct TeamView {
 /// A team list entry, with member and project counts (cheap list view).
 #[derive(Debug, Serialize)]
 pub struct TeamSummary {
+    /// Caller's role in this team; instance privileges are carried by the profile.
+    pub role: Option<TeamRole>,
     pub id: Id,
     pub name: String,
     pub member_count: usize,
@@ -320,6 +322,7 @@ pub async fn summaries(state: &AppState, user: &User) -> Result<Vec<TeamSummary>
         let members = state.teams.members(team.id).await?;
         let projects = state.projects.list_for_team(team.id).await?;
         out.push(TeamSummary {
+            role: state.teams.member_role(team.id, user.id).await?,
             id: team.id,
             name: team.name,
             member_count: members.len(),

@@ -1,6 +1,6 @@
 // Browser-side Sentry initialization.
 //
-// The DSN comes from the authenticated bootstrap `GET /auth/config` endpoint
+// The DSN comes from the authenticated bootstrap `GET /api/config` endpoint
 // (the `data.telemetry` slice), so we only ever initialize Sentry after the
 // operator has signed in (the DSN must not be exposed on a public route).
 // Initialization is idempotent — the root layout's reactive effect may call it

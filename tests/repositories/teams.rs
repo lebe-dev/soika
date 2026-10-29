@@ -38,9 +38,7 @@ async fn membership_add_remove_and_listing() {
 
     let m1 = repo.add_member(team.id, u1, TeamRole::Admin).await.unwrap();
     assert_eq!(m1.role, TeamRole::Admin);
-    repo.add_member(team.id, u2, TeamRole::Contributor)
-        .await
-        .unwrap();
+    repo.add_member(team.id, u2, TeamRole::Admin).await.unwrap();
     // Idempotent re-add does not error or duplicate; it re-assigns the role.
     let re = repo
         .add_member(team.id, u1, TeamRole::Contributor)
@@ -58,7 +56,7 @@ async fn membership_add_remove_and_listing() {
     );
     assert_eq!(
         repo.member_role(team.id, u2).await.unwrap(),
-        Some(TeamRole::Contributor)
+        Some(TeamRole::Admin)
     );
     assert_eq!(repo.member_role(team.id, Id::new_v4()).await.unwrap(), None);
 

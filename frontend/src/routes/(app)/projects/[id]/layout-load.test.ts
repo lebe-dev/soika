@@ -1,14 +1,3 @@
-// Tests for the project-area layout load: it loads the project and resolves the
-// caller's *effective* role (instance managers administer every project; others
-// derive it from their role in the owning team). It maps 404/403 on the project
-// to SvelteKit errors and rethrows non-ApiError failures untouched. A failed
-// owning-team fetch falls back to the `member` role (the API still enforces the
-// real check on writes).
-//
-// `@sveltejs/kit`'s `error()` throws (it never returns), so we assert on the
-// thrown value's `status`. `$lib/api` is mocked, but we keep the REAL `ApiError`
-// class so the load's `instanceof ApiError` branches match.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/client';
 
@@ -46,10 +35,10 @@ const project = {
   issues: [{ id: 'i1' }]
 } as unknown as Awaited<ReturnType<typeof projects.get>>;
 
-function callLoad(user: unknown) {
+function callLoad(user: unknown, role: string | null = 'contributor') {
   return (load as (e: unknown) => Promise<unknown>)({
     params: { id: 'p1' },
-    parent: async () => ({ user }),
+    parent: async () => ({ user, config: { teams: [{ id: 't1', role }] } }),
     fetch: vi.fn()
   });
 }
@@ -81,11 +70,11 @@ describe('(app)/projects/[id] +layout load', () => {
       members: [{ id: 'u1', role: 'admin' }]
     } as never);
 
-    const data = (await callLoad({ id: 'u1', instance_role: 'member' })) as {
+    const data = (await callLoad({ id: 'u1', instance_role: 'member' }, 'admin')) as {
       effectiveRole: string;
     };
 
-    expect(teamGet).toHaveBeenCalledWith('t1', expect.anything());
+    expect(teamGet).not.toHaveBeenCalled();
     expect(data.effectiveRole).toBe('admin');
   });
 

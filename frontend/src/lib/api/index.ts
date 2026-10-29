@@ -60,7 +60,7 @@ interface Ctx {
 
 export const auth = {
   /** Public auth config (SSO state, password-login + signup flags). */
-  config: (ctx?: Ctx) => http.get<AuthConfig>('/auth/config', { fetch: ctx?.fetch }),
+  config: (ctx?: Ctx) => http.get<AuthConfig>('/config', { fetch: ctx?.fetch }),
   login: (body: LoginRequest, ctx?: Ctx) =>
     http.post<User>('/auth/login', { body, fetch: ctx?.fetch }),
   logout: (ctx?: Ctx) => http.post<void>('/auth/logout', { fetch: ctx?.fetch }),

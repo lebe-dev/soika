@@ -64,7 +64,7 @@ impl UserRow {
 }
 
 const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, instance_role, \
-    notifications_enabled, locale, auth_provider, status, created_at, updated_at FROM users";
+ notifications_enabled, locale, auth_provider, status, created_at, updated_at FROM users";
 
 #[async_trait]
 impl UserRepository for PgUserRepository {
@@ -98,7 +98,7 @@ impl UserRepository for PgUserRepository {
                 if self.assign_default_teams {
                     sqlx::query(
                         "INSERT INTO team_members (team_id, user_id, role, created_at) \
-                     SELECT team_id, $1, 'contributor', $2 FROM default_teams",
+                         SELECT team_id, $1, 'contributor', $2 FROM default_teams",
                     )
                     .bind(id)
                     .bind(now)
@@ -189,20 +189,58 @@ impl UserRepository for PgUserRepository {
     }
 
     async fn set_instance_role(&self, id: Id, role: InstanceRole) -> Result<User> {
-        let result =
-            sqlx::query("UPDATE users SET instance_role = $1, updated_at = $2 WHERE id = $3")
-                .bind(role.as_str())
-                .bind(now())
-                .bind(id)
-                .execute(&self.db)
-                .await?;
-        if result.rows_affected() == 0 {
-            return Err(Error::not_found(format!("user not found: {id}")));
-        }
+        retry_write(
+            &WritePolicy::default(),
+            "user set_instance_role",
+            || async {
+                let mut tx = self.db.begin().await?;
+                sqlx::query("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE")
+                    .execute(&mut *tx)
+                    .await?;
+                sqlx::query("LOCK TABLE team_members IN SHARE ROW EXCLUSIVE MODE")
+                    .execute(&mut *tx)
+                    .await?;
+                if role != InstanceRole::Owner {
+                    let last_owner: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM users WHERE id = $1 AND instance_role = 'owner' AND \
+                         (SELECT COUNT(*) FROM users WHERE instance_role = 'owner') <= 1",
+                    )
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    if last_owner > 0 {
+                        return Err(Error::Conflict(
+                            "cannot remove or demote the last owner".into(),
+                        ));
+                    }
+                }
+                let result = async {
+                    let result = sqlx::query(
+                        "UPDATE users SET instance_role = $1, updated_at = $2 WHERE id = $3",
+                    )
+                    .bind(role.as_str())
+                    .bind(now())
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                    if result.rows_affected() == 0 {
+                        return Err(Error::not_found(format!("user not found: {id}")));
+                    }
 
-        self.find_by_id(id)
-            .await?
-            .ok_or_else(|| Error::not_found(format!("user not found: {id}")))
+                    let row = sqlx::query_as::<_, UserRow>(sqlx::AssertSqlSafe(format!(
+                        "{SELECT_USER} WHERE id = $1"
+                    )))
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    row.into_domain()
+                }
+                .await?;
+                tx.commit().await?;
+                Ok(result)
+            },
+        )
+        .await
     }
 
     async fn list(&self) -> Result<Vec<User>> {
@@ -215,11 +253,51 @@ impl UserRepository for PgUserRepository {
     }
 
     async fn delete(&self, id: Id) -> Result<()> {
-        sqlx::query("DELETE FROM users WHERE id = $1")
+        retry_write(&WritePolicy::default(), "user delete", || async {
+            let mut tx = self.db.begin().await?;
+            sqlx::query("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("LOCK TABLE team_members IN SHARE ROW EXCLUSIVE MODE")
+                .execute(&mut *tx)
+                .await?;
+            let last_owner: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM users WHERE id = $1 AND instance_role = 'owner' AND \
+                 (SELECT COUNT(*) FROM users WHERE instance_role = 'owner') <= 1",
+            )
             .bind(id)
-            .execute(&self.db)
+            .fetch_one(&mut *tx)
             .await?;
-        Ok(())
+            if last_owner > 0 {
+                return Err(Error::Conflict(
+                    "cannot remove or demote the last owner".into(),
+                ));
+            }
+            let last_admin: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM team_members m WHERE m.user_id = $1 AND m.role = \
+                 'admin' AND NOT EXISTS (SELECT 1 FROM team_members other WHERE other.team_id \
+                 = m.team_id AND other.role = 'admin' AND other.user_id <> m.user_id)",
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if last_admin > 0 {
+                return Err(Error::Conflict(
+                    "user is the last admin of a team; assign another admin first".into(),
+                ));
+            }
+            let result = async {
+                sqlx::query("DELETE FROM users WHERE id = $1")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                Ok::<(), Error>(())
+            }
+            .await?;
+            tx.commit().await?;
+            Ok(result)
+        })
+        .await
     }
 
     async fn convert_to_sso(&self, id: Id) -> Result<User> {

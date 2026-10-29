@@ -12,7 +12,7 @@
   import PageTitle from '$lib/components/page-title.svelte';
 
   // Register — only succeeds when the instance has `allow_signup` enabled
-  // and SSO is off. The bootstrap `GET /auth/config` is fetched once by the root
+  // and SSO is off. The bootstrap `GET /api/config` is fetched once by the root
   // layout (`data.config`); we read it here to disable the form when signup is
   // closed or OAuth replaces local accounts. A 403 from the register endpoint is
   // also handled as a fallback.

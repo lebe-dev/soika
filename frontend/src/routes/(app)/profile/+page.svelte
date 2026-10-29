@@ -115,14 +115,13 @@
   // --- Passkeys ---
   //
   // The section is rendered only when the instance has the feature enabled
-  // (`/auth/config`) — the routes are `404` otherwise, so there is nothing to
+  // (`/api/config`) — the routes are `404` otherwise, so there is nothing to
   // manage. Browser support is checked separately: an unsupported browser can
   // still see and delete keys registered elsewhere, it just cannot add one.
   const passkeyEnabled = $derived($page.data.config?.passkey_enabled ?? false);
   const timezone = $derived($page.data.telemetry?.timezone ?? null);
 
   let passkeyList = $state<Passkey[]>([]);
-  let loadingPasskeys = $state(false);
   let addingPasskey = $state(false);
   let passkeySupported = $state(false);
   let newPasskeyName = $state('');
@@ -132,20 +131,8 @@
   // so the feature flag is known here — no reactive re-fetch loop needed.
   onMount(() => {
     passkeySupported = passkeysSupported();
-    if (passkeyEnabled) loadPasskeys();
+    if (passkeyEnabled) passkeyList = $page.data.config?.passkeys ?? [];
   });
-
-  async function loadPasskeys() {
-    loadingPasskeys = true;
-    try {
-      passkeyList = await passkeysApi.list();
-    } catch (err) {
-      toast.error(errorMessage(err, $t('failed_to_load_passkeys')));
-      reportUnexpected(err);
-    } finally {
-      loadingPasskeys = false;
-    }
-  }
 
   async function addPasskey(event: SubmitEvent) {
     event.preventDefault();
@@ -154,6 +141,7 @@
       const created = await registerPasskey(newPasskeyName.trim());
       passkeyList = [created, ...passkeyList];
       newPasskeyName = '';
+      await invalidateAll();
       toast.success($t('passkey_added'));
     } catch (err) {
       // A dismissed system dialog is a deliberate choice, not a failure.
@@ -171,6 +159,7 @@
     try {
       await passkeysApi.remove(key.id);
       passkeyList = passkeyList.filter((k) => k.id !== key.id);
+      await invalidateAll();
       toast.success($t('passkey_removed'));
     } catch (err) {
       toast.error(errorMessage(err, $t('failed_to_remove_the_passkey')));
@@ -370,9 +359,7 @@
         </Card.Description>
       </Card.Header>
       <Card.Content class="space-y-4">
-        {#if loadingPasskeys && passkeyList.length === 0}
-          <p class="text-muted-foreground text-sm">{$t('loading')}</p>
-        {:else if passkeyList.length === 0}
+        {#if passkeyList.length === 0}
           <p class="text-muted-foreground text-sm">{$t('no_passkeys_registered_yet')}</p>
         {:else}
           <ul class="divide-border divide-y">

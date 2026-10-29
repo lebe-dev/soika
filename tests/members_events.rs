@@ -403,3 +403,141 @@ fn test_config() -> Config {
         timezone: "UTC".to_string(),
     }
 }
+#[tokio::test]
+async fn adding_existing_member_cannot_demote_last_admin() {
+    let app = Fixture::spawn().await;
+    let team = app.state.teams.create("audit".into()).await.unwrap().id;
+    let admin = app.create_user("audit-admin@example.com", false).await;
+    app.state
+        .teams
+        .add_member(team, admin, TeamRole::Admin)
+        .await
+        .unwrap();
+    let cookie = app.login("audit-admin@example.com").await;
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/teams/{team}/members"))
+        .header("cookie", cookie)
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({"user_id": admin, "role": "contributor"}).to_string(),
+        ))
+        .unwrap();
+    let response = app.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        app.state.teams.member_role(team, admin).await.unwrap(),
+        Some(TeamRole::Admin)
+    );
+}
+
+#[tokio::test]
+async fn deleting_account_cannot_remove_last_team_admin() {
+    let app = Fixture::spawn().await;
+    let team = app.state.teams.create("audit".into()).await.unwrap().id;
+    app.create_user("audit-owner@example.com", true).await;
+    let admin = app.create_user("audit-admin@example.com", false).await;
+    app.state
+        .teams
+        .add_member(team, admin, TeamRole::Admin)
+        .await
+        .unwrap();
+    let cookie = app.login("audit-owner@example.com").await;
+    let (status, _) = app
+        .delete(&format!("/api/admin/users/{admin}"), &cookie)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(app.state.teams.members(team).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn config_scopes_private_fields_and_team_roles_to_session() {
+    let app = Fixture::spawn().await;
+    app.create_user("config-owner@example.com", true).await;
+    let member = app.create_user("config-member@example.com", false).await;
+    let team = app.state.teams.create("visible".into()).await.unwrap().id;
+    let hidden = app.state.teams.create("hidden".into()).await.unwrap().id;
+    app.state
+        .teams
+        .add_member(team, member, TeamRole::Admin)
+        .await
+        .unwrap();
+    let (_, anonymous) = app.get("/api/config", "").await;
+    assert!(anonymous.get("admin").is_none());
+    assert!(anonymous.get("passkeys").is_none());
+    assert!(anonymous["user"].is_null());
+    let cookie = app.login("config-member@example.com").await;
+    let (status, config) = app.get("/api/config", &cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(config.get("admin").is_none());
+    assert_eq!(config["teams"].as_array().unwrap().len(), 1);
+    assert_eq!(config["teams"][0]["id"], team.to_string());
+    assert_eq!(config["teams"][0]["role"], "admin");
+    assert!(!config.to_string().contains(&hidden.to_string()));
+    let cookie = app.login("config-owner@example.com").await;
+    let (_, config) = app.get("/api/config", &cookie).await;
+    assert!(config["admin"]["settings"].is_object());
+    assert_eq!(config["admin"]["users"].as_array().unwrap().len(), 2);
+    assert!(!config.to_string().contains("password_hash"));
+    let request = Request::builder()
+        .uri("/api/config")
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.headers()["cache-control"], "private, no-store");
+    assert_eq!(response.headers()["vary"], "Cookie");
+}
+
+#[tokio::test]
+async fn concurrent_team_demotions_preserve_one_admin() {
+    let app = Fixture::spawn().await;
+    let team = app.state.teams.create("race".into()).await.unwrap().id;
+    let a = app.create_user("race-a@example.com", false).await;
+    let b = app.create_user("race-b@example.com", false).await;
+    app.state
+        .teams
+        .add_member(team, a, TeamRole::Admin)
+        .await
+        .unwrap();
+    app.state
+        .teams
+        .add_member(team, b, TeamRole::Admin)
+        .await
+        .unwrap();
+    let (first, second) = tokio::join!(
+        app.state
+            .teams
+            .set_member_role(team, a, TeamRole::Contributor),
+        app.state.teams.remove_member(team, b)
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let error = first.err().or_else(|| second.err()).unwrap();
+    assert!(matches!(error, soika::Error::Conflict(_)), "{error:?}");
+    assert_eq!(
+        app.state
+            .teams
+            .members(team)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|(_, role)| *role == TeamRole::Admin)
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn concurrent_owner_demotions_preserve_one_owner() {
+    let app = Fixture::spawn().await;
+    let a = app.create_user("owner-a@example.com", true).await;
+    let b = app.create_user("owner-b@example.com", true).await;
+    let (first, second) = tokio::join!(
+        app.state.users.set_instance_role(a, InstanceRole::Member),
+        app.state.users.set_instance_role(b, InstanceRole::Member)
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let error = first.err().or_else(|| second.err()).unwrap();
+    assert!(matches!(error, soika::Error::Conflict(_)), "{error:?}");
+    assert_eq!(app.state.users.count_owners().await.unwrap(), 1);
+}

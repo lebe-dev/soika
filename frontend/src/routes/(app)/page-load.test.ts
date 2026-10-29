@@ -1,5 +1,5 @@
 // Tests for the dashboard page load: it derives the project overviews and team
-// list purely from the `/auth/config` bootstrap exposed by the root layout —
+// list purely from the `/api/config` bootstrap exposed by the root layout —
 // no extra fetches. Each project row is split into `{ project, unresolvedCount,
 // favorited, lastIssueAt }`; a missing config yields empty arrays.
 

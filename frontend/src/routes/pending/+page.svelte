@@ -12,7 +12,7 @@
   // until an instance admin approves it. There is nothing for the visitor to do
   // but wait and retry sign-in later.
   //
-  // The bootstrap `GET /auth/config` is fetched once by the root layout
+  // The bootstrap `GET /api/config` is fetched once by the root layout
   // (`data.config`); we read it here for the provider name. The page is
   // informational and renders fine without it.
   const config = $derived($page.data.config);

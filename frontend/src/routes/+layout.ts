@@ -2,7 +2,7 @@
 // so we disable SSR (the server has no cookie context at prerender time) and
 // run as a single-page app with a static fallback document.
 //
-// A single bootstrap request (GET /auth/config) returns the public config plus
+// A single bootstrap request (GET /api/config) returns the public config plus
 // the session slice (current user + telemetry), so the layout, nav, and
 // per-route guards can rely on `data.user` / `data.config` without each route
 // re-fetching. The config also drives first-run routing: an uninitialized
@@ -19,7 +19,7 @@ export const prerender = false;
 
 // The bootstrap config is URL-independent, so the load reads `url` untracked:
 // SvelteKit then never reruns it on route-to-route navigation (or hover
-// preload) and only re-issues GET /auth/config on an explicit invalidation.
+// preload) and only re-issues GET /api/config on an explicit invalidation.
 // Flows that change the session (login, logout, setup, register, invite
 // accept) navigate with `invalidateAll: true` so the next run sees it.
 export const load: LayoutLoad = async ({ fetch, url, untrack }) => {
