@@ -1,4 +1,5 @@
 {
+  "sso_display_name_change_disabled": "Display name changes are disabled for SSO accounts.",
   "open_navigation": "Open navigation",
   "email_notifications_are_off": "Email notifications are off",
   "new_project": "New project",

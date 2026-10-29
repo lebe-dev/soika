@@ -382,6 +382,8 @@ pub struct Config {
     pub admin_enabled: bool,
     /// Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`, default `true`).
     pub email_login_enabled: bool,
+    /// Allow SSO accounts to edit their display name (`SSO_ALLOW_DISPLAY_NAME_CHANGE`, default `false`).
+    pub sso_allow_display_name_change: bool,
     /// Default max stored events per project (`DEFAULT_EVENTS_RETENTION`).
     pub default_events_retention: i64,
     /// Default age-based retention in days when a project's own value is 0
@@ -423,6 +425,10 @@ impl std::fmt::Debug for Config {
             .field("admin_users", &self.admin_users)
             .field("admin_enabled", &self.admin_enabled)
             .field("email_login_enabled", &self.email_login_enabled)
+            .field(
+                "sso_allow_display_name_change",
+                &self.sso_allow_display_name_change,
+            )
             .field("default_events_retention", &self.default_events_retention)
             .field("default_retention_days", &self.default_retention_days)
             .field("retention_cron", &self.retention_cron)
@@ -495,6 +501,10 @@ impl Config {
             admin_users: AdminUsers::parse(&env_or("ADMIN_USERS", ""))?,
             admin_enabled: parse_bool(&env_or("ADMIN_ENABLED", "true")),
             email_login_enabled: parse_bool(&env_or("EMAIL_LOGIN_ENABLED", "true")),
+            sso_allow_display_name_change: parse_bool(&env_or(
+                "SSO_ALLOW_DISPLAY_NAME_CHANGE",
+                "false",
+            )),
             default_events_retention,
             default_retention_days,
             retention_cron,
@@ -1068,6 +1078,36 @@ mod tests {
         }
         for (key, previous) in [
             ("EMAIL_LOGIN_ENABLED", previous_login),
+            ("SECRET_KEY", previous_secret),
+        ] {
+            unsafe {
+                match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sso_display_name_change_defaults_to_disabled_and_can_be_enabled() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_policy = std::env::var_os("SSO_ALLOW_DISPLAY_NAME_CHANGE");
+        let previous_secret = std::env::var_os("SECRET_KEY");
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var("SSO_ALLOW_DISPLAY_NAME_CHANGE");
+        }
+        assert!(!Config::from_env().unwrap().sso_allow_display_name_change);
+        for (value, enabled) in [("false", false), ("true", true), ("0", false)] {
+            unsafe { std::env::set_var("SSO_ALLOW_DISPLAY_NAME_CHANGE", value) };
+            assert_eq!(
+                Config::from_env().unwrap().sso_allow_display_name_change,
+                enabled
+            );
+        }
+        for (key, previous) in [
+            ("SSO_ALLOW_DISPLAY_NAME_CHANGE", previous_policy),
             ("SECRET_KEY", previous_secret),
         ] {
             unsafe {

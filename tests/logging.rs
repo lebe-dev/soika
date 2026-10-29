@@ -33,6 +33,7 @@ fn test_config() -> Config {
         secret_key: "test-secret-key".into(),
         allow_signup: false,
         email_login_enabled: true,
+        sso_allow_display_name_change: false,
         admin_enabled: true,
         admin_users: Default::default(),
         default_events_retention: 1000,

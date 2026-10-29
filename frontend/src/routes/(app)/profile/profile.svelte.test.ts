@@ -6,15 +6,16 @@ import { authStore } from '$lib/stores/auth.svelte';
 import { currentLocale, setLocale } from '$lib/i18n';
 import ProfileLayout from '../../../test/profile-layout.svelte';
 
-const { update, success, failure } = vi.hoisted(() => ({
+const { update, success, failure, config } = vi.hoisted(() => ({
   update: vi.fn(),
   success: vi.fn(),
-  failure: vi.fn()
+  failure: vi.fn(),
+  config: { passkey_enabled: false, sso_allow_display_name_change: false }
 }));
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$app/stores', async () => {
   const { readable } = await import('svelte/store');
-  return { page: readable({ data: { config: { passkey_enabled: false }, telemetry: null } }) };
+  return { page: readable({ data: { config, telemetry: null } }) };
 });
 vi.mock('$lib/api', () => ({
   profile: { update },
@@ -42,6 +43,7 @@ let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
+  config.sso_allow_display_name_change = false;
   authStore.set({ ...user });
   setLocale('en');
   target = document.createElement('div');
@@ -92,5 +94,26 @@ describe('profile language selector', () => {
     expect(authStore.user?.locale).toBe('en');
     expect(select.value).toBe('en');
     expect(select.disabled).toBe(false);
+  });
+});
+
+describe('SSO display name policy', () => {
+  it.each([
+    ['oidc', false, true],
+    ['oidc', true, false],
+    ['local', false, false],
+    ['local', true, false]
+  ] as const)('provider %s, allowed %s: field disabled %s', (provider, allowed, disabled) => {
+    config.sso_allow_display_name_change = allowed;
+    flushSync(() => authStore.set({ ...user, auth_provider: provider }));
+    const input = target.querySelector<HTMLInputElement>('#display-name')!;
+    expect(input.disabled).toBe(disabled);
+    if (disabled) {
+      expect(target.textContent).toContain('Display name changes are disabled for SSO accounts.');
+      input
+        .closest('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      expect(update).not.toHaveBeenCalled();
+    }
   });
 });

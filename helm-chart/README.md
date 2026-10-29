@@ -78,6 +78,11 @@ password-based invite acceptance are disabled too. Configure SSO or passkeys
 before disabling it; existing sessions and first-run setup remain available.
 See [email login configuration](../docs/OPERATIONS.md#disable-emailpassword-sign-in).
 
+SSO-пользователи по умолчанию не могут менять имя в профиле или через API.
+Чтобы разрешить изменение, установите `SSO_ALLOW_DISPLAY_NAME_CHANGE` в `"true"`
+в списке `envs` (по умолчанию `"false"`). Ограничение действует для OIDC и GitHub
+SSO, включая владельцев; локальные учётные записи могут менять имя всегда.
+
 Changing `envs` changes the ConfigMap checksum and automatically rolls out the
 Deployment on `helm upgrade`. Removing an address restores its stored role,
 including existing sessions, after the rollout. Helm replaces the entire `envs`

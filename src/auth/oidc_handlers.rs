@@ -67,6 +67,7 @@ pub struct AuthConfig {
     pub oauth_provider_name: String,
     /// Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`).
     pub password_login_enabled: bool,
+    pub sso_allow_display_name_change: bool,
     /// Whether passkey (WebAuthn) sign-in is configured on this instance
     /// (`PASSKEY_ENABLED`). Drives the "Sign in with a passkey" button and the
     /// passkey section of the profile page.
@@ -171,6 +172,7 @@ pub async fn auth_config(
         admin_enabled: state.config.admin_enabled,
         oauth_provider_name,
         password_login_enabled: state.config.email_login_enabled,
+        sso_allow_display_name_change: state.config.sso_allow_display_name_change,
         passkey_enabled,
         allow_signup: allow_signup
             && state.config.email_login_enabled

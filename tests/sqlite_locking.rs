@@ -302,6 +302,7 @@ fn test_config(database_url: &str, db: DbConfig) -> Config {
         allow_signup: false,
         admin_enabled: true,
         email_login_enabled: true,
+        sso_allow_display_name_change: false,
         admin_users: Default::default(),
         // Match the project's retention so the sweep prunes on every pass.
         default_events_retention: 5,

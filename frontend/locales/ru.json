@@ -1,4 +1,5 @@
 {
+  "sso_display_name_change_disabled": "Изменение имени для учётных записей SSO запрещено.",
   "open_navigation": "Открыть навигацию",
   "email_notifications_are_off": "Уведомления по почте отключены",
   "new_project": "Новый проект",

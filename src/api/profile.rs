@@ -74,6 +74,13 @@ pub async fn update(
     let mut password_changed = false;
 
     if let Some(name) = body.display_name {
+        if user.auth_provider == crate::domain::AuthProvider::Oidc
+            && !state.config.sso_allow_display_name_change
+        {
+            return Err(ApiError(Error::Forbidden(
+                "display name changes are disabled for SSO accounts".into(),
+            )));
+        }
         update.display_name = Some(normalize_display_name(&name)?);
     }
 

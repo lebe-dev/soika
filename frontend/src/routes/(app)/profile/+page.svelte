@@ -28,6 +28,9 @@
   // the (app) layout guard requires a session.
   const user = $derived(authStore.user);
 
+  const canChangeDisplayName = $derived(
+    user?.auth_provider !== 'oidc' || $page.data.config?.sso_allow_display_name_change === true
+  );
   // OIDC accounts have no local password, so the change-password card is hidden.
   const canChangePassword = $derived(user?.auth_provider !== 'oidc');
 
@@ -50,6 +53,7 @@
 
   async function saveProfile(event: SubmitEvent) {
     event.preventDefault();
+    if (!canChangeDisplayName) return;
     const trimmed = displayName.trim();
     const error = displayNameError(trimmed);
     if (error) {
@@ -260,6 +264,7 @@
             type="text"
             autocomplete="name"
             bind:value={displayName}
+            disabled={!canChangeDisplayName}
             required
             minlength={MIN_DISPLAY_NAME_LENGTH}
             aria-invalid={nameError !== null}
@@ -269,12 +274,23 @@
             id="display-name-hint"
             class={cn('text-xs', nameError ? 'text-destructive' : 'text-muted-foreground')}
           >
-            {nameError ?? $t('minimum_characters', { values: { count: MIN_DISPLAY_NAME_LENGTH } })}
+            {#if canChangeDisplayName}
+              {nameError ??
+                $t('minimum_characters', { values: { count: MIN_DISPLAY_NAME_LENGTH } })}
+            {:else}
+              {$t('sso_display_name_change_disabled')}
+            {/if}
           </p>
         </div>
       </Card.Content>
       <Card.Footer class="justify-end">
-        <Button type="submit" disabled={savingProfile || !displayNameDirty || nameError !== null}>
+        <Button
+          type="submit"
+          disabled={!canChangeDisplayName ||
+            savingProfile ||
+            !displayNameDirty ||
+            nameError !== null}
+        >
           {savingProfile ? $t('saving') : $t('save_changes')}
         </Button>
       </Card.Footer>

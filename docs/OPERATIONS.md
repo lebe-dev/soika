@@ -223,6 +223,12 @@ and **Client Secret**. Configure it with:
 
 ### 2. Configure soika
 
+SSO accounts cannot edit their display name by default, including through the
+profile API (`403 Forbidden`). Set `SSO_ALLOW_DISPLAY_NAME_CHANGE=true` and restart
+to allow it. This applies to both OIDC and GitHub SSO accounts, regardless of
+instance role, and also applies when SSO sign-in is disabled. Local accounts can
+still edit their name; other profile preferences remain editable for everyone.
+
 Set the following environment variables (see `.env.example` for the full list and
 defaults):
 

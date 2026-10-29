@@ -77,6 +77,7 @@ export interface AuthConfig {
   oauth_provider_name: string;
   /** Whether email/password sign-in is enabled (`EMAIL_LOGIN_ENABLED`). */
   password_login_enabled: boolean;
+  sso_allow_display_name_change: boolean;
   /**
    * Whether passkey (WebAuthn) sign-in is configured on this instance
    * (`PASSKEY_ENABLED`). Drives the passkey button on the login page and the

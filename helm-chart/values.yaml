@@ -41,6 +41,9 @@ envs:
   # Disable email/password sign-in for all users, including Owners.
   - name: EMAIL_LOGIN_ENABLED
     value: "true"
+  # Allow SSO users to edit their display name in the profile.
+  - name: SSO_ALLOW_DISPLAY_NAME_CHANGE
+    value: "false"
   - name: SMTP_ENABLED
     value: "false"
   - name: WEBHOOKS_ENABLED
