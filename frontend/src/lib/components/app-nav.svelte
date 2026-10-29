@@ -147,9 +147,8 @@
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button variant="ghost" class="gap-2 px-1.5 sm:pr-2.5" aria-label={$t('account_menu')}>
+          <Button variant="ghost" size="icon" aria-label={$t('account_menu')}>
             <Avatar name={user.display_name} id={user.id} size="sm" />
-            <span class="hidden max-w-[12ch] truncate sm:inline">{user.display_name}</span>
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" class="w-48">
