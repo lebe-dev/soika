@@ -260,11 +260,12 @@ production.
 When SSO is enabled, OAuth replaces the password login for all regular users:
 
 - The login screen shows a **"Sign in with {OAUTH_PROVIDER_NAME}"** button
-  alongside the email/password form for Owners. Self-registration is disabled.
+  with the Owner password form collapsed under **Administrator sign-in**.
+  Self-registration is disabled.
 - A user is matched by the verified email from the provider; if no account
   exists, a new user is auto-provisioned with the `Member` instance role and no
-  team membership — access is granted later by adding the user to a team (which
-  grants access to that team's projects), either directly or via a team invite.
+  team membership unless default teams or declarative grants assign it.
+  YAML-managed team grants apply immediately and can approve the account.
 - Use `OAUTH_ALLOWED_EMAIL_DOMAINS` to restrict which email domains may
   auto-provision, since auto-creation trusts the provider's email claim.
 - Stored instance Owners and local accounts listed in `ADMIN_USERS` keep
@@ -276,12 +277,13 @@ When SSO is enabled, OAuth replaces the password login for all regular users:
 Set `EMAIL_LOGIN_ENABLED=false` and restart soika to hide the email/password form
 and reject `POST /auth/login` with `403` for every account, including Owners and
 accounts listed in `ADMIN_USERS`. The public `/auth/config` response exposes this
-setting as `password_login_enabled`. SSO and passkeys remain available.
+setting as `password_login_enabled`. The configured SSO or passkey sign-in
+method remains available; they cannot be enabled together.
 
 This also disables public password registration and anonymous password-based
 invite acceptance, preventing alternative password sign-in paths. Invitees must
-sign in via SSO or a passkey first, then accept the invite. Existing sessions and
-first-run administrator setup are unaffected. Configure SSO or passkeys before
+sign in via SSO or a passkey first, then accept the invite. Existing sessions are unaffected by the email-login flag alone; enabling SSO
+also invalidates local non-Owner sessions. First-run setup is unaffected. Configure SSO or passkeys before
 disabling email login; if no other sign-in method is available, restore
 `EMAIL_LOGIN_ENABLED=true` and restart. The default is `true`.
 
@@ -334,9 +336,9 @@ Passkey sign-in shares the brute-force guard with password login (keyed per
 client IP) and honours the same account gates: a `pending` account still has to
 be approved by an instance admin before it receives a session.
 
-Passkeys coexist with everything else: password login and SSO keep working, and
-an account with no registered key is unaffected. Deleting a user deletes their
-credentials with them.
+Passkeys coexist with password login and require SSO to be disabled. Enabling
+`PASSKEY_ENABLED` together with `OAUTH_ENABLED` is a startup error. An account
+with no registered key is unaffected. Deleting a user deletes its credentials.
 
 ## Interface language
 
@@ -491,3 +493,123 @@ Passkeys require SSO to be disabled. Before upgrading an installation with both
 `PASSKEY_ENABLED=true` and `OAUTH_ENABLED=true`, disable one: this combination
 now fails startup. Stored passkeys remain available when SSO is later disabled,
 except credentials removed during conversion of a local account to SSO-only.
+
+## Configuration as code (GitOps)
+
+Version 0.9.0 can manage projects and teams from a YAML file. Each type has one
+source of truth, selected independently: `PROJECT_MANAGEMENT_SOURCE=ui|yaml` and
+`TEAM_MANAGEMENT_SOURCE=ui|yaml`. Both default to `ui`: upgrading keeps existing
+management behavior and does not read a file. Restart the service to apply a
+changed file; there is no hot reload. The settings page shows sources, policies,
+file status and the last synchronization report.
+
+| Projects | Teams | Management |
+|---|---|---|
+| ui | ui | Existing UI management; no file needed |
+| yaml | ui | Projects reference teams created in the UI; invites work |
+| ui | yaml | Create projects in the UI within file-defined teams |
+| yaml | yaml | Projects, teams and memberships come from the file |
+
+`CONFIG_PATH` defaults to `/etc/soika/config.yaml`. A readable, valid file is
+required whenever either source is `yaml`. `version: 1` and the section for each
+YAML-managed type are mandatory; empty sections must be explicit. Unknown fields,
+duplicate keys/entities, invalid slugs, retention values and webhook URLs fail
+startup. Sections for UI-managed types are ignored. For local development use
+`CONFIG_PATH=deploy/config.yaml`.
+
+```yaml
+version: 1
+teams:
+  - name: Platform
+    members:
+      - email: alice@example.com
+        role: admin
+    sso_groups:
+      - group: acme/platform
+        role: contributor
+projects:
+  - slug: backend-api
+    name: Backend API
+    team: Platform
+    retention_events: 5000
+    retention_days: 30
+    webhook_url: ${BACKEND_WEBHOOK_URL}
+```
+
+Members have role `admin` or `contributor`. A team must specify `members` or
+`sso_groups`; use `members: []` for an intentionally empty team. File projects
+require `slug`, `name` and `team`. Missing retention settings use
+`DEFAULT_EVENTS_RETENTION` and zero days; a missing webhook disables that channel.
+`${VAR}` in string values reads the process environment; unset variables fail
+startup. Environment values are expanded as strings after YAML parsing, so a
+secret cannot inject YAML fields. Do not put DSNs or credentials in the file.
+
+Synchronization runs after migrations and before serving requests, in one
+transaction with a database lock. An error rolls back changes. A project with
+an existing slug keeps its ID, DSN, events, issues, favorites and mute rules;
+configured fields are replaced. Repeated synchronization leaves unchanged
+project timestamps intact. DSNs are generated only when creating projects.
+
+### Removing entities and changing modes
+
+`PROJECT_ORPHAN_POLICY=readonly|delete` and `TEAM_ORPHAN_POLICY=readonly|delete`
+default to `readonly` and apply to **every** database entity absent from the
+corresponding YAML section, including entities previously created in the UI.
+
+For projects, `readonly` preserves data and retention but rejects both Sentry
+store and envelope ingestion with HTTP 403 (`project is read-only`). Restoring
+the same slug in the file restores ingestion with the same DSN. For teams,
+`readonly` preserves membership and access. `delete` permanently deletes missing
+projects and their data; missing teams can be deleted only after all their
+projects have been moved or deleted. A team never cascades project deletion.
+Switching either source back to `ui` clears that type's orphan state on startup.
+
+Before enabling YAML management, list all entities you want to preserve, start
+with `readonly`, inspect the settings page, and only then consider `delete`.
+Changing a project's slug creates a different project with a **new DSN**; the
+old project follows the orphan policy. Changing a team name similarly creates a
+new team. There is no rename mapping or mass-deletion confirmation.
+
+The Docker image contains a root-owned, read-only file with empty `projects`
+and `teams` sections. Compose and Helm mount a file over it. If YAML management
+is enabled without supplying a populated file, every existing entity follows
+its orphan policy. **With `delete`, this loses data permanently.** The service
+warns when using the exact default file, and the settings page marks it.
+
+### Team grants and SSO
+
+With YAML-managed teams, registration, invites and default-team management are
+disabled. `/setup` still creates the initial Owner. File entries do not create
+users: verified SSO login creates their accounts, applies memberships and
+automatically approves users with matching grants even when
+`OAUTH_REQUIRE_APPROVAL=true`. Email grants also apply to local accounts already
+present before switching modes. Review local-account grant counts in settings;
+team pages show pending email grants and membership sources.
+
+SSO group grants require `OAUTH_ENABLED=true` and `OAUTH_PROVIDER=oidc`; they are
+unavailable for GitHub OAuth. `OAUTH_GROUPS_CLAIM` defaults to `groups`. Soika
+reads the claim from the verified ID token, otherwise from the provider's
+userinfo endpoint, checking that its subject matches. Configure the claim name
+for your GitLab version (for example `groups_direct` for an ID-token claim).
+Paths match exactly, case-insensitively: parent groups and subgroups never imply
+each other. Email and group grants combine using the highest role.
+
+Each SSO login saves a group snapshot and recomputes membership; startup uses
+these snapshots when rules change. Removal from a GitLab group takes effect on
+the person's **next SSO login**, not immediately for an existing session. Group
+snapshots are personal data and are removed with their account. Logs record
+user IDs and group counts, never group paths or email addresses. Without OAuth,
+a warning explains that new users cannot join YAML-managed teams.
+
+Mute settings (project mute, tag rules and issue mute), issues, favorites and DSN
+regeneration remain available in the UI with existing authorization. File-owned
+management fields are read-only and their API mutations return HTTP 403.
+
+### Upgrading to 0.9.0
+
+Both management sources default to `ui`, so no configuration file is needed.
+Team deletion now requires an explicit transfer target when projects remain.
+Passkeys and SSO are mutually exclusive: disable one before upgrading if both
+were enabled. Under SSO, old local non-Owner sessions are rejected and the first
+SSO login converts matching local accounts to SSO-only, revoking their password,
+passkeys and previous sessions. Effective Owners retain the documented fallback.

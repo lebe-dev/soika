@@ -1,0 +1,51 @@
+suite: configuration file
+templates:
+  - config-file-configmap.yaml
+  - deployment.yaml
+  - configmap.yaml
+  - secret.yaml
+tests:
+  - it: supplies the default configuration file
+    template: config-file-configmap.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'projects: \[\]'
+  - it: mounts a readonly directory
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /etc/soika
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].readOnly
+          value: true
+      - exists:
+          path: spec.template.metadata.annotations["checksum/config-file"]
+  - it: uses an existing configmap
+    template: deployment.yaml
+    set:
+      configFile.existingConfigMap: external-config
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: external-config
+  - it: skips creating an externally supplied configmap
+    template: config-file-configmap.yaml
+    set:
+      configFile.existingConfigMap: external-config
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: changes checksum when configuration content changes
+    template: deployment.yaml
+    set:
+      configFile.content.teams:
+        - name: Platform
+          members: []
+    asserts:
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/config-file"]
+          value: 71cd42bb7870679becceb4ceda9f74f4545d03e8b701de23fd2c154f7834398a

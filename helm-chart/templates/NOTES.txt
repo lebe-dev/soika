@@ -12,3 +12,9 @@ Soika is available through service {{ include "soika.fullname" . }} on port {{ .
 {{- end }}
 
 Set BASE_URL to the public URL, and ensure SECRET_KEY is non-empty before starting Soika.
+
+Configuration management: PROJECT_MANAGEMENT_SOURCE and TEAM_MANAGEMENT_SOURCE default to ui.
+Set either to yaml to reconcile /etc/soika/config.yaml at startup. Missing projects
+use PROJECT_ORPHAN_POLICY (readonly by default; delete permanently removes data).
+Supply configFile.content or configFile.existingConfigMap (key config.yaml).
+Secrets referenced by ${VAR} must be supplied through secrets.envs.

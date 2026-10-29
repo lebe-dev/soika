@@ -18,6 +18,7 @@ spec:
   template:
     metadata:
       annotations:
+        checksum/config-file: {{ toYaml .Values.configFile | sha256sum }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- if .Values.secrets.create }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
@@ -72,11 +73,17 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            - name: config-file
+              mountPath: /etc/soika
+              readOnly: true
             - name: data
               mountPath: /app/data
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: config-file
+          configMap:
+            name: {{ .Values.configFile.existingConfigMap | default (printf "%s-config-file" (include "soika.fullname" .)) }}
         - name: data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:

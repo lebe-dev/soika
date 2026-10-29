@@ -14,6 +14,18 @@ fullnameOverride: ""
 # Non-sensitive application settings. See .env.example for all available keys.
 # Set BASE_URL to the public URL used by users and Sentry SDKs.
 envs:
+  - name: PROJECT_MANAGEMENT_SOURCE
+    value: "ui"
+  - name: TEAM_MANAGEMENT_SOURCE
+    value: "ui"
+  - name: CONFIG_PATH
+    value: "/etc/soika/config.yaml"
+  # delete permanently removes missing projects and their events.
+  - name: PROJECT_ORPHAN_POLICY
+    value: "readonly"
+  # delete fails if a missing team still owns projects.
+  - name: TEAM_ORPHAN_POLICY
+    value: "readonly"
   - name: BIND_ADDR
     value: "0.0.0.0:8080"
   - name: DATABASE_URL
@@ -129,3 +141,11 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 extraObjects: []
+
+# Mount a configuration file; enable yaml sources above to use it.
+configFile:
+  existingConfigMap: ""
+  content:
+    version: 1
+    projects: []
+    teams: []

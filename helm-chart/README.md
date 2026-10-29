@@ -123,3 +123,54 @@ is an ephemeral `emptyDir` and does not hold application data on PostgreSQL.
 The PostgreSQL database must exist before Soika starts; Soika creates its tables.
 Switching from SQLite to PostgreSQL does not copy existing data. Ensure the
 selected Soika image includes PostgreSQL support.
+
+## Управление через конфигурацию (0.9.0)
+
+`PROJECT_MANAGEMENT_SOURCE` и `TEAM_MANAGEMENT_SOURCE` в `envs[]` независимо
+выбирают `ui` (по умолчанию) или `yaml`. Все четыре комбинации поддерживаются.
+При `yaml` соответствующая секция файла обязательна. Пустые секции задаются явно.
+Чарт монтирует `config.yaml` в `/etc/soika` как read-only volume без `subPath`;
+изменение `configFile.content` меняет checksum и перезапускает pod.
+
+```yaml
+configFile:
+  existingConfigMap: ""
+  content:
+    version: 1
+    teams:
+      - name: Platform
+        members:
+          - email: alice@example.com
+            role: admin
+        sso_groups:
+          - group: acme/platform
+            role: contributor
+    projects:
+      - slug: backend-api
+        name: Backend API
+        team: Platform
+        retention_events: 5000
+        retention_days: 30
+        webhook_url: ${BACKEND_WEBHOOK_URL}
+```
+
+Для готового ConfigMap задайте `configFile.existingConfigMap`; он должен содержать
+ключ `config.yaml`. Чарт не создаёт свой ConfigMap в этом режиме. При изменении
+внешнего ConfigMap самостоятельно выполните rollout: checksum внешнего содержимого
+чарту неизвестен. Секреты `${VAR}` передавайте через `secrets.envs[]` или existing
+Secret. Не записывайте DSN в файл: он создаётся один раз и хранится в БД.
+
+Состав команд по группам требует OIDC/SSO (GitLab); `OAUTH_GROUPS_CLAIM` выбирает
+claim, по умолчанию `groups`. Без OAuth новые пользователи не смогут войти в
+команды из файла; регистрация и приглашения отключены. Сопоставление групп точное,
+без автоматического включения подгрупп; исключение из группы применяется при
+следующем SSO-входе. Passkeys при включённом SSO должны быть выключены.
+
+`PROJECT_ORPHAN_POLICY` и `TEAM_ORPHAN_POLICY` по умолчанию `readonly`: события в
+исключённые проекты не принимаются, данные сохраняются. `delete` необратимо
+удаляет отсутствующие сущности; команду с проектами удалить нельзя. Сначала
+перечислите сохраняемые сущности, включите `yaml` с `readonly`, проверьте админку.
+Пустой файл по умолчанию исключает **все** существующие сущности; предохранителя
+от массового удаления нет. Смена slug означает новый проект и новый DSN.
+
+Подробности: [Configuration as code](../docs/OPERATIONS.md#configuration-as-code-gitops).
