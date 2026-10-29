@@ -41,6 +41,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
+    "deepmerge": "file:vendor/deepmerge",
     "mode-watcher": "^1.1.0",
     "svelte-intl-precompile": "^0.12.3",
     "svelte-sonner": "^1.1.0",
