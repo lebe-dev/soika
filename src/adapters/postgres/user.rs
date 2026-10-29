@@ -212,6 +212,51 @@ impl UserRepository for PgUserRepository {
         Ok(())
     }
 
+    async fn convert_to_sso(&self, id: Id) -> Result<User> {
+        retry_write(
+            &WritePolicy::default(),
+            "convert account to SSO",
+            || async {
+                let mut tx = self.db.begin().await?;
+                // Lock the account before replacing its authentication material.
+                let role: Option<String> =
+                    sqlx::query_scalar("SELECT instance_role FROM users WHERE id = $1 FOR UPDATE")
+                        .bind(id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                match role.as_deref() {
+                    None => return Err(Error::not_found("user not found")),
+                    Some("owner") => {
+                        return Err(Error::Forbidden(
+                            "owner account cannot be converted to SSO-only".into(),
+                        ));
+                    }
+                    _ => {}
+                }
+                sqlx::query(
+                    "UPDATE users SET auth_provider = 'oidc', password_hash = '' WHERE id = $1",
+                )
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                sqlx::query("DELETE FROM passkeys WHERE user_id = $1")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                tx.commit().await?;
+                Ok(())
+            },
+        )
+        .await?;
+        self.find_by_id(id)
+            .await?
+            .ok_or_else(|| Error::not_found("user not found"))
+    }
+
     async fn count(&self) -> Result<i64> {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
             .fetch_one(&self.db)

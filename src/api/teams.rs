@@ -164,9 +164,13 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<User, Error> {
         .find_by_id(session.user_id)
         .await?
         .ok_or_else(|| Error::Auth("session user no longer exists".into()))
-        .map(|user| {
+        .and_then(|user| {
             tracing::Span::current().record("user_id", tracing::field::display(user.id));
-            state.config.admin_users.apply(user)
+            let user = state.config.admin_users.apply(user);
+            if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
+                return Err(Error::Auth("sign in with SSO".into()));
+            }
+            Ok(user)
         })
 }
 

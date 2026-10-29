@@ -61,7 +61,11 @@ impl FromRequestParts<AppState> for CurrentUser {
             .ok_or_else(auth_rejection)?;
 
         tracing::Span::current().record("user_id", tracing::field::display(user.id));
-        Ok(CurrentUser(state.config.admin_users.apply(user)))
+        let user = state.config.admin_users.apply(user);
+        if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
+            return Err(auth_rejection());
+        }
+        Ok(CurrentUser(user))
     }
 }
 

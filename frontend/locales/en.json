@@ -468,5 +468,6 @@
   "default_teams_empty": "Create a team first to configure default membership.",
   "team_transfer_required": "This team owns {count} projects. Select a team to move them to before deletion.",
   "move_projects_to": "Move projects to",
-  "select_team": "Select a team"
+  "select_team": "Select a team",
+  "administrator_sign_in": "Administrator sign-in"
 }

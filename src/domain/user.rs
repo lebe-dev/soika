@@ -210,6 +210,16 @@ pub struct Session {
     pub expires_at: Timestamp,
 }
 
+/// SSO must replace local credentials except for effective instance Owners.
+pub fn should_convert_to_sso(user: &User) -> bool {
+    user.auth_provider == AuthProvider::Local && !user.instance_role.is_owner()
+}
+
+/// Whether a stored account may use an existing session with SSO enabled.
+pub fn session_allowed_with_sso(user: &User) -> bool {
+    user.auth_provider == AuthProvider::Oidc || user.instance_role.is_owner()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

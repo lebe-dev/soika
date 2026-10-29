@@ -313,3 +313,41 @@ async fn duplicate_account_does_not_gain_new_default_memberships() {
     assert_eq!(db.teams.member_role(team, existing.id).await.unwrap(), None);
     assert_eq!(db.users.count().await.unwrap(), 1);
 }
+
+#[tokio::test]
+async fn conversion_to_sso_revokes_local_authentication() {
+    let db = test_db().await;
+    let user = db
+        .users
+        .create(sample("convert@example.com"))
+        .await
+        .unwrap();
+    db.sessions
+        .create(
+            "old-session".into(),
+            user.id,
+            chrono::Utc::now() + chrono::Duration::hours(1),
+        )
+        .await
+        .unwrap();
+    db.passkeys
+        .create(NewPasskey {
+            user_id: user.id,
+            credential_id: "old-key".into(),
+            name: "old".into(),
+            credential: "{}".into(),
+        })
+        .await
+        .unwrap();
+    let converted = db.users.convert_to_sso(user.id).await.unwrap();
+    assert!(db.passkeys.list_for_user(user.id).await.unwrap().is_empty());
+    assert_eq!(converted.auth_provider, AuthProvider::Oidc);
+    assert!(converted.password_hash.is_empty());
+    assert!(db.sessions.find("old-session").await.unwrap().is_none());
+    let owner = db
+        .users
+        .set_instance_role(user.id, InstanceRole::Owner)
+        .await
+        .unwrap();
+    assert!(db.users.convert_to_sso(owner.id).await.is_err());
+}

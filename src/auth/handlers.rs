@@ -593,6 +593,18 @@ async fn resolve_or_register_invitee(
 
     let user = match state.users.find_by_email(&email).await? {
         Some(existing) => {
+            if state.oidc.is_some()
+                && !state
+                    .config
+                    .admin_users
+                    .apply(existing.clone())
+                    .instance_role
+                    .is_owner()
+            {
+                return Err(Error::Forbidden(
+                    "sign in with SSO first, then accept this invite".into(),
+                ));
+            }
             // Existing account → must authenticate before joining.
             if !verify_password(password, &existing.password_hash)? {
                 return Err(Error::Auth("invalid email or password".into()));

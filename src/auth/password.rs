@@ -36,6 +36,9 @@ pub fn hash_password(password: &str) -> Result<String> {
 /// Returns `Ok(false)` for a well-formed hash that simply does not match, and
 /// an error only when the stored hash itself is malformed.
 pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
+    if hash.is_empty() {
+        return Ok(false);
+    }
     let parsed = PasswordHash::new(hash)
         .map_err(|e| Error::internal(format!("stored password hash is malformed: {e}")))?;
 

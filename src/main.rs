@@ -35,6 +35,11 @@ async fn main() -> Result<()> {
         );
     }
 
+    if config.oidc.is_some() && !config.email_login_enabled && config.admin_users.is_empty() {
+        tracing::warn!(
+            "no instance owner can sign in: password login is disabled and ADMIN_USERS is empty"
+        );
+    }
     let backend = DbBackend::from_url(&config.database_url).context("reading DATABASE_URL")?;
     tracing::info!(backend = backend.name(), "using database backend");
 

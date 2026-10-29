@@ -47,6 +47,9 @@ pub trait UserRepository: Send + Sync {
     async fn list(&self) -> Result<Vec<User>>;
     async fn delete(&self, id: Id) -> Result<()>;
     /// Count of all users (used to gate first-run / bootstrap).
+    /// Atomically clear local credentials, passkeys and sessions on SSO conversion.
+    async fn convert_to_sso(&self, id: Id) -> Result<User>;
+
     async fn count(&self) -> Result<i64>;
     /// Count of instance owners (`instance_role = 'owner'`). Drives first-run
     /// detection (the service is considered initialized once at least one Owner

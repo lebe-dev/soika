@@ -38,6 +38,10 @@ impl AdminUsers {
         self.0.contains(&email.trim().to_ascii_lowercase())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Apply the environment grant without writing it to the user's stored role.
     pub fn effective_role(&self, email: &str, stored: InstanceRole) -> InstanceRole {
         if self.contains(email) {
@@ -468,6 +472,11 @@ impl Config {
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
+        if oidc.is_some() && passkey.is_some() {
+            return Err(Error::validation(
+                "passkeys cannot be enabled together with SSO; set PASSKEY_ENABLED=false or OAUTH_ENABLED=false",
+            ));
+        }
         let sentry = Self::sentry_from_env();
         let lockout = Self::lockout_from_env()?;
         let timezone = env_or("TIMEZONE", "UTC");
@@ -1032,6 +1041,45 @@ mod tests {
         ] {
             unsafe {
                 match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn passkeys_and_sso_are_mutually_exclusive() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let keys = [
+            "SECRET_KEY",
+            "PASSKEY_ENABLED",
+            "OAUTH_ENABLED",
+            "OAUTH_ISSUER_URL",
+            "OAUTH_CLIENT_ID",
+            "OAUTH_CLIENT_SECRET",
+        ];
+        let previous: Vec<_> = keys
+            .iter()
+            .map(|key| (*key, std::env::var_os(key)))
+            .collect();
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::set_var("PASSKEY_ENABLED", "true");
+            std::env::set_var("OAUTH_ENABLED", "true");
+            std::env::set_var("OAUTH_ISSUER_URL", "https://idp.example.com");
+            std::env::set_var("OAUTH_CLIENT_ID", "test");
+            std::env::set_var("OAUTH_CLIENT_SECRET", "test");
+        }
+        assert!(
+            Config::from_env()
+                .unwrap_err()
+                .to_string()
+                .contains("passkeys cannot be enabled together with SSO")
+        );
+        for (key, value) in previous {
+            unsafe {
+                match value {
                     Some(value) => std::env::set_var(key, value),
                     None => std::env::remove_var(key),
                 }

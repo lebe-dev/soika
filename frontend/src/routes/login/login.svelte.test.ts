@@ -52,8 +52,12 @@ afterEach(async () => {
 });
 
 describe('email login visibility', () => {
-  it('keeps the password form alongside SSO when enabled', () => {
+  it('collapses administrator password sign-in under SSO', () => {
     render(true, true, false);
+    expect(target.querySelector('#email')).toBeNull();
+    const toggle = target.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    expect(toggle.textContent).toContain('Administrator sign-in');
+    flushSync(() => toggle.click());
     expect(target.querySelector('#email')).not.toBeNull();
     expect(target.querySelector('#password')).not.toBeNull();
     expect(target.querySelector('button[type="submit"]')).not.toBeNull();
@@ -67,12 +71,12 @@ describe('email login visibility', () => {
     expect(target.textContent?.replace(/\s+/g, ' ')).toContain('Sign in with GitLab');
     expect(target.querySelectorAll('.uppercase')).toHaveLength(0);
   });
-  it('keeps passkeys available and separates them from SSO', () => {
+  it('hides passkeys under SSO', () => {
     render(false, true, true);
     expect(target.querySelector('input')).toBeNull();
-    expect(target.textContent).toContain('Sign in with a passkey');
+    expect(target.textContent).not.toContain('Sign in with a passkey');
     expect(target.textContent?.replace(/\s+/g, ' ')).toContain('Sign in with GitLab');
-    expect(target.querySelectorAll('.uppercase')).toHaveLength(1);
+    expect(target.querySelectorAll('.uppercase')).toHaveLength(0);
   });
   it('offers passkey sign-in without a leading separator when SSO is off', () => {
     render(false, false, true);

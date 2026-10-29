@@ -58,12 +58,15 @@
   const canSubmit = $derived(email.trim() !== '' && password !== '');
 
   // SSO and passkeys remain available when email/password sign-in is disabled.
-  const showPassword = $derived(config?.password_login_enabled ?? true);
   const showSso = $derived(config?.oauth_enabled ?? false);
+  let administratorOpen = $state(false);
+  const showPassword = $derived(
+    (config?.password_login_enabled ?? true) && (!showSso || administratorOpen)
+  );
 
   // Passkeys are offered alongside the password form whenever the instance has
   // the feature on and the browser supports WebAuthn.
-  const showPasskey = $derived((config?.passkey_enabled ?? false) && passkeySupported);
+  const showPasskey = $derived((config?.passkey_enabled ?? false) && passkeySupported && !showSso);
 
   // Open-redirect guard mirroring the backend `validated_next`: only a
   // site-relative path (starts with `/`, not `//`, no backslash — browsers
@@ -146,6 +149,24 @@
       <Card.Description>{$t('enter_your_credentials_to_continue')}</Card.Description>
     </Card.Header>
 
+    {#if showSso}
+      <Card.Content class="space-y-4">
+        <Button href={ssoHref} class="w-full" data-sveltekit-reload>
+          {$t('sign_in_with')}
+          {config?.oauth_provider_name || 'SSO'}
+        </Button>
+        {#if config?.password_login_enabled}
+          <button
+            type="button"
+            class="text-muted-foreground text-sm"
+            aria-expanded={administratorOpen}
+            onclick={() => (administratorOpen = !administratorOpen)}
+          >
+            {$t('administrator_sign_in')}
+          </button>
+        {/if}
+      </Card.Content>
+    {/if}
     <form onsubmit={submit} class="contents">
       {#if showPassword}
         <Card.Content class="space-y-4">
@@ -204,20 +225,6 @@
             onclick={signInWithPasskeyClicked}
           >
             {passkeySubmitting ? $t('waiting_for_your_passkey') : $t('sign_in_with_a_passkey')}
-          </Button>
-        {/if}
-
-        {#if showSso}
-          {#if showPassword || showPasskey}
-            <div class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
-              <span class="bg-border h-px flex-1"></span>
-              {$t('or')}
-              <span class="bg-border h-px flex-1"></span>
-            </div>
-          {/if}
-          <Button variant="outline" href={ssoHref} class="w-full" data-sveltekit-reload>
-            {$t('sign_in_with')}
-            {config?.oauth_provider_name || 'SSO'}
           </Button>
         {/if}
       </Card.Footer>

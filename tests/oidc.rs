@@ -1322,3 +1322,40 @@ async fn oidc_default_teams_apply_at_first_provisioning_only_including_pending_a
         assert_eq!(state.users.count().await.unwrap(), 1);
     }
 }
+
+#[tokio::test]
+async fn local_sessions_are_rejected_under_sso_and_conversion_revokes_credentials() {
+    let (_, state) = build_app(None).await;
+    seed_user(&state, "migrate@example.com", "supersecret", false).await;
+    let plain = router::build(state.clone());
+    let old_cookie = login_session_cookie(&plain, "migrate@example.com", "supersecret").await;
+    let state = state.with_oidc(Some(Arc::new(FakeProvider::new(verified_claims(
+        "migrate@example.com",
+    )))));
+    let sso = router::build(state.clone());
+    assert_eq!(
+        get(&sso, "/api/projects", Some(&old_cookie)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, _, cookies) = run_callback(&sso, "migrate@example.com").await;
+    assert!(cookies.iter().any(|c| c.starts_with("soika_session=")));
+    let converted = state
+        .users
+        .find_by_email("migrate@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(converted.auth_provider, AuthProvider::Oidc);
+    assert!(converted.password_hash.is_empty());
+    let plain = router::build(state.with_oidc(None));
+    assert_eq!(
+        post_json(
+            &plain,
+            "/auth/login",
+            serde_json::json!({"email":"migrate@example.com", "password":"supersecret"})
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+}

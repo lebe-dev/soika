@@ -475,3 +475,19 @@ Deleting a team never deletes its projects. Move projects to another team in the
 deletion dialog, or pass `move_projects_to=<team_id>` to `DELETE /api/teams/{id}`.
 The transfer and deletion are atomic. Without a target, a team that still owns
 projects returns HTTP 409. Project IDs, DSNs, events and mute rules are preserved.
+
+### SSO-only authentication (0.9.0)
+
+With `OAUTH_ENABLED=true`, only effective instance Owners can use passwords.
+Other accounts must use SSO, including when accepting an invite. Existing local
+sessions stop working when SSO is enabled. On the first verified SSO login to a
+matching local non-Owner account, its password, passkeys and previous sessions
+are removed atomically. Disabling SSO later does not restore those credentials.
+Owners listed in `ADMIN_USERS` can use SSO and retain their password; other
+Owners use passwords only. `EMAIL_LOGIN_ENABLED=false` disables passwords for
+Owners too. The password form is under “Administrator sign-in”.
+
+Passkeys require SSO to be disabled. Before upgrading an installation with both
+`PASSKEY_ENABLED=true` and `OAUTH_ENABLED=true`, disable one: this combination
+now fails startup. Stored passkeys remain available when SSO is later disabled,
+except credentials removed during conversion of a local account to SSO-only.
