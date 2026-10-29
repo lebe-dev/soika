@@ -26,7 +26,7 @@ fn rejects_invalid_projects_and_duplicate_slugs() {
 }
 
 #[test]
-fn rejects_invalid_teams_and_case_insensitive_duplicate_grants() {
+fn rejects_invalid_teams_and_duplicate_grants() {
     for teams in [
         "[{name: '', members: []}]",
         "[{name: Platform, members: []}, {name: Platform, members: []}]",
@@ -35,12 +35,18 @@ fn rejects_invalid_teams_and_case_insensitive_duplicate_grants() {
         "[{name: Platform, members: [{email: 'a b@example.com', role: admin}]}]",
         "[{name: Platform, members: [{email: A@example.com, role: admin}, {email: a@example.com, role: contributor}]}]",
         "[{name: Platform, sso_groups: [{group: ' ', role: admin}]}]",
-        "[{name: Platform, sso_groups: [{group: Acme, role: admin}, {group: acme, role: contributor}]}]",
+        "[{name: Platform, sso_groups: [{group: Acme, role: admin}, {group: Acme, role: contributor}]}]",
     ] {
         let text = format!("version: 1\nprojects: []\nteams: {teams}");
         assert!(parse(&text, &yaml_settings()).is_err(), "{teams}");
     }
     assert!(parse("version: 1\nprojects: []", &yaml_settings()).is_err());
+}
+
+#[test]
+fn treats_sso_groups_differing_only_in_case_as_distinct() {
+    let text = "version: 1\nprojects: []\nteams: [{name: Platform, sso_groups: [{group: Acme, role: admin}, {group: acme, role: contributor}]}]";
+    assert!(parse(text, &yaml_settings()).is_ok());
 }
 
 #[test]
