@@ -62,8 +62,10 @@ pub struct AdminUserRow {
     pub id: Id,
     pub email: String,
     pub display_name: String,
-    /// Stored instance-wide role (`owner | manager | member`), independent of ADMIN_USERS.
+    /// Effective instance-wide role, including ADMIN_USERS grants.
     pub instance_role: InstanceRole,
+    pub stored_instance_role: InstanceRole,
+    pub role_locked: bool,
     pub notifications_enabled: bool,
     /// Activation status: `active` | `pending` (awaiting admin approval).
     pub status: UserStatus,
@@ -77,10 +79,24 @@ impl From<User> for AdminUserRow {
             email: u.email,
             display_name: u.display_name,
             instance_role: u.instance_role,
+            stored_instance_role: u.instance_role,
+            role_locked: false,
             notifications_enabled: u.notifications_enabled,
             status: u.status,
             created_at: u.created_at,
         }
+    }
+}
+
+impl AdminUserRow {
+    fn with_config(user: User, state: &AppState) -> Self {
+        let role_locked = state.config.admin_users.contains(&user.email);
+        let mut row = Self::from(user);
+        row.role_locked = role_locked;
+        if role_locked {
+            row.instance_role = InstanceRole::Owner;
+        }
+        row
     }
 }
 
@@ -226,7 +242,12 @@ pub async fn list_users(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminUserRow>>, ApiError> {
     let users = state.users.list().await?;
-    Ok(Json(users.into_iter().map(AdminUserRow::from).collect()))
+    Ok(Json(
+        users
+            .into_iter()
+            .map(|user| AdminUserRow::with_config(user, &state))
+            .collect(),
+    ))
 }
 
 /// Parse a path id segment into a domain [`Id`], mapping a bad UUID to a 400.
@@ -255,7 +276,7 @@ pub async fn approve_user(
         )
         .await?;
     tracing::info!(target_user_id = %user.id, "user approved");
-    Ok(Json(AdminUserRow::from(user)))
+    Ok(Json(AdminUserRow::with_config(user, &state)))
 }
 
 /// `DELETE /admin/users/{id}` — reject/delete an account.
@@ -331,14 +352,18 @@ pub async fn set_user_role(
         .await?
         .ok_or_else(|| Error::not_found(format!("user not found: {user_id}")))?;
 
+    if state.config.admin_users.contains(&target.email) {
+        return Err(ApiError(Error::Forbidden(
+            "role is managed by ADMIN_USERS and cannot be changed".into(),
+        )));
+    }
+
     let new_role = body.instance_role;
     let was_owner = target.instance_role.is_owner();
     let becomes_owner = new_role.is_owner();
 
     // Granting or revoking Owner is Owner-only.
-    if (was_owner || becomes_owner || state.config.admin_users.contains(&target.email))
-        && !admin.instance_role.is_owner()
-    {
+    if (was_owner || becomes_owner) && !admin.instance_role.is_owner() {
         return Err(ApiError(Error::Forbidden(
             "only an owner can grant or revoke the owner role".into(),
         )));
@@ -353,7 +378,7 @@ pub async fn set_user_role(
 
     let updated = state.users.set_instance_role(user_id, new_role).await?;
     tracing::info!(target_user_id = %user_id, instance_role = ?new_role, "instance role changed");
-    Ok(Json(AdminUserRow::from(updated)))
+    Ok(Json(AdminUserRow::with_config(updated, &state)))
 }
 
 /// Response for a successful user deletion.
@@ -373,6 +398,8 @@ mod tests {
             email: "a@b.c".into(),
             display_name: "A".into(),
             instance_role: InstanceRole::Owner,
+            stored_instance_role: InstanceRole::Owner,
+            role_locked: false,
             notifications_enabled: true,
             status: UserStatus::Active,
             created_at: chrono::Utc::now(),

@@ -43,7 +43,7 @@
   // Number of Owners on the instance — used for last-Owner protection: the only
   // remaining Owner cannot be demoted (which would lock everyone out of
   // Owner-only operations).
-  const ownerCount = $derived(data.users.filter((u) => u.instance_role === 'owner').length);
+  const ownerCount = $derived(data.users.filter((u) => u.stored_instance_role === 'owner').length);
 
   // Editable service-settings form state, seeded once from the loaded settings.
   // These are mutated locally before save, so they stay `$state` (not a derived
@@ -133,7 +133,12 @@
   // Whether the current user may change `role` for the user `u`. An Owner may
   // change anyone; a Manager may not touch an Owner nor grant Owner. The last
   // remaining Owner cannot be demoted away from Owner.
-  function canEditRole(u: { id: string; instance_role: InstanceRole }): boolean {
+  function canEditRole(u: {
+    id: string;
+    instance_role: InstanceRole;
+    role_locked: boolean;
+  }): boolean {
+    if (u.role_locked) return false;
     if (!isOwner && u.instance_role === 'owner') return false;
     return true;
   }
@@ -183,9 +188,13 @@
   // Whether the current manager may delete `u`. Deleting an Owner is Owner-only
   // and the last Owner can never be deleted (matches the backend rules). Never
   // offer deletion of one's own account.
-  function canDelete(u: { id: string; instance_role: InstanceRole }, isSelf: boolean): boolean {
+  function canDelete(
+    u: { id: string; instance_role: InstanceRole; stored_instance_role: InstanceRole },
+    isSelf: boolean
+  ): boolean {
     if (isSelf) return false;
-    if (u.instance_role === 'owner') return isOwner && ownerCount > 1;
+    if (u.instance_role === 'owner')
+      return isOwner && (u.stored_instance_role !== 'owner' || ownerCount > 1);
     return true;
   }
 

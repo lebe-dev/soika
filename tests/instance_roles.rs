@@ -692,34 +692,69 @@ async fn admin_users_changes_affect_existing_sessions_and_preserve_ui_roles() {
 }
 
 #[tokio::test]
-async fn admin_users_keeps_role_assigned_in_ui_during_override() {
-    let mut app = Fixture::spawn().await;
-    let id = app
-        .create_user("admin@example.com", InstanceRole::Member)
-        .await;
-    app.set_admin_users("admin@example.com");
-    let cookie = app.login("admin@example.com").await;
-    let (status, row) = app
-        .patch_json(
-            &format!("/api/admin/users/{id}"),
-            &cookie,
-            &json!({"instance_role": "manager"}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        row["instance_role"], "manager",
-        "admin UI edits the stored role"
-    );
-    assert_eq!(
-        app.get("/auth/config", &cookie).await.1["user"]["instance_role"],
-        "owner"
-    );
-    app.set_admin_users("");
-    assert_eq!(
-        app.get("/auth/config", &cookie).await.1["user"]["instance_role"],
-        "manager"
-    );
+async fn admin_users_shows_locked_owner_and_rejects_role_changes() {
+    use soika::domain::config_file::ManagementSource;
+    for source in [ManagementSource::Ui, ManagementSource::Yaml] {
+        let mut app = Fixture::spawn().await;
+        let config = std::sync::Arc::make_mut(&mut app.state.config);
+        config.management.team_source = source;
+        config.management.project_source = source;
+        for role in [
+            InstanceRole::Member,
+            InstanceRole::Manager,
+            InstanceRole::Owner,
+        ] {
+            let email = format!("{}@example.com", role.as_str());
+            let id = app.create_user(&email, role).await;
+            app.set_admin_users(&email.to_uppercase());
+            let cookie = app.login(&email).await;
+            let (status, users) = app.get("/api/admin/users", &cookie).await;
+            assert_eq!(status, StatusCode::OK);
+            let row = users
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|u| u["id"] == id.to_string())
+                .unwrap();
+            assert_eq!(row["instance_role"], "owner");
+            assert_eq!(row["role_locked"], true);
+            assert_eq!(row["stored_instance_role"], role.as_str());
+            for new_role in ["member", "manager", "owner"] {
+                assert_eq!(
+                    app.patch_json(
+                        &format!("/api/admin/users/{id}"),
+                        &cookie,
+                        &json!({"instance_role": new_role})
+                    )
+                    .await
+                    .0,
+                    StatusCode::FORBIDDEN
+                );
+            }
+            app.set_admin_users("");
+            let (_, users) = app.get("/api/admin/users", &cookie).await;
+            if role != InstanceRole::Member {
+                let row = users
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|u| u["id"] == id.to_string())
+                    .unwrap();
+                assert_eq!(row["instance_role"], role.as_str());
+                assert_eq!(row["role_locked"], false);
+            }
+            assert_eq!(
+                app.state
+                    .users
+                    .find_by_id(id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .instance_role,
+                role
+            );
+        }
+    }
 }
 
 #[tokio::test]

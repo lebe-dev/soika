@@ -513,6 +513,9 @@ export interface AdminUser {
   display_name: string;
   /** Instance-wide role (`owner | manager | member`). */
   instance_role: InstanceRole;
+  stored_instance_role: InstanceRole;
+  /** Role is fixed by ADMIN_USERS. */
+  role_locked: boolean;
   notifications_enabled: boolean;
   /** Activation status: `active` or `pending` (awaiting admin approval). */
   status: UserStatus;

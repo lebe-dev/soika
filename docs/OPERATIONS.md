@@ -92,9 +92,11 @@ may use SSO even when their stored role is `Owner`. Unlisted stored Owners retai
 the password-only SSO protection.
 
 `ADMIN_USERS` overrides permissions without changing the role stored in the
-database. The current-user profile reports the effective role; **Admin → Users**
-shows and edits the stored role. Only an Owner can edit or delete a listed account.
-An Owner can change its stored role while the environment grant remains active.
+database. The current-user profile and **Admin → Users** report the effective Owner role.
+Listed accounts have a fixed role: neither the UI nor the API allows changing it
+while the environment grant remains active. Only an Owner can delete a listed account.
+This also applies when projects and teams are managed through YAML; `ADMIN_USERS`
+is still configured through the environment.
 After changing the list, restart the service: removing an address immediately
 restores its stored role on subsequent requests, including existing sessions.
 Roles assigned through the UI are preserved. Last-Owner protection continues to
