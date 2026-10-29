@@ -1395,3 +1395,54 @@ async fn declarative_grants_approve_new_sso_accounts_and_apply_groups() {
         Some(soika::domain::TeamRole::Admin)
     );
 }
+
+#[tokio::test]
+async fn admin_authentication_status_reflects_runtime_methods_and_gates() {
+    for yaml in [false, true] {
+        for sso in [false, true] {
+            for password in [false, true] {
+                let provider = sso.then(|| {
+                    Arc::new(FakeProvider::with_approval(verified_claims(
+                        "sso@example.com",
+                    ))) as Arc<dyn OidcProvider>
+                });
+                let (router, mut state) = build_app(provider).await;
+                seed_user(&state, "owner@example.com", "supersecret", true).await;
+                let cookie =
+                    login_session_cookie(&router, "owner@example.com", "supersecret").await;
+                let config = Arc::make_mut(&mut state.config);
+                config.email_login_enabled = password;
+                config.management.team_source = if yaml {
+                    soika::domain::config_file::ManagementSource::Yaml
+                } else {
+                    soika::domain::config_file::ManagementSource::Ui
+                };
+                state.settings.set_allow_signup(true).await.unwrap();
+                let router = router::build(state.clone());
+                let (status, view) = get_json_with_cookie(&router, "/api/settings", &cookie).await;
+                assert_eq!(status, StatusCode::OK);
+                let auth = &view["authentication"];
+                assert_eq!(
+                    auth["password_login"],
+                    if !password {
+                        "disabled"
+                    } else if sso {
+                        "owners"
+                    } else {
+                        "all"
+                    }
+                );
+                assert_eq!(auth["sso"].is_null(), !sso);
+                if sso {
+                    assert_eq!(auth["sso"]["provider_name"], "GitLab");
+                    assert_eq!(auth["sso"]["require_approval"], true);
+                }
+                assert!(auth["passkeys"].is_null());
+                assert_eq!(auth["public_signup"], password && !sso && !yaml);
+                assert_eq!(auth["yaml_teams"], yaml);
+                let (status, _) = get_json(&router, "/api/settings").await;
+                assert_eq!(status, StatusCode::UNAUTHORIZED);
+            }
+        }
+    }
+}

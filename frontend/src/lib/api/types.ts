@@ -482,7 +482,17 @@ export interface ManagementStatus {
   };
   oauth_enabled: boolean;
 }
+export interface AuthenticationStatus {
+  password_login: 'disabled' | 'owners' | 'all';
+  sso: { provider_name: string; allowed_email_domains: string[]; require_approval: boolean } | null;
+  passkeys: { rp_id: string; rp_origin: string; max_per_user: number } | null;
+  public_signup: boolean;
+  yaml_teams: boolean;
+  admin_setup_enabled: boolean;
+  login_protection_enabled: boolean;
+}
 export interface ServiceSettings {
+  authentication: AuthenticationStatus;
   management?: ManagementStatus;
   default_team_ids: Id[];
   allow_signup: boolean;

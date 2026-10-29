@@ -103,6 +103,16 @@ Roles assigned through the UI are preserved. Last-Owner protection continues to
 count stored Owners, ensuring that the setup/recovery account remains available
 independently of this configuration.
 
+### Authentication overview in the admin UI
+
+**Admin → Authentication** shows the active authentication policy as read-only
+information: SSO provider, allowed email domains and new-account approval,
+password access (all local accounts, local Owners only, or disabled), passkey
+availability and relying-party settings, effective public registration, initial
+administrator setup and password brute-force protection. YAML team management
+restrictions are shown when enabled. SSO credentials and secrets are never
+included. Change the server configuration and restart to update these settings.
+
 ### Team membership and team roles
 
 **Project access is team-only and closed:** a user can see a project **only**

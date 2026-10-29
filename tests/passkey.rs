@@ -552,3 +552,23 @@ async fn email_login_disabled_keeps_passkey_challenges_available() {
             .any(|cookie| cookie.starts_with("soika_passkey_auth="))
     );
 }
+
+#[tokio::test]
+async fn admin_settings_reports_enabled_passkey_configuration() {
+    let (router, state) = build_app(true).await;
+    let id = seed_user(&state, "owner@example.com", UserStatus::Active).await;
+    state
+        .users
+        .set_instance_role(id, InstanceRole::Owner)
+        .await
+        .unwrap();
+    let cookie = login_session_cookie(&router, "owner@example.com").await;
+    let (status, _, view) = send(&router, "GET", "/api/settings", Some(&cookie), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        view["authentication"]["passkeys"],
+        json!({
+            "rp_id": "localhost", "rp_origin": "http://localhost", "max_per_user": 2
+        })
+    );
+}

@@ -19,6 +19,7 @@ use crate::state::AppState;
 #[derive(Debug, Serialize)]
 pub struct SettingsView {
     pub management: ManagementStatus,
+    pub authentication: AuthenticationStatus,
     /// Public self-registration toggle (persisted; mirrors `ALLOW_SIGNUP`).
     pub allow_signup: bool,
     /// Organization display name.
@@ -36,6 +37,65 @@ pub struct ManagementStatus {
     pub report: crate::domain::config_file::SyncReport,
     pub oauth_enabled: bool,
 }
+/// Read-only authentication policy; deliberately excludes credentials and secrets.
+#[derive(Debug, Serialize)]
+pub struct AuthenticationStatus {
+    pub password_login: &'static str,
+    pub sso: Option<SsoStatus>,
+    pub passkeys: Option<PasskeyStatus>,
+    pub public_signup: bool,
+    pub yaml_teams: bool,
+    pub admin_setup_enabled: bool,
+    pub login_protection_enabled: bool,
+}
+#[derive(Debug, Serialize)]
+pub struct SsoStatus {
+    pub provider_name: String,
+    pub allowed_email_domains: Vec<String>,
+    pub require_approval: bool,
+}
+#[derive(Debug, Serialize)]
+pub struct PasskeyStatus {
+    pub rp_id: String,
+    pub rp_origin: String,
+    pub max_per_user: i64,
+}
+fn authentication_status(state: &AppState, allow_signup: bool) -> AuthenticationStatus {
+    let sso = state.oidc.as_ref().map(|provider| SsoStatus {
+        provider_name: provider.provider_name().to_owned(),
+        allowed_email_domains: provider.allowed_email_domains().to_vec(),
+        require_approval: provider.require_approval(),
+    });
+    let yaml_teams =
+        state.config.management.team_source == crate::domain::config_file::ManagementSource::Yaml;
+    AuthenticationStatus {
+        password_login: if !state.config.email_login_enabled {
+            "disabled"
+        } else if sso.is_some() {
+            "owners"
+        } else {
+            "all"
+        },
+        public_signup: allow_signup
+            && state.config.email_login_enabled
+            && sso.is_none()
+            && !yaml_teams,
+        sso,
+        passkeys: state
+            .webauthn
+            .as_ref()
+            .and(state.config.passkey.as_ref())
+            .map(|config| PasskeyStatus {
+                rp_id: config.rp_id.clone(),
+                rp_origin: config.rp_origin.clone(),
+                max_per_user: config.max_per_user,
+            }),
+        yaml_teams,
+        admin_setup_enabled: state.config.admin_enabled,
+        login_protection_enabled: state.config.lockout.enabled,
+    }
+}
+
 /// Read-only SMTP status derived from runtime config. Secrets are never echoed.
 #[derive(Debug, Serialize)]
 pub struct SmtpStatus {
@@ -122,6 +182,7 @@ fn smtp_status(state: &AppState) -> SmtpStatus {
 
 fn to_view(settings: ServiceSettings, state: &AppState, default_team_ids: Vec<Id>) -> SettingsView {
     SettingsView {
+        authentication: authentication_status(state, settings.allow_signup),
         management: ManagementStatus {
             settings: state.config.management.clone(),
             report: (*state.sync_report).clone(),
@@ -427,6 +488,15 @@ mod tests {
     #[test]
     fn settings_view_includes_read_only_smtp() {
         let view = SettingsView {
+            authentication: AuthenticationStatus {
+                password_login: "all",
+                sso: None,
+                passkeys: None,
+                public_signup: true,
+                yaml_teams: false,
+                admin_setup_enabled: true,
+                login_protection_enabled: true,
+            },
             management: ManagementStatus {
                 settings: Default::default(),
                 report: Default::default(),
@@ -446,8 +516,9 @@ mod tests {
         };
         let json = serde_json::to_string(&view).unwrap();
         // Secrets (username/password) are never part of the shape.
-        assert!(!json.contains("password"));
-        assert!(!json.contains("username"));
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(value["smtp"].get("password").is_none());
+        assert!(value["smtp"].get("username").is_none());
         assert!(json.contains("\"allow_signup\":true"));
         assert!(json.contains("smtp.example.com"));
     }

@@ -27,6 +27,7 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import Avatar from '$lib/components/avatar.svelte';
   import TeamList from '$lib/components/team-list.svelte';
+  import AuthenticationPanel from '$lib/components/authentication-panel.svelte';
   import ManagementCard from '$lib/components/management-card.svelte';
   import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
@@ -227,6 +228,8 @@
     <Tabs.List>
       <Tabs.Trigger value="settings">{$t('service_settings')}</Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+      <Tabs.Trigger value="authentication">{$t('authentication')}</Tabs.Trigger>
+      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="users">
         {$t('users')}{data.users.length})
         {#if pendingCount > 0}
@@ -236,6 +239,10 @@
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="teams">{$t('teams_b2ba35')}{data.teams.length})</Tabs.Trigger>
     </Tabs.List>
+
+    <Tabs.Content value="authentication">
+      <AuthenticationPanel authentication={data.settings.authentication} />
+    </Tabs.Content>
 
     <!-- Service settings -->
     <Tabs.Content value="settings" class="space-y-6">
