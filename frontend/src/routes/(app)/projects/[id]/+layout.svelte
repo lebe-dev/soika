@@ -4,9 +4,6 @@
   import { page } from '$app/stores';
   import { cn } from '$lib/utils';
   import type { LayoutData } from './$types';
-  import ListFilter from '@lucide/svelte/icons/list-filter';
-  import Terminal from '@lucide/svelte/icons/terminal';
-  import Settings from '@lucide/svelte/icons/settings';
   import BellOff from '@lucide/svelte/icons/bell-off';
   import EntityHeader from '$lib/components/entity-header.svelte';
   import StatPill from '$lib/components/stat-pill.svelte';
@@ -22,26 +19,22 @@
   type Tab = {
     href: string;
     label: string;
-    icon: typeof ListFilter;
     match: (p: string) => boolean;
   };
   const tabs = $derived<Tab[]>([
     {
       href: base,
       label: $t('issues'),
-      icon: ListFilter,
       match: (p) => p === base || p.startsWith(`${base}/issues`)
     },
     {
       href: `${base}/setup`,
       label: $t('sdk_setup'),
-      icon: Terminal,
       match: (p) => p.startsWith(`${base}/setup`)
     },
     {
       href: `${base}/settings`,
       label: $t('settings'),
-      icon: Settings,
       match: (p) => p.startsWith(`${base}/settings`)
     }
   ]);
@@ -78,18 +71,18 @@
     {/snippet}
   </EntityHeader>
 
-  <nav class="flex items-center gap-1 border-b text-sm">
+  <nav class="flex flex-wrap items-center gap-6 border-b text-sm">
     {#each tabs as tab (tab.href)}
       <a
         href={tab.href}
+        aria-current={tab.match(path) ? 'page' : undefined}
         class={cn(
-          '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 font-medium transition-colors',
+          '-mb-px flex min-h-11 items-center gap-1.5 border-b-2 transition-colors',
           tab.match(path)
-            ? 'border-primary text-foreground'
+            ? 'border-primary text-foreground font-medium'
             : 'text-muted-foreground hover:text-foreground border-transparent'
         )}
       >
-        <tab.icon class="size-4" />
         {tab.label}
       </a>
     {/each}

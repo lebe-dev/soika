@@ -12,7 +12,7 @@
   }: { href?: string; title?: string; class?: string; children: Snippet } = $props();
 
   const base =
-    'bg-muted text-muted-foreground inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs [&_strong]:text-foreground [&_strong]:font-medium [&_svg]:size-3.5';
+    'bg-muted text-muted-foreground inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-xs [&_strong]:text-foreground [&_strong]:font-medium [&_svg]:size-3.5';
 </script>
 
 {#if href}

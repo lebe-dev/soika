@@ -14,8 +14,8 @@
     unresolved: { label: $t('status_unresolved'), variant: 'destructive' },
     resolved: {
       label: $t('status_resolved'),
-      variant: 'outline',
-      class: 'border-green-600/40 text-green-700 dark:text-green-400'
+      variant: 'secondary',
+      class: 'bg-success/10 text-success'
     },
     muted: { label: $t('status_muted'), variant: 'secondary' }
   });

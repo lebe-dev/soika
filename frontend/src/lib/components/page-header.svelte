@@ -9,9 +9,9 @@
 
 <div class="flex flex-wrap items-end justify-between gap-4">
   <div class="min-w-0">
-    <h1 class="text-2xl font-semibold tracking-tight">{title}</h1>
+    <h1 class="text-[1.75rem] leading-tight font-semibold tracking-[-0.025em]">{title}</h1>
     {#if description}
-      <p class="text-muted-foreground mt-1 text-sm">{@render description()}</p>
+      <p class="text-muted-foreground mt-1.5 text-sm">{@render description()}</p>
     {/if}
   </div>
   {#if actions}

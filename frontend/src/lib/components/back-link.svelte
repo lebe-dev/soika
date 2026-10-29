@@ -7,8 +7,8 @@
 
 <a
   {href}
-  class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm transition-colors"
+  class="text-muted-foreground hover:text-foreground inline-flex min-h-7 items-center gap-1 text-[13px] transition-colors"
 >
-  <ChevronLeft class="size-4" />
+  <ChevronLeft class="size-3.5" />
   {label}
 </a>

@@ -447,6 +447,7 @@
   "member_count": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
   "issue_count": "{count, plural, one {# ошибка} few {# ошибки} many {# ошибок} other {# ошибки}}",
   "unresolved_issue_count": "{count, plural, one {# нерешённая ошибка} few {# нерешённые ошибки} many {# нерешённых ошибок} other {# нерешённой ошибки}}",
+  "unresolved_issues_label": "{count, plural, one {нерешённая ошибка} few {нерешённые ошибки} many {нерешённых ошибок} other {нерешённой ошибки}}",
   "error_invalid_credentials": "Неверная почта или пароль",
   "error_incorrect_password": "Текущий пароль неверен",
   "error_password_short": "Новый пароль должен содержать не менее 8 символов",

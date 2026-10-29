@@ -447,6 +447,7 @@
   "member_count": "{count, plural, one {# member} other {# members}}",
   "issue_count": "{count, plural, one {# issue} other {# issues}}",
   "unresolved_issue_count": "{count, plural, one {# unresolved issue} other {# unresolved issues}}",
+  "unresolved_issues_label": "{count, plural, one {unresolved issue} other {unresolved issues}}",
   "error_invalid_credentials": "Invalid email or password",
   "error_incorrect_password": "Current password is incorrect",
   "error_password_short": "New password must be at least 8 characters",

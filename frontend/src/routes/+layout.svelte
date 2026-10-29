@@ -1,4 +1,6 @@
 <script lang="ts">
+  import '@fontsource-variable/onest';
+  import '@fontsource-variable/jetbrains-mono';
   import '../app.css';
   import type { Snippet } from 'svelte';
   import { ModeWatcher } from 'mode-watcher';

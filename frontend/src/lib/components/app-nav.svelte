@@ -67,9 +67,9 @@
 </script>
 
 <header
-  class="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur"
+  class="bg-background/90 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-40 border-b backdrop-blur-md backdrop-saturate-150"
 >
-  <div class="container flex h-14 items-center gap-2 sm:gap-6">
+  <div class="container flex h-14 items-center gap-2 sm:gap-7">
     <!-- Mobile: hamburger menu collapses the primary nav links. -->
     <DropdownMenu.Root>
       <DropdownMenu.Trigger class="md:hidden">
@@ -96,23 +96,30 @@
       </DropdownMenu.Content>
     </DropdownMenu.Root>
 
-    <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
-      <span class="text-primary">soika</span>
+    <a href="/" class="flex items-center gap-2.5 text-[16px] font-semibold tracking-[-0.02em]">
+      <svg viewBox="0 0 22 22" class="size-[22px]" aria-hidden="true">
+        <rect width="22" height="22" rx="6.5" class="fill-primary" />
+        <path
+          d="M5.5 14c2.6-4.8 6.8-6.4 11-5.6-1.6 3.8-5.4 6.4-11 5.6z"
+          class="fill-primary-foreground"
+        />
+      </svg>
+      soika
     </a>
 
     <!-- Desktop: full inline nav. -->
-    <nav class="hidden items-center gap-1 text-sm md:flex">
+    <nav class="hidden items-stretch gap-0.5 self-stretch text-sm md:flex">
       {#each visibleItems as item (item.href)}
         <a
           href={item.href}
+          aria-current={isActive(item.href) ? 'page' : undefined}
           class={cn(
-            'flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors',
+            'flex items-center gap-1.5 px-2.5 transition-colors',
             isActive(item.href)
-              ? 'bg-accent text-accent-foreground'
+              ? 'text-foreground font-medium shadow-[inset_0_-2px_0_var(--primary)]'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <item.icon class="size-4" />
           {item.label}
           {#if item.href === '/admin' && pendingApprovals > 0}
             <AlertTriangle

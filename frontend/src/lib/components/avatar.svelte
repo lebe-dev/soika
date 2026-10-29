@@ -13,8 +13,8 @@
     },
     tile: {
       sm: 'size-6 rounded-md text-[10px]',
-      md: 'size-9 rounded-lg text-xs',
-      lg: 'size-12 rounded-xl text-base'
+      md: 'size-9 rounded-[10px] text-xs',
+      lg: 'size-12 rounded-[13px] text-[15px]'
     }
   };
 </script>
@@ -40,7 +40,7 @@
 
 <span
   class={cn(
-    'grid shrink-0 place-items-center font-semibold select-none',
+    'grid shrink-0 place-items-center font-semibold tracking-[0.02em] shadow-[inset_0_0_0_1px_rgb(20_23_28/0.04)] select-none',
     SIZES[shape][size],
     id ? avatarTint(id) : 'bg-primary/10 text-primary',
     className

@@ -11,12 +11,12 @@
   import { toast } from '$lib/components/ui/sonner';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
   import BellOff from '@lucide/svelte/icons/bell-off';
-  import CircleAlert from '@lucide/svelte/icons/circle-alert';
-  import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import Star from '@lucide/svelte/icons/star';
   import PageTitle from '$lib/components/page-title.svelte';
   import PageHeader from '$lib/components/page-header.svelte';
   import Avatar from '$lib/components/avatar.svelte';
+  import SegmentedControl from '$lib/components/segmented-control.svelte';
   import { NativeSelect } from '$lib/components/ui/native-select';
   import { teamFilterOptions, visibleProjects, type SortMode } from '$lib/dashboard';
   import { readJson, writeJson } from '$lib/local-storage';
@@ -309,38 +309,28 @@
         type="button"
         aria-pressed={onlyWithIssues}
         onclick={() => (onlyWithIssues = !onlyWithIssues)}
-        class="border-input flex h-8 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors {onlyWithIssues
-          ? 'bg-secondary text-secondary-foreground font-medium'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+        class="border-input bg-card flex h-8 items-center gap-2 rounded-lg border pr-1.5 pl-3 text-sm shadow-[0_1px_2px_rgb(20_23_28/0.03)] transition-colors {onlyWithIssues
+          ? 'border-primary/50 ring-primary/15 font-medium ring-3'
+          : 'hover:bg-accent'}"
       >
-        <CircleAlert class="size-4 {onlyWithIssues ? 'text-destructive' : ''}" />
         {$t('projects_with_issues')}
-        <span class="text-muted-foreground font-normal tabular-nums">{withIssuesCount}</span>
+        <span
+          class="bg-destructive/10 text-destructive min-w-5 rounded-md px-1.5 text-center font-mono text-xs leading-5 tabular-nums"
+        >
+          {withIssuesCount}
+        </span>
       </button>
 
-      <div
-        class="border-input flex h-8 rounded-lg border text-sm"
-        role="group"
-        aria-label={$t('sort_order')}
-      >
-        <button
-          class="flex items-center rounded-l-lg px-3 transition-colors {sortMode === 'activity'
-            ? 'bg-secondary text-secondary-foreground font-medium'
-            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
-          onclick={() => (sortMode = 'activity')}
-        >
-          {$t('by_activity')}
-        </button>
-        <button
-          class="border-input flex items-center rounded-r-lg border-l px-3 transition-colors {sortMode ===
-          'name'
-            ? 'bg-secondary text-secondary-foreground font-medium'
-            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
-          onclick={() => (sortMode = 'name')}
-        >
-          {$t('by_name')}
-        </button>
-      </div>
+      <SegmentedControl
+        class="sm:ml-auto"
+        label={$t('sort_order')}
+        value={sortMode}
+        onselect={(v) => (sortMode = v)}
+        options={[
+          { value: 'activity', label: $t('by_activity') },
+          { value: 'name', label: $t('by_name') }
+        ]}
+      />
     </div>
 
     {#if filteredAndSorted.length === 0}
@@ -353,59 +343,64 @@
         {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
           <a
             href={`/projects/${project.id}`}
-            class="group focus-visible:ring-primary/30 rounded-xl transition focus-visible:ring-1 focus-visible:outline-none"
+            class="group bg-card focus-visible:ring-primary/30 hover:border-primary/35 flex flex-col rounded-xl border transition-[border-color,box-shadow] hover:shadow-[0_6px_20px_-12px_rgb(20_23_28/0.25)] focus-visible:ring-2 focus-visible:outline-none"
           >
-            <Card.Root
-              class="group-hover:ring-primary/40 group-hover:bg-muted/30 h-full shadow-sm transition-colors"
-            >
-              <Card.Header>
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex min-w-0 items-center gap-3">
-                    <Avatar name={project.name} id={project.id} shape="tile" />
-                    <div class="min-w-0">
-                      <Card.Title class="truncate">{project.name}</Card.Title>
-                      <Card.Description class="truncate font-mono text-xs">
-                        {project.slug}
-                      </Card.Description>
-                    </div>
-                  </div>
-                  <div class="flex shrink-0 items-center gap-2">
-                    {#if project.muted}
-                      <BellOff
-                        class="text-muted-foreground size-4"
-                        aria-label={$t('notifications_muted')}
-                      />
-                    {/if}
-                    <button
-                      onclick={(e) => toggleFavorite(e, project.id)}
-                      aria-label={favoritedIds.has(project.id)
-                        ? $t('remove_from_favorites')
-                        : $t('add_to_favorites')}
-                      class="hover:bg-accent rounded p-1 transition-colors"
-                    >
-                      <Star
-                        class="size-4 transition-colors {favoritedIds.has(project.id)
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'text-muted-foreground'}"
-                      />
-                    </button>
-                  </div>
+            <div class="flex items-start gap-3 py-4 pr-3 pl-4">
+              <Avatar name={project.name} id={project.id} shape="tile" />
+              <div class="min-w-0 flex-1 pt-px">
+                <div class="truncate text-[15px] font-medium tracking-[-0.01em]">
+                  {project.name}
                 </div>
-              </Card.Header>
-              <Card.Content>
-                {#if unresolvedCount === 0}
-                  <p class="text-muted-foreground flex items-center gap-1.5 text-sm">
-                    <CircleCheck class="size-4 text-emerald-500" />
-                    {$t('no_unresolved_issues')}
-                  </p>
-                {:else}
-                  <p class="flex items-center gap-1.5 text-sm font-medium">
-                    <CircleAlert class="text-destructive size-4" />
-                    {$t('unresolved_issue_count', { values: { count: unresolvedCount } })}
-                  </p>
+                <div class="text-muted-foreground truncate font-mono text-xs">
+                  {project.slug}
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-1">
+                {#if project.muted}
+                  <BellOff
+                    class="text-muted-foreground size-4"
+                    aria-label={$t('notifications_muted')}
+                  />
                 {/if}
-              </Card.Content>
-            </Card.Root>
+                <button
+                  onclick={(e) => toggleFavorite(e, project.id)}
+                  aria-label={favoritedIds.has(project.id)
+                    ? $t('remove_from_favorites')
+                    : $t('add_to_favorites')}
+                  class="hover:bg-accent grid size-8 place-items-center rounded-lg transition-colors"
+                >
+                  <Star
+                    class="size-4 transition-colors {favoritedIds.has(project.id)
+                      ? 'fill-amber-400 text-amber-400'
+                      : 'text-muted-foreground/60'}"
+                  />
+                </button>
+              </div>
+            </div>
+            <div
+              class="border-hairline mt-auto flex min-h-12 items-center justify-between gap-3 border-t px-4"
+            >
+              {#if unresolvedCount === 0}
+                <span class="text-muted-foreground flex items-center gap-2 text-[13px]">
+                  <span class="bg-success size-1.5 rounded-full"></span>
+                  {$t('no_unresolved_issues')}
+                </span>
+              {:else}
+                <span class="flex items-baseline gap-2">
+                  <span
+                    class="text-destructive text-xl font-medium tracking-[-0.02em] tabular-nums"
+                  >
+                    {unresolvedCount}
+                  </span>
+                  <span class="text-muted-foreground text-[13px]">
+                    {$t('unresolved_issues_label', { values: { count: unresolvedCount } })}
+                  </span>
+                </span>
+              {/if}
+              <ArrowRight
+                class="text-muted-foreground/50 group-hover:text-foreground size-4 transition-colors"
+              />
+            </div>
           </a>
         {/each}
       </div>

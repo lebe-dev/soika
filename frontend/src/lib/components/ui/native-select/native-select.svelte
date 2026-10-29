@@ -18,7 +18,7 @@
   bind:value
   data-slot="native-select"
   class={cn(
-    'border-input dark:bg-input/30 focus-visible:border-primary focus-visible:ring-primary/30 dark:[&>option]:bg-popover h-8 rounded-lg border bg-transparent px-2.5 text-base transition-colors outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+    'border-input bg-card focus-visible:border-primary focus-visible:ring-primary/15 dark:[&>option]:bg-popover h-8 rounded-lg border px-2.5 text-base shadow-[0_1px_2px_rgb(20_23_28/0.03)] transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
     className
   )}
   {...restProps}

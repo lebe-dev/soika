@@ -14,6 +14,7 @@
   import type { LayoutData } from './$types';
   import Inbox from '@lucide/svelte/icons/inbox';
   import { readJson, writeJson } from '$lib/local-storage';
+  import SegmentedControl from '$lib/components/segmented-control.svelte';
 
   // Issues list for a project with status filter. The project is
   // provided by the parent layout load; issues are fetched reactively here so
@@ -212,52 +213,33 @@
   function selectLevel(value: Level) {
     setParam('level', value, 'all');
   }
+
+  // Severity colour for the level dot: errors read red, warnings amber, the
+  // rest stay neutral so a list of errors is not a wall of colour.
+  function levelTone(level: string): string {
+    if (level === 'fatal' || level === 'error') return 'text-destructive';
+    if (level === 'warning') return 'text-amber-600 dark:text-amber-400';
+    return 'text-muted-foreground';
+  }
 </script>
 
 <PageTitle title={data.project.name} />
 
 <div class="space-y-4">
-  <div class="flex flex-wrap items-center gap-3">
-    <div class="flex flex-wrap items-center gap-1">
-      {#each filters as f (f.value)}
-        <button
-          type="button"
-          onclick={() => selectFilter(f.value)}
-          class={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            urlStatus === f.value
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {f.label}
-        </button>
-      {/each}
-    </div>
-
-    <div class="flex flex-wrap items-center gap-1 sm:ml-auto">
-      {#each sorts as s (s.value)}
-        <button
-          type="button"
-          onclick={() => selectSort(s.value)}
-          class={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            urlSort === s.value
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {s.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-
   <div class="flex flex-wrap items-center gap-2">
+    <SegmentedControl
+      label={$t('status')}
+      value={urlStatus}
+      onselect={selectFilter}
+      options={filters}
+    />
+
+    <span class="bg-border mx-1 hidden h-5 w-px sm:block"></span>
+
     <NativeSelect
       value={urlLevel}
       onchange={(e) => selectLevel(e.currentTarget.value as Level)}
-      class={urlLevel !== 'all' ? 'border-primary/50 ring-primary/15 ring-1' : ''}
+      class={urlLevel !== 'all' ? 'border-primary/50 ring-primary/15 ring-3' : ''}
       aria-label={$t('filter_by_level')}
     >
       {#each levels as l (l.value)}
@@ -271,7 +253,7 @@
       onchange={(e) => setParam('environment', e.currentTarget.value)}
       placeholder={$t('environment')}
       aria-label={$t('filter_by_environment')}
-      class={cn('w-40', urlEnvironment !== '' && 'border-primary/50 ring-primary/15 ring-1')}
+      class={cn('w-36', urlEnvironment !== '' && 'border-primary/50 ring-primary/15 ring-3')}
     />
 
     <Input
@@ -280,7 +262,15 @@
       onchange={(e) => setParam('release', e.currentTarget.value)}
       placeholder={$t('release')}
       aria-label={$t('filter_by_release')}
-      class={cn('w-40', urlRelease !== '' && 'border-primary/50 ring-primary/15 ring-1')}
+      class={cn('w-36', urlRelease !== '' && 'border-primary/50 ring-primary/15 ring-3')}
+    />
+
+    <SegmentedControl
+      class="sm:ml-auto"
+      label={$t('sort_order')}
+      value={urlSort}
+      onselect={selectSort}
+      options={sorts}
     />
   </div>
 
@@ -309,46 +299,53 @@
       </Card.Content>
     </Card.Root>
   {:else}
-    <div class="overflow-hidden rounded-lg border">
-      {#each issues as issue (issue.id)}
-        <a
-          href={`/projects/${projectId}/issues/${issue.id}`}
-          class="hover:bg-accent/40 flex items-center gap-4 border-b px-4 py-3 transition-colors last:border-b-0"
+    <div class="bg-card overflow-x-auto rounded-xl border">
+      <div class="min-w-[36rem]">
+        <div
+          class="border-hairline text-muted-foreground grid h-10 grid-cols-[minmax(0,1fr)_6.5rem_5.5rem_6rem] items-center gap-4 border-b px-5 font-mono text-[11px] tracking-[0.08em] uppercase"
         >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              {#if issue.level}
-                <span
-                  class="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase"
-                >
-                  {issue.level}
-                </span>
-              {/if}
-              <span class="truncate font-medium">{issue.title}</span>
+          <span>{$t('issues')}</span>
+          <span>{$t('status')}</span>
+          <span class="text-right">{$t('events')}</span>
+          <span class="text-right">{$t('last_seen')}</span>
+        </div>
+        {#each issues as issue (issue.id)}
+          <a
+            href={`/projects/${projectId}/issues/${issue.id}`}
+            class="border-hairline hover:bg-accent/60 grid grid-cols-[minmax(0,1fr)_6.5rem_5.5rem_6rem] items-center gap-4 border-b px-5 py-3 transition-colors last:border-b-0"
+          >
+            <div class="min-w-0">
+              <div class="truncate font-medium tracking-[-0.005em]">{issue.title}</div>
+              <div class="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-2 text-xs">
+                {#if issue.level}
+                  <span
+                    class={cn(
+                      'inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] tracking-[0.04em]',
+                      levelTone(issue.level)
+                    )}
+                  >
+                    <span class="size-1.5 rounded-full bg-current"></span>
+                    {issue.level}
+                  </span>
+                {/if}
+                {#if issue.culprit}
+                  <span class="truncate font-mono">{issue.culprit}</span>
+                {/if}
+              </div>
             </div>
-            {#if issue.culprit}
-              <p class="text-muted-foreground truncate font-mono text-xs">{issue.culprit}</p>
-            {/if}
-          </div>
 
-          <div class="hidden shrink-0 sm:block">
-            <IssueStatusBadge status={issue.status} />
-          </div>
+            <div><IssueStatusBadge status={issue.status} /></div>
 
-          <div class="w-16 shrink-0 text-right">
-            <div class="text-sm font-semibold tabular-nums">
+            <div class="text-right text-[15px] font-medium tracking-[-0.01em] tabular-nums">
               {formatCount(issue.event_count, $locale)}
             </div>
-            <div class="text-muted-foreground text-[10px] tracking-wide uppercase">
-              {$t('events')}
-            </div>
-          </div>
 
-          <div class="text-muted-foreground hidden w-24 shrink-0 text-right text-xs md:block">
-            {formatRelative(issue.last_seen, $locale)}
-          </div>
-        </a>
-      {/each}
+            <div class="text-muted-foreground text-right text-[13px] tabular-nums">
+              {formatRelative(issue.last_seen, $locale)}
+            </div>
+          </a>
+        {/each}
+      </div>
     </div>
     <p class="text-muted-foreground text-xs">
       {$t('issue_count', { values: { count: issues.length } })}
