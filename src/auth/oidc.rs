@@ -111,6 +111,7 @@ pub struct OidcClaims {
     /// A human-friendly display name (`name`, else `preferred_username`, else
     /// the local part of the email). Never empty on success.
     pub display_name: String,
+    pub groups: Vec<String>,
 }
 
 /// Output of [`OidcProvider::authorize_url`]: the provider URL to redirect the
@@ -158,6 +159,9 @@ pub trait OidcProvider: Send + Sync {
 /// Production [`OidcProvider`] backed by [`openidconnect::core::CoreClient`].
 pub struct OidcClient {
     client: DiscoveredClient,
+    groups_claim: String,
+    userinfo_url: Option<String>,
+    groups_enabled: bool,
     scopes: Vec<String>,
     provider_name: String,
     allowed_email_domains: Vec<String>,
@@ -165,6 +169,12 @@ pub struct OidcClient {
 }
 
 impl OidcClient {
+    /// Only YAML-managed teams need group claims or userinfo requests.
+    pub fn with_group_claims(mut self, enabled: bool) -> Self {
+        self.groups_enabled = enabled;
+        self
+    }
+
     /// Build the client by performing OIDC discovery against the issuer. This is
     /// an async network call; run it once at startup (fail-fast).
     pub async fn discover(config: &OidcConfig) -> Result<Self> {
@@ -178,6 +188,7 @@ impl OidcClient {
             .await
             .map_err(safe_discovery_error)?;
 
+        let userinfo_url = metadata.userinfo_endpoint().map(|u| u.url().to_string());
         let client = CoreClient::from_provider_metadata(
             metadata,
             ClientId::new(config.client_id.clone()),
@@ -187,6 +198,9 @@ impl OidcClient {
 
         Ok(Self {
             client,
+            groups_claim: config.groups_claim.clone(),
+            userinfo_url,
+            groups_enabled: false,
             scopes: config.scopes.clone(),
             provider_name: config.provider_name.clone(),
             allowed_email_domains: config.allowed_email_domains.clone(),
@@ -243,7 +257,32 @@ impl OidcProvider for OidcClient {
             .claims(&self.client.id_token_verifier(), &nonce)
             .map_err(safe_claims_error)?;
 
-        normalize_claims(claims)
+        let mut identity = normalize_claims(claims)?;
+        if !self.groups_enabled {
+            return Ok(identity);
+        }
+        use base64::Engine;
+        use openidconnect::OAuth2TokenResponse;
+        let token = id_token.to_string();
+        let payload = token
+            .split('.')
+            .nth(1)
+            .ok_or_else(|| Error::Auth("invalid ID token".into()))?;
+        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .map_err(|_| Error::Auth("invalid ID token".into()))?;
+        let raw: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| Error::Auth("invalid ID token".into()))?;
+        identity.groups = load_group_claims(
+            &http_client,
+            &raw,
+            &self.groups_claim,
+            self.userinfo_url.as_deref(),
+            claims.subject().as_str(),
+            token_response.access_token().secret(),
+        )
+        .await?;
+        Ok(identity)
     }
 
     fn provider_name(&self) -> &str {
@@ -256,6 +295,42 @@ impl OidcProvider for OidcClient {
 
     fn require_approval(&self) -> bool {
         self.require_approval
+    }
+}
+
+/// Read groups only from the verified token or subject-bound userinfo.
+async fn load_group_claims(
+    client: &openidconnect::reqwest::Client,
+    raw: &serde_json::Value,
+    claim: &str,
+    endpoint: Option<&str>,
+    subject: &str,
+    token: &str,
+) -> Result<Vec<String>> {
+    let mut value = raw.get(claim).cloned();
+    if value.is_none()
+        && let Some(endpoint) = endpoint
+    {
+        let info: serde_json::Value = client
+            .get(endpoint)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| Error::Auth("OIDC userinfo request failed".into()))?
+            .error_for_status()
+            .map_err(|_| Error::Auth("OIDC userinfo request failed".into()))?
+            .json()
+            .await
+            .map_err(|_| Error::Auth("invalid OIDC userinfo response".into()))?;
+        if info.get("sub").and_then(|s| s.as_str()) != Some(subject) {
+            return Err(Error::Auth("OIDC userinfo subject mismatch".into()));
+        }
+        value = info.get(claim).cloned();
+    }
+    match value {
+        Some(value) => serde_json::from_value(value)
+            .map_err(|_| Error::Auth("OIDC groups claim must be a string array".into())),
+        None => Ok(vec![]),
     }
 }
 
@@ -297,6 +372,7 @@ fn normalize_claims(claims: &CoreIdTokenClaims) -> Result<OidcClaims> {
         .unwrap_or_else(|| email_local_part(&email));
 
     Ok(OidcClaims {
+        groups: Vec::new(),
         email,
         email_verified,
         display_name,
@@ -407,10 +483,75 @@ pub fn build_clearing_state_cookie(secure: bool) -> String {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn groups_from_verified_token_take_precedence_and_require_an_array() {
+        let client = build_http_client().unwrap();
+        let raw = serde_json::json!({"groups_direct": ["acme/platform"]});
+        assert_eq!(
+            load_group_claims(
+                &client,
+                &raw,
+                "groups_direct",
+                Some("http://invalid.invalid"),
+                "user-1",
+                "secret"
+            )
+            .await
+            .unwrap(),
+            vec!["acme/platform"]
+        );
+        let bad = serde_json::json!({"groups": "acme/platform"});
+        assert!(
+            load_group_claims(&client, &bad, "groups", None, "user-1", "secret")
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn groups_fall_back_to_subject_bound_userinfo() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for subject in ["user-1", "different-user"] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/oauth/userinfo", listener.local_addr().unwrap());
+            let body =
+                serde_json::json!({"sub": subject, "groups": ["acme/platform", "acme/backend"]})
+                    .to_string();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buf = [0; 4096];
+                let read = stream.read(&mut buf).await.unwrap();
+                assert!(read > 0);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            });
+            let groups = load_group_claims(
+                &build_http_client().unwrap(),
+                &serde_json::json!({}),
+                "groups",
+                Some(&endpoint),
+                "user-1",
+                "test-access-token",
+            )
+            .await;
+            server.await.unwrap();
+            if subject == "user-1" {
+                assert_eq!(groups.unwrap(), vec!["acme/platform", "acme/backend"]);
+            } else {
+                assert!(groups.is_err());
+            }
+        }
+    }
+
     const SECRET: &str = "test-oidc-secret";
 
     fn test_config() -> OidcConfig {
         OidcConfig {
+            groups_claim: "groups".into(),
             kind: crate::config::OAuthProviderKind::Oidc,
             issuer_url: "https://idp.example.com".into(),
             client_id: "client-123".into(),
@@ -455,6 +596,9 @@ mod tests {
         .set_redirect_uri(RedirectUrl::new(cfg.redirect_url.clone()).unwrap());
 
         OidcClient {
+            groups_claim: "groups".into(),
+            userinfo_url: None,
+            groups_enabled: false,
             client,
             scopes: cfg.scopes.clone(),
             provider_name: cfg.provider_name.clone(),

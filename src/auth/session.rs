@@ -197,6 +197,7 @@ mod tests {
 
     fn test_config() -> Config {
         Config {
+            management: Default::default(),
             organization_name: "soika".into(),
             database_url: "sqlite::memory:".into(),
             db: crate::config::DbConfig::default(),

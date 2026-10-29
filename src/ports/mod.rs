@@ -5,6 +5,8 @@
 //!
 //! These traits are THE contract between foundation and feature agents.
 
+mod config_sync;
+pub use config_sync::ConfigSync;
 mod clock;
 mod event;
 mod favorite;

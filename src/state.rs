@@ -21,6 +21,8 @@ use webauthn_rs::Webauthn;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+    pub config_sync: Arc<dyn crate::ports::ConfigSync>,
+    pub sync_report: Arc<crate::domain::config_file::SyncReport>,
     pub users: Arc<dyn UserRepository>,
     pub sessions: Arc<dyn SessionRepository>,
     pub teams: Arc<dyn TeamRepository>,

@@ -317,6 +317,7 @@ mod tests {
     /// (`DEFAULT_RETENTION_DAYS`).
     fn test_config_with(default_events_retention: i64, default_retention_days: i64) -> Config {
         Config {
+            management: Default::default(),
             organization_name: "soika".into(),
             database_url: "sqlite::memory:".into(),
             db: crate::config::DbConfig::default(),

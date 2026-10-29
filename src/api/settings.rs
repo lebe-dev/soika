@@ -18,6 +18,7 @@ use crate::state::AppState;
 /// Full settings view returned to the admin UI.
 #[derive(Debug, Serialize)]
 pub struct SettingsView {
+    pub management: ManagementStatus,
     /// Public self-registration toggle (persisted; mirrors `ALLOW_SIGNUP`).
     pub allow_signup: bool,
     /// Organization display name.
@@ -29,6 +30,12 @@ pub struct SettingsView {
     pub smtp: SmtpStatus,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ManagementStatus {
+    pub settings: crate::domain::config_file::ManagementSettings,
+    pub report: crate::domain::config_file::SyncReport,
+    pub oauth_enabled: bool,
+}
 /// Read-only SMTP status derived from runtime config. Secrets are never echoed.
 #[derive(Debug, Serialize)]
 pub struct SmtpStatus {
@@ -99,6 +106,11 @@ fn smtp_status(state: &AppState) -> SmtpStatus {
 
 fn to_view(settings: ServiceSettings, state: &AppState, default_team_ids: Vec<Id>) -> SettingsView {
     SettingsView {
+        management: ManagementStatus {
+            settings: state.config.management.clone(),
+            report: (*state.sync_report).clone(),
+            oauth_enabled: state.oidc.is_some(),
+        },
         allow_signup: settings.allow_signup,
         org_name: settings.org_name,
         default_team_ids,
@@ -128,6 +140,9 @@ pub async fn update(
     State(state): State<AppState>,
     Json(body): Json<UpdateSettings>,
 ) -> Result<Json<SettingsView>, ApiError> {
+    if body.allow_signup.is_some() || body.default_team_ids.is_some() {
+        crate::config_sync::require_ui_management(&state, true)?;
+    }
     if body.allow_signup.is_none() && body.org_name.is_none() && body.default_team_ids.is_none() {
         return Err(ApiError(Error::validation("no settings fields provided")));
     }
@@ -385,6 +400,11 @@ mod tests {
     #[test]
     fn settings_view_includes_read_only_smtp() {
         let view = SettingsView {
+            management: ManagementStatus {
+                settings: Default::default(),
+                report: Default::default(),
+                oauth_enabled: false,
+            },
             allow_signup: true,
             org_name: "Acme".into(),
             default_team_ids: vec![],

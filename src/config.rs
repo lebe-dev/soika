@@ -193,6 +193,7 @@ pub struct OidcConfig {
     /// login is created in a `pending` status and receives no session until an
     /// instance admin approves the account. Default `false`.
     pub require_approval: bool,
+    pub groups_claim: String,
 }
 
 impl std::fmt::Debug for OidcConfig {
@@ -360,6 +361,7 @@ impl Default for DbConfig {
 /// `Debug` impls.
 #[derive(Clone)]
 pub struct Config {
+    pub management: crate::domain::config_file::ManagementSettings,
     /// Display name of the single organization (`ORGANIZATION_NAME`).
     pub organization_name: String,
     /// sqlx connection string (`DATABASE_URL`).
@@ -482,6 +484,7 @@ impl Config {
         let timezone = env_or("TIMEZONE", "UTC");
 
         Ok(Config {
+            management: management_from_env()?,
             organization_name,
             database_url,
             db,
@@ -713,6 +716,7 @@ impl Config {
             provider_name,
             allowed_email_domains,
             require_approval,
+            groups_claim: env_or("OAUTH_GROUPS_CLAIM", "groups"),
         }))
     }
 
@@ -851,6 +855,33 @@ fn split_list(s: &str, sep: char) -> Vec<String> {
         .filter(|p| !p.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+fn management_from_env() -> Result<crate::domain::config_file::ManagementSettings> {
+    use crate::domain::config_file::*;
+    fn source(key: &str) -> Result<ManagementSource> {
+        match env_or(key, "ui").as_str() {
+            "ui" => Ok(ManagementSource::Ui),
+            "yaml" => Ok(ManagementSource::Yaml),
+            _ => Err(Error::validation(format!("{key} must be ui or yaml"))),
+        }
+    }
+    fn policy(key: &str) -> Result<OrphanPolicy> {
+        match env_or(key, "readonly").as_str() {
+            "readonly" => Ok(OrphanPolicy::Readonly),
+            "delete" => Ok(OrphanPolicy::Delete),
+            _ => Err(Error::validation(format!(
+                "{key} must be readonly or delete"
+            ))),
+        }
+    }
+    Ok(ManagementSettings {
+        path: env_or("CONFIG_PATH", "/etc/soika/config.yaml"),
+        project_source: source("PROJECT_MANAGEMENT_SOURCE")?,
+        team_source: source("TEAM_MANAGEMENT_SOURCE")?,
+        project_orphan_policy: policy("PROJECT_ORPHAN_POLICY")?,
+        team_orphan_policy: policy("TEAM_ORPHAN_POLICY")?,
+    })
 }
 
 #[cfg(test)]

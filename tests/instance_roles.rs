@@ -475,6 +475,7 @@ async fn member_sees_only_own_teams_while_manager_sees_all() {
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

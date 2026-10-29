@@ -85,6 +85,7 @@ COPY --from=backend /build/soika /app/soika
 # `templates`, resolved against WORKDIR /app). Shipped as files — not embedded —
 # so operators can tweak the look without rebuilding the binary.
 COPY templates/ /app/templates/
+COPY --chmod=0444 deploy/config.yaml /etc/soika/config.yaml
 
 # SQLite database lives on a mounted volume (the reference deployment).
 ENV DATABASE_URL="sqlite:///app/data/soika.db?mode=rwc" \

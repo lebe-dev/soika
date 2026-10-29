@@ -8,6 +8,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod config_sync;
 mod events;
 mod favorites;
 mod invites;
@@ -95,6 +96,7 @@ mod fixtures {
 
     fn test_config() -> Config {
         Config {
+            management: Default::default(),
             organization_name: "test".into(),
             database_url: "sqlite::memory:".into(),
             db: soika::config::DbConfig::default(),

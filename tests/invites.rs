@@ -189,6 +189,7 @@ impl Fixture {
 /// brute-force guard never interferes with the wrong-password assertions.
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),
@@ -245,6 +246,7 @@ impl OidcProvider for FakeProvider {
         _nonce: Nonce,
     ) -> soika::Result<OidcClaims> {
         Ok(OidcClaims {
+            groups: Vec::new(),
             email: "u@example.com".into(),
             email_verified: true,
             display_name: "Test User".into(),

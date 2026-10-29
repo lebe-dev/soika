@@ -172,7 +172,11 @@ pub async fn auth_config(
         oauth_provider_name,
         password_login_enabled: state.config.email_login_enabled,
         passkey_enabled,
-        allow_signup: allow_signup && state.config.email_login_enabled && !oauth_enabled,
+        allow_signup: allow_signup
+            && state.config.email_login_enabled
+            && !oauth_enabled
+            && state.config.management.team_source
+                == crate::domain::config_file::ManagementSource::Ui,
         initialized,
         user,
         telemetry,
@@ -329,7 +333,8 @@ async fn run_callback(
     } else {
         UserStatus::Active
     };
-    let user = match state.users.find_by_email(&claims.email).await? {
+    let user_groups = claims.groups.clone();
+    let mut user = match state.users.find_by_email(&claims.email).await? {
         Some(existing)
             if existing.instance_role.is_owner()
                 && !state.config.admin_users.contains(&existing.email) =>
@@ -363,6 +368,25 @@ async fn run_callback(
         }
     };
 
+    if state.config.management.team_source == crate::domain::config_file::ManagementSource::Yaml {
+        let granted = state
+            .config_sync
+            .reconcile_user(user.id, &user_groups)
+            .await?;
+        tracing::debug!(user_id = %user.id, group_count = user_groups.len(), "SSO team grants reconciled");
+        if granted && user.status.is_pending() {
+            user = state
+                .users
+                .update(
+                    user.id,
+                    crate::ports::UserUpdate {
+                        status: Some(UserStatus::Active),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
+    }
     // A pending account exists but holds no session: send the visitor to the
     // "awaiting approval" page instead of starting a session. This gate keys off
     // the stored status (not the flag), so an account provisioned while approval

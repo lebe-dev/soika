@@ -99,6 +99,7 @@ async fn build_app(oidc: Option<Arc<dyn OidcProvider>>) -> (axum::Router, AppSta
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),
@@ -125,6 +126,7 @@ fn test_config() -> Config {
 
 fn verified_claims(email: &str) -> OidcClaims {
     OidcClaims {
+        groups: Vec::new(),
         email: email.into(),
         email_verified: true,
         display_name: "Test User".into(),
@@ -1357,5 +1359,39 @@ async fn local_sessions_are_rejected_under_sso_and_conversion_revokes_credential
         .await
         .0,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn declarative_grants_approve_new_sso_accounts_and_apply_groups() {
+    use soika::domain::config_file::*;
+    let email = "granted@example.com";
+    let mut claims = verified_claims(email);
+    claims.groups = vec!["Acme/Platform".into()];
+    let (_, mut state) = build_app(Some(Arc::new(FakeProvider::with_approval(claims)))).await;
+    let settings = ManagementSettings {
+        team_source: ManagementSource::Yaml,
+        ..Default::default()
+    };
+    Arc::make_mut(&mut state.config).management = settings.clone();
+    let file = parse("version: 1\nteams:\n  - name: Platform\n    sso_groups:\n      - group: acme/platform\n        role: admin\n", &settings).unwrap();
+    state
+        .config_sync
+        .apply(&file, &settings, 1000)
+        .await
+        .unwrap();
+    let router = router::build(state.clone());
+    let (_, _, cookies) = run_callback(&router, email).await;
+    assert!(
+        cookies
+            .iter()
+            .any(|cookie| cookie.starts_with("soika_session="))
+    );
+    let user = state.users.find_by_email(email).await.unwrap().unwrap();
+    assert!(!user.status.is_pending());
+    let team = state.teams.list().await.unwrap().remove(0);
+    assert_eq!(
+        state.teams.member_role(team.id, user.id).await.unwrap(),
+        Some(soika::domain::TeamRole::Admin)
     );
 }

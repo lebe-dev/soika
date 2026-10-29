@@ -26,11 +26,13 @@ struct TeamRow {
     name: String,
     created_at: String,
     updated_at: String,
+    orphaned_at: Option<String>,
 }
 
 impl TeamRow {
     fn into_domain(self) -> Result<Team> {
         Ok(Team {
+            orphaned_at: self.orphaned_at.as_deref().map(ts_from_db).transpose()?,
             id: id_from_db(&self.id)?,
             name: self.name,
             created_at: ts_from_db(&self.created_at)?,
@@ -76,7 +78,7 @@ impl MemberUserRow {
     }
 }
 
-const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at FROM teams";
+const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at, orphaned_at FROM teams";
 
 #[async_trait]
 impl TeamRepository for SqliteTeamRepository {
@@ -94,6 +96,7 @@ impl TeamRepository for SqliteTeamRepository {
             .map_err(|e| conflict_or_db(e, format!("team name already exists: {name}")))?;
 
         Ok(Team {
+            orphaned_at: None,
             id,
             name,
             created_at: now,
@@ -191,7 +194,7 @@ impl TeamRepository for SqliteTeamRepository {
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {
         let rows = sqlx::query_as::<_, TeamRow>(
-            "SELECT t.id, t.name, t.created_at, t.updated_at FROM teams t \
+            "SELECT t.id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
              JOIN team_members m ON m.team_id = t.id \
              WHERE m.user_id = ? ORDER BY t.name",
         )

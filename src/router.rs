@@ -51,6 +51,7 @@ pub fn build(state: AppState) -> Router {
 
     let api_routes = Router::new()
         .merge(ingest_routes)
+        .route("/client-config", get(api::client_config::get))
         // --- Projects ---
         .route(
             "/projects",

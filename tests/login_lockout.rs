@@ -143,6 +143,7 @@ fn lockout_config(enabled: bool, max_attempts: u32) -> LockoutConfig {
 /// A minimal config: in-memory db, no SMTP, no SSO, signup disabled.
 fn test_config(lockout: LockoutConfig) -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

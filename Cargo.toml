@@ -1,6 +1,6 @@
 [package]
 name = "soika"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Lightweight, Sentry-compatible error tracking system written in Rust"
@@ -27,6 +27,7 @@ name = "soika"
 path = "src/main.rs"
 
 [dependencies]
+serde_yaml_ng = "0.10.0"
 # HTTP / async runtime
 axum = { version = "0.8.9", features = ["macros"] }
 tokio = { version = "1.52.3", features = ["full"] }

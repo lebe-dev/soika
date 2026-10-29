@@ -188,6 +188,7 @@ impl OidcProvider for GithubProvider {
             .unwrap_or(user.login);
 
         Ok(OidcClaims {
+            groups: Vec::new(),
             email,
             email_verified: true,
             display_name,
@@ -235,6 +236,7 @@ mod tests {
 
     fn config() -> OidcConfig {
         OidcConfig {
+            groups_claim: "groups".into(),
             kind: OAuthProviderKind::Github,
             issuer_url: "https://github.com".into(),
             client_id: "client-id".into(),

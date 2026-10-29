@@ -628,6 +628,7 @@ async fn change_team_to_unknown_team_is_404() {
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

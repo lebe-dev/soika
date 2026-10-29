@@ -242,6 +242,7 @@ async fn instance_admin_sees_every_team_and_project() {
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

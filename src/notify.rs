@@ -291,6 +291,7 @@ mod tests {
     fn project(muted: bool) -> Project {
         let now = Utc::now();
         Project {
+            orphaned_at: None,
             id: Uuid::new_v4(),
             short_id: "web001".to_string(),
             team_id: Uuid::new_v4(),
@@ -576,6 +577,7 @@ mod tests {
 
     fn test_config(base_url: String) -> Config {
         Config {
+            management: Default::default(),
             organization_name: "soika".into(),
             database_url: "sqlite::memory:".into(),
             db: crate::config::DbConfig::default(),

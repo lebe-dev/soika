@@ -8,6 +8,8 @@
 //! structs (rather than the compile-time `query!` macros) so the crate builds
 //! without a live database or an offline metadata cache.
 
+mod config_sync;
+pub use config_sync::SqliteConfigSync;
 mod convert;
 mod event;
 mod favorite;

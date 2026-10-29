@@ -74,7 +74,11 @@ async fn main() -> Result<()> {
                     Arc::new(
                         OidcClient::discover(oidc_config)
                             .await
-                            .context("OIDC discovery failed at startup")?,
+                            .context("OIDC discovery failed at startup")?
+                            .with_group_claims(
+                                config.management.team_source
+                                    == soika::domain::config_file::ManagementSource::Yaml,
+                            ),
                     )
                 }
             };
@@ -86,6 +90,10 @@ async fn main() -> Result<()> {
     let state = build_state(pool, config.clone())
         .context("building application state")?
         .with_oidc(oidc);
+
+    let state = soika::config_sync::synchronize(state)
+        .await
+        .context("synchronizing configuration")?;
 
     // The built-in admin is no longer provisioned from env: on first run the
     // service is uninitialized and the SPA routes the operator to `/setup`,

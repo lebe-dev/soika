@@ -230,6 +230,16 @@ async fn authorize_and_decode(
     // --- Soft per-project rate limit. ---
     let project_key = project.id.to_string();
     tracing::Span::current().record("project_id", tracing::field::display(project.id));
+    if project.orphaned_at.is_some() {
+        if matches!(state.rate_limiter.check(&project_key), Decision::Allow) {
+            tracing::warn!(project_id = %project.id, "ingestion rejected: project is read-only");
+        }
+        return Err((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({"error": "project is read-only"})),
+        )
+            .into_response());
+    }
     if let Decision::Limited { retry_after_secs } = state.rate_limiter.check(&project_key) {
         tracing::debug!(project_id = %project.id, "ingest rate-limited");
         return Err(rate_limited(retry_after_secs));

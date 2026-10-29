@@ -24,6 +24,7 @@ const PASSWORD: &str = "supersecret";
 
 fn test_config(passkey: Option<PasskeyConfig>) -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

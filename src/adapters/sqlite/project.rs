@@ -29,7 +29,7 @@ impl SqliteProjectRepository {
 
 /// Columns selected for a `Project`, in a fixed order shared by every query.
 const PROJECT_COLS: &str = "id, short_id, team_id, name, slug, dsn_public_key, \
-     retention_events, retention_days, muted, webhook_url, created_at, updated_at";
+     retention_events, retention_days, muted, webhook_url, created_at, updated_at, orphaned_at";
 
 /// Map a row (selected via [`PROJECT_COLS`]) into a domain [`Project`].
 ///
@@ -37,6 +37,10 @@ const PROJECT_COLS: &str = "id, short_id, team_id, name, slug, dsn_public_key, \
 /// stays in domain types.
 fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Result<Project> {
     Ok(Project {
+        orphaned_at: row
+            .try_get::<Option<String>, _>("orphaned_at")?
+            .map(parse_ts)
+            .transpose()?,
         id: parse_id(row.try_get::<String, _>("id")?)?,
         short_id: row.try_get("short_id")?,
         team_id: parse_id(row.try_get::<String, _>("team_id")?)?,

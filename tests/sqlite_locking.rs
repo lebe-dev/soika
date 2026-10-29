@@ -292,6 +292,7 @@ async fn exhausted_budget_answers_429_with_retry_after() {
 /// A minimal config: file-backed db, no SMTP (NoopMailer), signup disabled.
 fn test_config(database_url: &str, db: DbConfig) -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: database_url.to_string(),
         db,

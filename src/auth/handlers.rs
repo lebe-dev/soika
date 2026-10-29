@@ -374,6 +374,7 @@ pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<Response, AuthError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     require_email_login(&state)?;
 
     // Coexistence with SSO: when OAuth is enabled, self-registration
@@ -450,6 +451,7 @@ pub async fn accept_invite(
     PeerAddr(peer): PeerAddr,
     body: Option<Json<AcceptInviteRequest>>,
 ) -> Result<Response, AuthError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let invite = load_usable_invite(&state, &token).await?;
     let req = body.map(|Json(b)| b).unwrap_or_default();
 

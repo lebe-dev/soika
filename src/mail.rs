@@ -357,6 +357,7 @@ mod tests {
 
     fn test_config() -> Config {
         Config {
+            management: Default::default(),
             organization_name: "Acme".to_string(),
             database_url: "sqlite::memory:".to_string(),
             db: crate::config::DbConfig::default(),
@@ -412,6 +413,7 @@ mod tests {
     fn test_project() -> Project {
         let now = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
         Project {
+            orphaned_at: None,
             id: Uuid::nil(),
             short_id: "web001".to_string(),
             team_id: Uuid::nil(),

@@ -372,6 +372,7 @@ async fn non_uuid_event_id_is_bad_request() {
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

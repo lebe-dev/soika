@@ -9,6 +9,7 @@ pub mod adapters;
 pub mod api;
 pub mod auth;
 pub mod config;
+pub mod config_sync;
 pub mod db;
 pub mod domain;
 pub mod error;
@@ -70,13 +71,16 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
     // everything else keeps the defaults.
     let write_policy = config.db.write.clone();
 
+    let default_teams = config.management.team_source == domain::config_file::ManagementSource::Ui;
     let repos = match pool.into() {
-        DbPool::Sqlite(pool) => sqlite_repositories(pool, write_policy),
-        DbPool::Postgres(pool) => postgres_repositories(pool, write_policy),
+        DbPool::Sqlite(pool) => sqlite_repositories(pool, write_policy, default_teams),
+        DbPool::Postgres(pool) => postgres_repositories(pool, write_policy, default_teams),
     };
 
     Ok(AppState {
         config: Arc::new(config),
+        config_sync: repos.config_sync,
+        sync_report: Arc::new(Default::default()),
         users: repos.users,
         sessions: repos.sessions,
         teams: repos.teams,
@@ -102,6 +106,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
 
 /// Every repository port, as wired into [`AppState`].
 struct Repositories {
+    config_sync: Arc<dyn ports::ConfigSync>,
     users: Arc<dyn ports::UserRepository>,
     sessions: Arc<dyn ports::SessionRepository>,
     teams: Arc<dyn ports::TeamRepository>,
@@ -117,7 +122,11 @@ struct Repositories {
 
 /// The SQLite adapters. The write policy is only wired into the repositories on
 /// the ingest / retention hot path — everything else keeps the defaults.
-fn sqlite_repositories(pool: sqlx::SqlitePool, write: config::WritePolicy) -> Repositories {
+fn sqlite_repositories(
+    pool: sqlx::SqlitePool,
+    write: config::WritePolicy,
+    default_teams: bool,
+) -> Repositories {
     use adapters::sqlite::{
         SqliteEventRepository, SqliteFavoriteRepository, SqliteInviteRepository,
         SqliteIssueRepository, SqlitePasskeyRepository, SqliteProjectRepository,
@@ -126,7 +135,11 @@ fn sqlite_repositories(pool: sqlx::SqlitePool, write: config::WritePolicy) -> Re
     };
 
     Repositories {
-        users: Arc::new(SqliteUserRepository::new(pool.clone())),
+        config_sync: Arc::new(adapters::sqlite::SqliteConfigSync::new(
+            pool.clone(),
+            write.clone(),
+        )),
+        users: Arc::new(SqliteUserRepository::new(pool.clone()).with_default_teams(default_teams)),
         sessions: Arc::new(SqliteSessionRepository::new(pool.clone())),
         teams: Arc::new(SqliteTeamRepository::new(pool.clone())),
         projects: Arc::new(SqliteProjectRepository::new(pool.clone())),
@@ -141,7 +154,11 @@ fn sqlite_repositories(pool: sqlx::SqlitePool, write: config::WritePolicy) -> Re
 }
 
 /// The PostgreSQL adapters, wired like [`sqlite_repositories`].
-fn postgres_repositories(pool: sqlx::PgPool, write: config::WritePolicy) -> Repositories {
+fn postgres_repositories(
+    pool: sqlx::PgPool,
+    write: config::WritePolicy,
+    default_teams: bool,
+) -> Repositories {
     use adapters::postgres::{
         PgEventRepository, PgFavoriteRepository, PgInviteRepository, PgIssueRepository,
         PgPasskeyRepository, PgProjectRepository, PgSessionRepository, PgSettingsRepository,
@@ -149,7 +166,11 @@ fn postgres_repositories(pool: sqlx::PgPool, write: config::WritePolicy) -> Repo
     };
 
     Repositories {
-        users: Arc::new(PgUserRepository::new(pool.clone())),
+        config_sync: Arc::new(adapters::postgres::PgConfigSync::new(
+            pool.clone(),
+            write.clone(),
+        )),
+        users: Arc::new(PgUserRepository::new(pool.clone()).with_default_teams(default_teams)),
         sessions: Arc::new(PgSessionRepository::new(pool.clone())),
         teams: Arc::new(PgTeamRepository::new(pool.clone())),
         projects: Arc::new(PgProjectRepository::new(pool.clone())),

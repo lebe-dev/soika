@@ -9,6 +9,7 @@
 // which is fine here (these are control-flow short-circuits, never hot paths).
 #![allow(clippy::result_large_err)]
 
+use crate::domain::{is_valid_webhook_url, slugify};
 use axum::Json;
 use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::StatusCode;
@@ -97,13 +98,6 @@ pub fn json_error(status: StatusCode, message: impl Into<String>) -> Response {
 /// cover programmatic callers), so a malformed URL is rejected at save time
 /// rather than being persisted and then silently failing on every later
 /// delivery attempt — turning a typo into a permanent, log-only failure.
-fn is_valid_webhook_url(value: &str) -> bool {
-    match reqwest::Url::parse(value) {
-        Ok(url) => matches!(url.scheme(), "http" | "https"),
-        Err(_) => false,
-    }
-}
-
 /// Map a [`crate::error::Error`] to an HTTP JSON response (error mapping).
 pub fn error_response(err: Error) -> Response {
     let status = match &err {
@@ -301,6 +295,7 @@ fn ingest_urls(base_url: &str, project_id: Id) -> (String, String) {
 /// Project as returned to the SvelteKit client (includes derived DSN).
 #[derive(Debug, Serialize)]
 pub struct ProjectView {
+    pub orphaned_at: Option<crate::domain::Timestamp>,
     /// Short public id (used in web URLs and as the SPA-facing path param). The
     /// internal UUID is never exposed to the client.
     pub id: String,
@@ -323,6 +318,7 @@ impl ProjectView {
     fn from_project(project: Project, base_url: &str) -> Self {
         let dsn = build_dsn(base_url, &project.dsn_public_key, project.id);
         ProjectView {
+            orphaned_at: project.orphaned_at,
             id: project.short_id,
             team_id: project.team_id,
             name: project.name,
@@ -470,6 +466,9 @@ pub async fn create(
     CurrentUser(user): CurrentUser,
     Json(req): Json<CreateProjectRequest>,
 ) -> Response {
+    if let Err(err) = crate::config_sync::require_ui_management(&state, false) {
+        return error_response(err);
+    }
     let name = req.name.trim();
     if name.is_empty() {
         return json_error(StatusCode::BAD_REQUEST, "name must not be empty");
@@ -592,6 +591,9 @@ pub async fn update(
     Path(id): Path<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> Response {
+    if let Err(err) = crate::config_sync::require_ui_management(&state, false) {
+        return error_response(err);
+    }
     let project_id = match resolve_project(&state, &id).await {
         Ok(project) => project.id,
         Err(resp) => return resp,
@@ -677,6 +679,9 @@ pub async fn change_team(
     Path(id): Path<String>,
     Json(req): Json<ChangeTeamRequest>,
 ) -> Response {
+    if let Err(err) = crate::config_sync::require_ui_management(&state, false) {
+        return error_response(err);
+    }
     let project_id = match resolve_project(&state, &id).await {
         Ok(project) => project.id,
         Err(resp) => return resp,
@@ -715,6 +720,9 @@ pub async fn delete(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
+    if let Err(err) = crate::config_sync::require_ui_management(&state, false) {
+        return error_response(err);
+    }
     let project_id = match resolve_project(&state, &id).await {
         Ok(project) => project.id,
         Err(resp) => return resp,
@@ -1057,26 +1065,6 @@ fn generate_dsn_key() -> String {
 }
 
 /// Derive a URL-friendly slug from a free-text name.
-fn slugify(input: &str) -> String {
-    let mut slug = String::with_capacity(input.len());
-    let mut prev_dash = false;
-    for ch in input.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            prev_dash = false;
-        } else if !prev_dash && !slug.is_empty() {
-            slug.push('-');
-            prev_dash = true;
-        }
-    }
-    let trimmed = slug.trim_matches('-').to_string();
-    if trimmed.is_empty() {
-        // Fall back to a random suffix so slugs are never empty.
-        return format!("project-{}", &Id::new_v4().simple().to_string()[..8]);
-    }
-    trimmed
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1146,6 +1134,7 @@ mod tests {
         // level (flattened) plus a sibling `issues` array — assert that contract.
         let now = chrono::Utc::now();
         let project = ProjectView {
+            orphaned_at: None,
             id: "n".into(),
             team_id: Uuid::nil(),
             name: "n".into(),

@@ -14,11 +14,19 @@ use sqlx::FromRow;
 #[derive(Clone)]
 pub struct SqliteUserRepository {
     db: Db,
+    assign_default_teams: bool,
 }
 
 impl SqliteUserRepository {
     pub fn new(db: Db) -> Self {
-        SqliteUserRepository { db }
+        SqliteUserRepository {
+            db,
+            assign_default_teams: true,
+        }
+    }
+    pub fn with_default_teams(mut self, enabled: bool) -> Self {
+        self.assign_default_teams = enabled;
+        self
     }
 }
 
@@ -89,14 +97,16 @@ impl UserRepository for SqliteUserRepository {
                 .map_err(|e| {
                     conflict_or_db(e, format!("user email already exists: {}", new.email))
                 })?;
-                sqlx::query(
-                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                if self.assign_default_teams {
+                    sqlx::query(
+                        "INSERT INTO team_members (team_id, user_id, role, created_at) \
                      SELECT team_id, ?, 'contributor', ? FROM default_teams",
-                )
-                .bind(id_to_db(id))
-                .bind(ts_to_db(now))
-                .execute(&mut *tx)
-                .await?;
+                    )
+                    .bind(id_to_db(id))
+                    .bind(ts_to_db(now))
+                    .execute(&mut *tx)
+                    .await?;
+                }
                 tx.commit().await?;
                 Ok(())
             },

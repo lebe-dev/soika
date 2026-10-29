@@ -11,6 +11,7 @@ pub trait TeamRepository: Send + Sync {
     async fn find_by_id(&self, id: Id) -> Result<Option<Team>>;
     async fn list(&self) -> Result<Vec<Team>>;
     async fn rename(&self, id: Id, name: String) -> Result<Team>;
+    /// Refuse deletion while projects remain, or atomically move them to the target.
     async fn delete(&self, id: Id, move_projects_to: Option<Id>) -> Result<()>;
 
     /// Teams the given user is a member of.

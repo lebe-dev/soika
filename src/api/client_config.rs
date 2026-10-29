@@ -20,6 +20,8 @@ use crate::state::AppState;
 /// `SENTRY_DSN`), in which case the SPA skips SDK initialization entirely.
 #[derive(Debug, Serialize)]
 pub struct ClientConfigView {
+    pub project_management_source: crate::domain::config_file::ManagementSource,
+    pub team_management_source: crate::domain::config_file::ManagementSource,
     /// Sentry DSN the browser SDK reports to; `null` disables frontend Sentry.
     pub sentry_dsn: Option<String>,
     /// Optional environment tag (`SENTRY_ENVIRONMENT`); `null` leaves it unset.
@@ -46,6 +48,8 @@ impl ClientConfigView {
         };
 
         ClientConfigView {
+            project_management_source: state.config.management.project_source,
+            team_management_source: state.config.management.team_source,
             sentry_dsn,
             sentry_environment,
             release: concat!("soika@", env!("CARGO_PKG_VERSION")).to_string(),
@@ -53,4 +57,12 @@ impl ClientConfigView {
             webhooks_enabled: state.config.webhooks_enabled,
         }
     }
+}
+
+/// Authenticated runtime configuration for SPA clients.
+pub async fn get(
+    _user: crate::api::projects::CurrentUser,
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<ClientConfigView> {
+    axum::Json(ClientConfigView::from_state(&state))
 }

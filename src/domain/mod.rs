@@ -3,6 +3,7 @@
 //! These types carry **no** persistence concerns (no `sqlx`); adapters map
 //! to/from them. They are the currency of the port traits in [`crate::ports`].
 
+pub mod config_file;
 mod event;
 mod invite;
 mod issue;
@@ -21,7 +22,7 @@ pub use issue::{Issue, IssueStatus, MuteSpec};
 pub use membership::{Role, TeamRole};
 pub use mute_rule::{TagMatch, TagMuteRule};
 pub use passkey::{MAX_PASSKEY_NAME_LEN, Passkey, normalize_passkey_name};
-pub use project::Project;
+pub use project::{Project, is_valid_webhook_url, slugify};
 pub use settings::ServiceSettings;
 pub use stacktrace::{ExceptionValue, Frame, NormalizedEvent, Stacktrace};
 pub use team::{Team, TeamMember};

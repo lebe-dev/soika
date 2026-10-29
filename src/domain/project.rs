@@ -29,4 +29,32 @@ pub struct Project {
     pub webhook_url: Option<String>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+    pub orphaned_at: Option<Timestamp>,
+}
+
+pub fn slugify(input: &str) -> String {
+    let mut slug = String::with_capacity(input.len());
+    let mut prev_dash = false;
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash && !slug.is_empty() {
+            slug.push('-');
+            prev_dash = true;
+        }
+    }
+    let trimmed = slug.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        // Fall back to a random suffix so slugs are never empty.
+        return format!("project-{}", &Id::new_v4().simple().to_string()[..8]);
+    }
+    trimmed
+}
+
+pub fn is_valid_webhook_url(value: &str) -> bool {
+    match reqwest::Url::parse(value) {
+        Ok(url) => matches!(url.scheme(), "http" | "https"),
+        Err(_) => false,
+    }
 }

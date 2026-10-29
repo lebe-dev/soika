@@ -25,11 +25,13 @@ struct TeamRow {
     name: String,
     created_at: Timestamp,
     updated_at: Timestamp,
+    orphaned_at: Option<Timestamp>,
 }
 
 impl From<TeamRow> for Team {
     fn from(row: TeamRow) -> Self {
         Team {
+            orphaned_at: row.orphaned_at,
             id: row.id,
             name: row.name,
             created_at: row.created_at,
@@ -53,7 +55,7 @@ impl MemberUserRow {
     }
 }
 
-const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at FROM teams";
+const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at, orphaned_at FROM teams";
 
 #[async_trait]
 impl TeamRepository for PgTeamRepository {
@@ -70,6 +72,7 @@ impl TeamRepository for PgTeamRepository {
             .map_err(|e| conflict_or_db(e, format!("team name already exists: {name}")))?;
 
         Ok(Team {
+            orphaned_at: None,
             id,
             name,
             created_at: now,
@@ -99,7 +102,7 @@ impl TeamRepository for PgTeamRepository {
     async fn rename(&self, id: Id, name: String) -> Result<Team> {
         let row = sqlx::query_as::<_, TeamRow>(
             "UPDATE teams SET name = $1, updated_at = $2 WHERE id = $3 \
-             RETURNING id, name, created_at, updated_at",
+             RETURNING id, name, created_at, updated_at, orphaned_at",
         )
         .bind(&name)
         .bind(now())
@@ -168,7 +171,7 @@ impl TeamRepository for PgTeamRepository {
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {
         let rows = sqlx::query_as::<_, TeamRow>(
-            "SELECT t.id, t.name, t.created_at, t.updated_at FROM teams t \
+            "SELECT t.id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
              JOIN team_members m ON m.team_id = t.id \
              WHERE m.user_id = $1 ORDER BY t.name",
         )

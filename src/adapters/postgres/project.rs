@@ -20,7 +20,7 @@ impl PgProjectRepository {
 
 /// Columns selected for a `Project`, in a fixed order shared by every query.
 const PROJECT_COLS: &str = "id, short_id, team_id, name, slug, dsn_public_key, \
-     retention_events, retention_days, muted, webhook_url, created_at, updated_at";
+     retention_events, retention_days, muted, webhook_url, created_at, updated_at, orphaned_at";
 
 #[derive(FromRow)]
 struct ProjectRow {
@@ -36,11 +36,13 @@ struct ProjectRow {
     webhook_url: Option<String>,
     created_at: Timestamp,
     updated_at: Timestamp,
+    orphaned_at: Option<Timestamp>,
 }
 
 impl From<ProjectRow> for Project {
     fn from(row: ProjectRow) -> Self {
         Project {
+            orphaned_at: row.orphaned_at,
             id: row.id,
             short_id: row.short_id,
             team_id: row.team_id,
@@ -142,7 +144,7 @@ impl ProjectRepository for PgProjectRepository {
         let rows = sqlx::query_as::<_, ProjectRow>(
             "SELECT p.id, p.short_id, p.team_id, p.name, p.slug, p.dsn_public_key, \
                     p.retention_events, p.retention_days, p.muted, p.webhook_url, \
-                    p.created_at, p.updated_at \
+                    p.created_at, p.updated_at, p.orphaned_at \
              FROM projects p \
              JOIN team_members tm ON tm.team_id = p.team_id \
              WHERE tm.user_id = $1 \

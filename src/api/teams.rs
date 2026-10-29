@@ -186,6 +186,8 @@ fn parse_id(raw: &str) -> Result<Id, Error> {
 /// A team plus its members and assigned projects (Teams).
 #[derive(Debug, Serialize)]
 pub struct TeamView {
+    pub grants: Option<crate::domain::config_file::TeamGrantView>,
+    pub orphaned_at: Option<Timestamp>,
     pub id: Id,
     pub name: String,
     pub created_at: Timestamp,
@@ -270,7 +272,16 @@ fn validate_team_name(name: &str) -> Result<String, Error> {
 async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error> {
     let members = state.teams.members(team.id).await?;
     let projects = state.projects.list_for_team(team.id).await?;
+    let grants = if state.config.management.team_source
+        == crate::domain::config_file::ManagementSource::Yaml
+    {
+        Some(state.config_sync.inspect_team(team.id).await?)
+    } else {
+        None
+    };
     Ok(TeamView {
+        grants,
+        orphaned_at: team.orphaned_at,
         id: team.id,
         name: team.name,
         created_at: team.created_at,
@@ -334,6 +345,7 @@ pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<CreateTeam>,
 ) -> Result<(StatusCode, Json<TeamView>), ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let name = validate_team_name(&body.name)?;
     let team = state.teams.create(name).await?;
     tracing::info!(team_id = %team.id, "team created");
@@ -372,6 +384,7 @@ pub async fn update(
     Path(id): Path<String>,
     Json(body): Json<UpdateTeam>,
 ) -> Result<Json<TeamView>, ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let id = parse_id(&id)?;
     let name = validate_team_name(&body.name)?;
     let team = state.teams.rename(id, name).await?;
@@ -392,7 +405,11 @@ pub async fn delete(
     Path(id): Path<String>,
     Query(query): Query<DeleteTeamQuery>,
 ) -> Result<StatusCode, ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let id = parse_id(&id)?;
+    if query.move_projects_to.is_some() {
+        crate::config_sync::require_ui_management(&state, false)?;
+    }
     state.teams.delete(id, query.move_projects_to).await?;
     tracing::info!(team_id = %id, "team deleted");
     Ok(StatusCode::NO_CONTENT)
@@ -421,6 +438,7 @@ pub async fn add_member(
     Path(id): Path<String>,
     Json(body): Json<AddMember>,
 ) -> Result<Json<TeamView>, ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let id = parse_id(&id)?;
     require_team_manager(&state, &caller, id).await?;
     // Ensure team & user exist for clear 404s (avoids opaque FK failures).
@@ -449,6 +467,7 @@ pub async fn set_member_role(
     Path((id, user_id)): Path<(String, String)>,
     Json(body): Json<SetMemberRole>,
 ) -> Result<Json<TeamView>, ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let id = parse_id(&id)?;
     let user_id = parse_id(&user_id)?;
     require_team_manager(&state, &caller, id).await?;
@@ -492,6 +511,7 @@ pub async fn remove_member(
     State(state): State<AppState>,
     Path((id, user_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    crate::config_sync::require_ui_management(&state, true)?;
     let id = parse_id(&id)?;
     let user_id = parse_id(&user_id)?;
     require_team_manager(&state, &caller, id).await?;

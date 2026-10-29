@@ -162,6 +162,7 @@ impl TestApp {
 /// (identical to `tests/ingest.rs`).
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

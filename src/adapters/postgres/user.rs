@@ -12,11 +12,19 @@ use sqlx::{FromRow, Postgres, QueryBuilder};
 #[derive(Clone)]
 pub struct PgUserRepository {
     db: Db,
+    assign_default_teams: bool,
 }
 
 impl PgUserRepository {
     pub fn new(db: Db) -> Self {
-        PgUserRepository { db }
+        PgUserRepository {
+            db,
+            assign_default_teams: true,
+        }
+    }
+    pub fn with_default_teams(mut self, enabled: bool) -> Self {
+        self.assign_default_teams = enabled;
+        self
     }
 }
 
@@ -87,14 +95,16 @@ impl UserRepository for PgUserRepository {
                 .map_err(|e| {
                     conflict_or_db(e, format!("user email already exists: {}", new.email))
                 })?;
-                sqlx::query(
-                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                if self.assign_default_teams {
+                    sqlx::query(
+                        "INSERT INTO team_members (team_id, user_id, role, created_at) \
                      SELECT team_id, $1, 'contributor', $2 FROM default_teams",
-                )
-                .bind(id)
-                .bind(now)
-                .execute(&mut *tx)
-                .await?;
+                    )
+                    .bind(id)
+                    .bind(now)
+                    .execute(&mut *tx)
+                    .await?;
+                }
                 tx.commit().await?;
                 Ok(())
             },

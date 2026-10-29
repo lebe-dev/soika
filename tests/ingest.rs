@@ -238,6 +238,7 @@ impl TestApp {
 /// A minimal config: in-memory db, no SMTP (NoopMailer), signup disabled.
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

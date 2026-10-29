@@ -124,6 +124,7 @@ async fn locale_is_initialized_once_then_explicitly_changeable_and_persistent() 
 
 fn test_config() -> Config {
     Config {
+        management: Default::default(),
         organization_name: "test".into(),
         database_url: "sqlite::memory:".into(),
         db: soika::config::DbConfig::default(),

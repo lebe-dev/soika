@@ -11,6 +11,7 @@ pub struct Team {
     pub name: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+    pub orphaned_at: Option<Timestamp>,
 }
 
 /// Membership link of a user in a team (User × Team), carrying the team role.
