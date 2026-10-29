@@ -89,8 +89,8 @@ pub struct RenameRequest {
 
 /// `POST /auth/passkey/login/options` — start a usernameless assertion.
 ///
-/// Returns the WebAuthn request options and stores the ceremony state in a
-/// signed, short-lived cookie. No account is identified at this point, so the
+/// Returns the WebAuthn request options and stores the ceremony state in the
+/// database, referenced by a short-lived opaque cookie. No account is identified at this point, so the
 /// response is identical whether or not any passkey exists.
 pub async fn login_options(
     State(state): State<AppState>,
@@ -98,6 +98,17 @@ pub async fn login_options(
     PeerAddr(peer): PeerAddr,
 ) -> std::result::Result<Response, AuthError> {
     let (webauthn, config) = require_passkeys(&state)?;
+    // Bound anonymous writes independently of failed assertions. A client can
+    // otherwise fill the challenge table without ever submitting a credential.
+    if let crate::ingest::Decision::Limited { retry_after_secs } =
+        state.rate_limiter.check("auth:passkey-options")
+    {
+        return Ok((
+            [("retry-after", retry_after_secs.to_string())],
+            AuthError(Error::RateLimited),
+        )
+            .into_response());
+    }
 
     // The options endpoint is cheap but not free; honour the same lockout the
     // verification step feeds so a blocked client cannot keep minting challenges.
@@ -118,7 +129,8 @@ pub async fn login_options(
         PASSKEY_AUTHENTICATION_COOKIE,
         &ceremony,
         None,
-    )?;
+    )
+    .await?;
 
     Ok(with_cookie(Json(strip_mediation(challenge)), &cookie)?)
 }
@@ -142,11 +154,12 @@ pub async fn login_verify(
 
     let signed = read_cookie(&headers, PASSKEY_AUTHENTICATION_COOKIE)
         .ok_or_else(|| Error::Auth("no passkey challenge in progress".into()))?;
-    let payload = decode_challenge::<DiscoverableAuthentication>(
-        &state.config.secret_key,
+    let payload = take_challenge::<DiscoverableAuthentication>(
+        &state,
         &signed,
-        now_unix(&state),
-    )?;
+        PASSKEY_AUTHENTICATION_COOKIE,
+    )
+    .await?;
 
     // The assertion names its own account via the user handle; everything below
     // is verified against the credentials that account actually owns.
@@ -282,7 +295,8 @@ pub async fn register_options(
         PASSKEY_REGISTRATION_COOKIE,
         &ceremony,
         Some(user.id),
-    )?;
+    )
+    .await?;
 
     Ok(with_cookie(Json(require_discoverable(challenge)), &cookie)?)
 }
@@ -305,11 +319,8 @@ pub async fn register_verify(
 
     let signed = read_cookie(&headers, PASSKEY_REGISTRATION_COOKIE)
         .ok_or_else(|| Error::Auth("no passkey registration in progress".into()))?;
-    let payload = decode_challenge::<PasskeyRegistration>(
-        &state.config.secret_key,
-        &signed,
-        now_unix(&state),
-    )?;
+    let payload =
+        take_challenge::<PasskeyRegistration>(&state, &signed, PASSKEY_REGISTRATION_COOKIE).await?;
 
     // The ceremony is bound to the account that started it: a state minted for
     // another session can never enrol a credential here.
@@ -397,8 +408,8 @@ fn require_passkeys(state: &AppState) -> Result<(&Webauthn, &PasskeyConfig)> {
     Ok((webauthn, config))
 }
 
-/// Sign a ceremony state and wrap it in its `Set-Cookie` value.
-fn challenge_cookie<S: serde::Serialize>(
+/// Persist ceremony state and return a cookie holding only its random handle.
+async fn challenge_cookie<S: serde::Serialize>(
     state: &AppState,
     config: &PasskeyConfig,
     name: &str,
@@ -413,12 +424,37 @@ fn challenge_cookie<S: serde::Serialize>(
         now_unix(state),
         ttl_secs,
     )?;
+    let handle = super::session::generate_session_id();
+    state
+        .auth_challenges
+        .create(
+            &handle,
+            name,
+            &signed,
+            state.clock.now() + chrono::Duration::seconds(ttl_secs),
+        )
+        .await?;
     Ok(build_challenge_cookie(
         name,
-        &signed,
+        &handle,
         ttl_secs,
         cookie_secure(&state.config),
     ))
+}
+
+/// A handle is single-use across replicas. Clearing a browser cookie alone
+/// cannot revoke a copied assertion; the database delete is the replay gate.
+async fn take_challenge<S: serde::de::DeserializeOwned>(
+    state: &AppState,
+    handle: &str,
+    purpose: &str,
+) -> Result<super::passkey::ChallengePayload<S>> {
+    let signed = state
+        .auth_challenges
+        .take(handle, purpose, state.clock.now())
+        .await?
+        .ok_or_else(|| Error::Auth("passkey challenge expired or already used".into()))?;
+    decode_challenge(&state.config.secret_key, &signed, now_unix(state))
 }
 
 /// Force a *discoverable* credential: the library's passkey defaults leave the

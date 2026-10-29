@@ -124,7 +124,10 @@ impl TestApp {
         headers: &[(&str, &str)],
         body: Vec<u8>,
     ) -> (StatusCode, Value) {
-        let mut builder = Request::builder().method("POST").uri(uri);
+        let mut builder = Request::builder()
+            .header("x-soika-request", "1")
+            .method("POST")
+            .uri(uri);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }

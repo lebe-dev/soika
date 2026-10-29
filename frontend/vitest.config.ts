@@ -25,7 +25,7 @@ import { defineConfig } from 'vitest/config';
 //     // @vitest-environment jsdom
 //
 // `$lib` is aliased to `src/lib` to mirror the SvelteKit alias in
-// `svelte.config.js`.
+// `sveltekit.config.js`.
 export default defineConfig({
   plugins: [precompileIntl('locales'), svelte({ preprocess: vitePreprocess() })],
   resolve: {
@@ -38,7 +38,7 @@ export default defineConfig({
   },
   test: {
     alias: {
-      '$app/stores': fileURLToPath(new URL('./src/test/app-module.ts', import.meta.url)),
+      '$app/state': fileURLToPath(new URL('./src/test/app-module.ts', import.meta.url)),
       '$app/navigation': fileURLToPath(new URL('./src/test/app-navigation.ts', import.meta.url))
     },
     include: ['src/**/*.test.ts'],

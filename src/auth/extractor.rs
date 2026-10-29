@@ -22,7 +22,7 @@ use crate::domain::{Id, User};
 use crate::error::{Error, Result};
 use crate::state::AppState;
 
-use super::session::session_id_from_headers;
+use super::session::authenticate_user;
 
 /// The authenticated user for the current request.
 ///
@@ -67,34 +67,14 @@ impl CurrentUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> std::result::Result<Self, AuthRejection> {
-        let session_id = session_id_from_headers(&state.config.secret_key, &parts.headers)
-            .ok_or_else(|| AuthRejection("missing or invalid session".into()))?;
-
-        let session = state
-            .sessions
-            .find(&session_id)
+        let user = authenticate_user(state, &parts.headers)
             .await
             .map_err(|err| {
-                tracing::warn!(error = %err, "session lookup failed");
-                AuthRejection("session lookup failed".into())
-            })?
-            .ok_or_else(|| AuthRejection("session not found or expired".into()))?;
-
-        let user = state
-            .users
-            .find_by_id(session.user_id)
-            .await
-            .map_err(|err| {
-                tracing::warn!(error = %err, "session user lookup failed");
-                AuthRejection("user lookup failed".into())
-            })?
-            .ok_or_else(|| AuthRejection("user no longer exists".into()))?;
-
-        tracing::Span::current().record("user_id", tracing::field::display(user.id));
-        let user = state.config.admin_users.apply(user);
-        if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
-            return Err(AuthRejection("sign in with SSO".into()));
-        }
+                if !matches!(err, Error::Auth(_)) {
+                    tracing::warn!(error = %err, "session lookup failed");
+                }
+                AuthRejection("authentication required".into())
+            })?;
         Ok(CurrentUser(user))
     }
 }

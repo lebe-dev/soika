@@ -54,6 +54,7 @@ async fn build_router() -> axum::Router {
 /// A GET request the way a browser navigation arrives (asking for HTML).
 async fn get(router: &axum::Router, uri: &str) -> (StatusCode, String, String) {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("GET")
         .uri(uri)
         .header(header::ACCEPT, "text/html")

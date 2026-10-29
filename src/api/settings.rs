@@ -91,7 +91,7 @@ fn authentication_status(state: &AppState, allow_signup: bool) -> Authentication
                 max_per_user: config.max_per_user,
             }),
         yaml_teams,
-        admin_setup_enabled: state.config.admin_enabled,
+        admin_setup_enabled: state.config.admin_enabled && state.config.admin_users.is_empty(),
         login_protection_enabled: state.config.lockout.enabled,
     }
 }
@@ -272,8 +272,8 @@ pub struct TestEmailResult {
 /// `POST /settings/test-email` — send a test message to verify SMTP (admin).
 ///
 /// Returns `400` when SMTP is unconfigured (nothing to test) and surfaces any
-/// SMTP/transport failure as a `500` carrying the underlying error, so the admin
-/// can diagnose host/credential/From problems directly from the UI.
+/// SMTP/transport failure as a generic `500`. The underlying cause is recorded
+/// in server logs for the operator to diagnose.
 pub async fn test_email(
     AdminUser(admin): AdminUser,
     State(state): State<AppState>,
@@ -321,11 +321,28 @@ fn parse_user_id(raw: &str) -> Result<Id, Error> {
 /// Flips the account to `active`, letting it hold a session on the next sign-in.
 /// Approving an already-active account is a harmless no-op. Returns the updated row.
 pub async fn approve_user(
-    _admin: AdminUser,
+    AdminUser(admin): AdminUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<AdminUserRow>, ApiError> {
     let user_id = parse_user_id(&id)?;
+    let target = state
+        .users
+        .find_by_id(user_id)
+        .await?
+        .ok_or_else(|| Error::not_found("user"))?;
+    if state
+        .config
+        .admin_users
+        .effective_role(&target.email, target.instance_role)
+        .is_owner()
+        && !admin.instance_role.is_owner()
+    {
+        return Err(ApiError(Error::Forbidden(
+            "only an owner can approve an owner account".into(),
+        )));
+    }
+
     let user = state
         .users
         .update(

@@ -122,7 +122,7 @@ async function parseError(res: Response): Promise<ApiError> {
 
 async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
   const doFetch = options.fetch ?? fetch;
-  const headers: Record<string, string> = { ...options.headers };
+  const headers: Record<string, string> = { 'x-soika-request': '1', ...options.headers };
 
   let body: BodyInit | undefined;
   if (options.body !== undefined) {

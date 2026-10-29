@@ -53,6 +53,8 @@ impl GithubProvider {
 
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| Error::internal(format!("failed to build HTTP client: {e}")))?;
 

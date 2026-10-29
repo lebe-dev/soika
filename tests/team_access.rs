@@ -121,6 +121,7 @@ impl Fixture {
     async fn login(&self, email: &str) -> String {
         let body = json!({ "email": email, "password": PASSWORD }).to_string();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json")
@@ -144,6 +145,7 @@ impl Fixture {
     /// Authenticated `GET` returning the status and parsed JSON body.
     async fn get(&self, uri: &str, cookie: &str) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("GET")
             .uri(uri)
             .header("cookie", cookie)

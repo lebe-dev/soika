@@ -70,62 +70,13 @@ const SELECT_USER: &str = "SELECT id, email, display_name, password_hash, instan
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
     async fn create(&self, new: NewUser) -> Result<User> {
-        let id = Id::new_v4();
-        let now: Timestamp = chrono::Utc::now();
-
-        retry_write(
-            &WritePolicy::default(),
-            "create user with default teams",
-            || async {
-                let mut tx = begin_write(&self.db).await?;
-                sqlx::query(
-                    "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
-                     notifications_enabled, auth_provider, status, created_at, updated_at) \
-                     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
-                )
-                .bind(id_to_db(id))
-                .bind(&new.email)
-                .bind(&new.display_name)
-                .bind(&new.password_hash)
-                .bind(new.instance_role.as_str())
-                .bind(new.auth_provider.as_str())
-                .bind(new.status.as_str())
-                .bind(ts_to_db(now))
-                .bind(ts_to_db(now))
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| {
-                    conflict_or_db(e, format!("user email already exists: {}", new.email))
-                })?;
-                if self.assign_default_teams {
-                    sqlx::query(
-                        "INSERT INTO team_members (team_id, user_id, role, created_at) \
-                         SELECT team_id, ?, 'contributor', ? FROM default_teams",
-                    )
-                    .bind(id_to_db(id))
-                    .bind(ts_to_db(now))
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                tx.commit().await?;
-                Ok(())
-            },
-        )
-        .await?;
-
-        Ok(User {
-            id,
-            email: new.email,
-            display_name: new.display_name,
-            password_hash: new.password_hash,
-            instance_role: new.instance_role,
-            notifications_enabled: true,
-            locale: None,
-            auth_provider: new.auth_provider,
-            status: new.status,
-            created_at: now,
-            updated_at: now,
-        })
+        self.create_account(new, false).await
+    }
+    async fn create_initial_owner(&self, new: NewUser) -> Result<User> {
+        if new.instance_role != InstanceRole::Owner {
+            return Err(Error::validation("initial account must be an owner"));
+        }
+        self.create_account(new, true).await
     }
 
     async fn find_by_id(&self, id: Id) -> Result<Option<User>> {
@@ -362,5 +313,77 @@ impl UserRepository for SqliteUserRepository {
                 .fetch_one(&self.db)
                 .await?;
         Ok(count)
+    }
+}
+
+impl SqliteUserRepository {
+    async fn create_account(&self, new: NewUser, initial_owner: bool) -> Result<User> {
+        let id = Id::new_v4();
+        let now: Timestamp = chrono::Utc::now();
+
+        retry_write(
+            &WritePolicy::default(),
+            "create user with default teams",
+            || async {
+                let mut tx = begin_write(&self.db).await?;
+                if initial_owner {
+                    let owners: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM users WHERE instance_role = 'owner'",
+                    )
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    if owners > 0 {
+                        return Err(Error::Conflict("the service is already initialized".into()));
+                    }
+                }
+
+                sqlx::query(
+                    "INSERT INTO users (id, email, display_name, password_hash, instance_role, \
+                     notifications_enabled, auth_provider, status, created_at, updated_at) \
+                     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                )
+                .bind(id_to_db(id))
+                .bind(&new.email)
+                .bind(&new.display_name)
+                .bind(&new.password_hash)
+                .bind(new.instance_role.as_str())
+                .bind(new.auth_provider.as_str())
+                .bind(new.status.as_str())
+                .bind(ts_to_db(now))
+                .bind(ts_to_db(now))
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    conflict_or_db(e, format!("user email already exists: {}", new.email))
+                })?;
+                if self.assign_default_teams {
+                    sqlx::query(
+                        "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                         SELECT team_id, ?, 'contributor', ? FROM default_teams",
+                    )
+                    .bind(id_to_db(id))
+                    .bind(ts_to_db(now))
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                tx.commit().await?;
+                Ok(())
+            },
+        )
+        .await?;
+
+        Ok(User {
+            id,
+            email: new.email,
+            display_name: new.display_name,
+            password_hash: new.password_hash,
+            instance_role: new.instance_role,
+            notifications_enabled: true,
+            locale: None,
+            auth_provider: new.auth_provider,
+            status: new.status,
+            created_at: now,
+            updated_at: now,
+        })
     }
 }

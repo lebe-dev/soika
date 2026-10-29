@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
 
     // `into_make_service_with_connect_info` exposes the TCP peer address to
     // handlers via `ConnectInfo<SocketAddr>`, used as the brute-force fallback
-    // key when no `X-Forwarded-For` / `X-Real-IP` proxy header is present.
+    // key without trusting client-supplied forwarding headers.
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),

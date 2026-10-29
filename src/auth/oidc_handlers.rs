@@ -169,7 +169,7 @@ pub async fn auth_config(
 
     Json(AuthConfig {
         oauth_enabled,
-        admin_enabled: state.config.admin_enabled,
+        admin_enabled: state.config.admin_enabled && state.config.admin_users.is_empty(),
         oauth_provider_name,
         password_login_enabled: state.config.email_login_enabled,
         sso_allow_display_name_change: state.config.sso_allow_display_name_change,
@@ -427,7 +427,11 @@ async fn run_callback(
 /// through as a protocol-relative URL.
 fn validated_next(next: Option<&str>) -> Option<String> {
     let next = next?;
-    if next.starts_with('/') && !next.starts_with("//") && !next.contains('\\') {
+    if next.starts_with('/')
+        && !next.starts_with("//")
+        && !next.contains('\\')
+        && !next.chars().any(char::is_control)
+    {
         return Some(next.to_string());
     }
     None
@@ -545,6 +549,8 @@ mod tests {
         assert_eq!(validated_next(Some("/\\evil.com")), None);
         assert_eq!(validated_next(Some("\\\\evil.com")), None);
         assert_eq!(validated_next(Some("/path\\with\\backslash")), None);
+        assert_eq!(validated_next(Some("/\t/evil.com")), None);
+        assert_eq!(validated_next(Some("/\n/evil.com")), None);
     }
 
     #[test]

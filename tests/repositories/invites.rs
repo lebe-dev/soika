@@ -85,3 +85,64 @@ async fn mark_accepted_and_delete() {
     repo.delete("tok").await.unwrap();
     assert!(repo.find_by_token("tok").await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn invite_accept_is_single_use_and_does_not_demote_an_admin() {
+    let db = test_db().await;
+    let (team, creator) = fixtures(&db).await;
+    let first = insert_user(&db, "first@example.com").await;
+    let second = insert_user(&db, "second@example.com").await;
+    let mut invite = new_invite(team, creator, "once");
+    invite.email = None;
+    db.invites.create(invite).await.unwrap();
+    let now = chrono::Utc::now();
+    let (a, b) = tokio::join!(
+        db.invites.accept("once", first, now),
+        db.invites.accept("once", second, now)
+    );
+    assert_eq!(
+        [a.is_ok(), b.is_ok()].into_iter().filter(|ok| *ok).count(),
+        1
+    );
+    let members = db.teams.members(team).await.unwrap();
+    assert_eq!(members.len(), 1);
+    let winner = members[0].0.id;
+    db.teams
+        .add_member(team, winner, TeamRole::Admin)
+        .await
+        .unwrap();
+    let mut invite = new_invite(team, creator, "contributor");
+    invite.email = None;
+    db.invites.create(invite).await.unwrap();
+    db.invites.accept("contributor", winner, now).await.unwrap();
+    assert_eq!(
+        db.teams.member_role(team, winner).await.unwrap(),
+        Some(TeamRole::Admin)
+    );
+}
+
+#[tokio::test]
+async fn wrong_recipient_does_not_consume_invite_or_gain_membership() {
+    let db = test_db().await;
+    let (team, creator) = fixtures(&db).await;
+    db.invites
+        .create(new_invite(team, creator, "targeted"))
+        .await
+        .unwrap();
+    assert!(
+        db.invites
+            .accept("targeted", creator, chrono::Utc::now())
+            .await
+            .is_err()
+    );
+    assert!(
+        db.invites
+            .find_by_token("targeted")
+            .await
+            .unwrap()
+            .unwrap()
+            .accepted_at
+            .is_none()
+    );
+    assert!(!db.teams.is_member(team, creator).await.unwrap());
+}

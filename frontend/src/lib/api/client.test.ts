@@ -230,6 +230,7 @@ describe('request — fetch init', () => {
     expect(init.method).toBe('GET');
     expect(init.body).toBeUndefined();
     expect((init.headers as Record<string, string>)['content-type']).toBeUndefined();
+    expect((init.headers as Record<string, string>)['x-soika-request']).toBe('1');
   });
 
   it('sets content-type and serializes the body to JSON when a body is sent', async () => {

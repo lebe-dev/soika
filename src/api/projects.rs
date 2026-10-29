@@ -40,39 +40,11 @@ impl FromRequestParts<AppState> for CurrentUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> std::result::Result<Self, Self::Rejection> {
-        // The login handler sets a SIGNED cookie (`<payload>.<sig>`); verify the
-        // signature and extract the inner opaque session id before lookup, or the
-        // raw signed value will never match a stored session id.
-        let session_id =
-            crate::auth::session_id_from_headers(&state.config.secret_key, &parts.headers)
-                .ok_or_else(auth_rejection)?;
-
-        let session = state
-            .sessions
-            .find(&session_id)
+        let user = crate::auth::session::authenticate_user(state, &parts.headers)
             .await
-            .map_err(error_response)?
-            .ok_or_else(auth_rejection)?;
-
-        let user = state
-            .users
-            .find_by_id(session.user_id)
-            .await
-            .map_err(error_response)?
-            .ok_or_else(auth_rejection)?;
-
-        tracing::Span::current().record("user_id", tracing::field::display(user.id));
-        let user = state.config.admin_users.apply(user);
-        if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
-            return Err(auth_rejection());
-        }
+            .map_err(error_response)?;
         Ok(CurrentUser(user))
     }
-}
-
-/// Standard `401` JSON rejection used by the auth extractor.
-fn auth_rejection() -> Response {
-    json_error(StatusCode::UNAUTHORIZED, "authentication required")
 }
 
 /// Shape of every JSON error body returned by the API.
@@ -119,7 +91,14 @@ pub fn error_response(err: Error) -> Response {
     } else if status.is_server_error() {
         tracing::error!(error = %err, "request failed");
     }
-    json_error(status, err.to_string())
+    json_error(
+        status,
+        if status.is_server_error() {
+            "internal server error".into()
+        } else {
+            err.to_string()
+        },
+    )
 }
 
 /// Parse a path id into a [`Id`] (UUID), mapping failure to a `400`.

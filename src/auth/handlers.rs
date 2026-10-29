@@ -43,9 +43,7 @@ impl From<Error> for AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status = status_for(&self.0);
-        // Mirror `api::ApiError`: 5xx faults carry their cause only in the
-        // response body (which the operator never sees), so log it here to
-        // surface the real reason in tracing and Sentry.
+        // Internal causes belong in server logs, not in the HTTP response.
         if self.0.is_busy() {
             tracing::warn!(error = %self.0, "auth request failed: database is busy");
         } else if status.is_server_error() {
@@ -54,7 +52,11 @@ impl IntoResponse for AuthError {
         (
             status,
             Json(ErrorBody {
-                error: self.0.to_string(),
+                error: if status.is_server_error() {
+                    "internal server error".into()
+                } else {
+                    self.0.to_string()
+                },
             }),
         )
             .into_response()
@@ -182,7 +184,12 @@ pub struct AcceptInviteRequest {
 
 fn normalize_email(email: &str) -> Result<String, Error> {
     let e = email.trim().to_ascii_lowercase();
-    if e.is_empty() || !e.contains('@') {
+    if e.len() > 254
+        || e.chars().any(|c| c.is_whitespace() || c.is_control())
+        || !e.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && !domain.is_empty() && !domain.contains('@')
+        })
+    {
         return Err(Error::validation("a valid email is required"));
     }
     Ok(e)
@@ -236,28 +243,29 @@ pub async fn login(
         .find_by_email(&email)
         .await?
         .map(|user| state.config.admin_users.apply(user));
-    let ok = match &user {
-        Some(u) => {
-            let verified = verify_password(&body.password, &u.password_hash)?;
-            // Under OAuth, non-owner accounts cannot log in with a password even
-            // if their hash matched; reject after spending the verify effort.
-            verified && (!oauth_enabled || u.instance_role.is_owner())
+    let verified = match &user {
+        Some(u) if !u.password_hash.is_empty() => {
+            verify_password(&body.password, &u.password_hash)?
         }
-        None => {
-            // Spend roughly the same effort on a dummy verify to reduce timing signal.
+        _ => {
+            // Unknown and SSO-only accounts spend the same hashing effort.
             let _ = verify_password(&body.password, dummy_hash());
             false
         }
     };
+    let ok = verified
+        && user.as_ref().is_some_and(|u| {
+            !u.status.is_pending() && (!oauth_enabled || u.instance_role.is_owner())
+        });
 
     if !ok {
-        // Distinguish the "password login disabled" case for a known non-owner
-        // account so the UI can point users at SSO, while keeping unknown emails
-        // and bad passwords on the generic anti-enumeration path. This branch is
-        // deterministic (independent of the password) so it does not count toward
-        // the brute-force budget.
-        if oauth_enabled
+        // Only a proven local credential may reveal that SSO is required.
+        // Bad guesses for existing accounts use the same response and failure
+        // budget as unknown addresses.
+        if verified
+            && oauth_enabled
             && let Some(u) = &user
+            && !u.status.is_pending()
             && !u.instance_role.is_owner()
         {
             return Err(AuthError(Error::Forbidden(
@@ -301,6 +309,11 @@ pub async fn setup(
     if !state.config.admin_enabled {
         return Err(AuthError(Error::not_found("setup is disabled")));
     }
+    if !state.config.admin_users.is_empty() {
+        return Err(AuthError(Error::Forbidden(
+            "setup is disabled when ADMIN_USERS is configured".into(),
+        )));
+    }
 
     // Gate on current state: refuse once any admin exists. This is the same
     // check the SPA uses via `/auth/config`, re-enforced server-side so the
@@ -330,9 +343,9 @@ pub async fn setup(
         auth_provider: crate::domain::AuthProvider::Local,
         status: crate::domain::UserStatus::Active,
     };
-    // A UNIQUE(email) conflict here means a concurrent setup won the race; map it
-    // to the same "already initialized" outcome rather than a raw error.
-    let user = match state.users.create(new).await {
+    // Owner-count checking and creation are atomic in the repository. Map a
+    // concurrent setup or duplicate email to the same initialized outcome.
+    let user = match state.users.create_initial_owner(new).await {
         Ok(user) => user,
         Err(Error::Conflict(_)) => {
             return Err(AuthError(Error::Conflict(
@@ -454,6 +467,18 @@ pub async fn accept_invite(
     crate::config_sync::require_ui_management(&state, true)?;
     let invite = load_usable_invite(&state, &token).await?;
     let req = body.map(|Json(b)| b).unwrap_or_default();
+    if let Some(target) = &invite.email {
+        let accepting_email = current
+            .as_ref()
+            .map(|u| u.email.as_str())
+            .or(req.email.as_deref())
+            .unwrap_or(target);
+        if !target.eq_ignore_ascii_case(accepting_email.trim()) {
+            return Err(AuthError(Error::Forbidden(
+                "invite is addressed to a different account".into(),
+            )));
+        }
+    }
 
     // Resolve which user is accepting, plus whether we minted a new session.
     let (user, set_cookie): (User, Option<String>) = if let Some(CurrentUser(u)) = current {
@@ -492,14 +517,9 @@ pub async fn accept_invite(
         }
     };
 
-    // Join the team with the invited team role (idempotent add).
-    state
-        .teams
-        .add_member(invite.team_id, user.id, invite.role)
-        .await?;
     state
         .invites
-        .mark_accepted(&invite.token, state.clock.now())
+        .accept(&invite.token, user.id, state.clock.now())
         .await?;
 
     tracing::info!(user_id = %user.id, team_id = %invite.team_id, role = ?invite.role, "invite accepted");
@@ -537,6 +557,13 @@ async fn create_user(
     display_name: &str,
 ) -> Result<User, Error> {
     let email = normalize_email(email)?;
+    // A local registration does not prove mailbox ownership. Never allow it
+    // to claim an environment-granted Owner identity, even through an invite.
+    if state.config.admin_users.contains(&email) {
+        return Err(Error::Forbidden(
+            "this address requires administrator provisioning or verified SSO".into(),
+        ));
+    }
     validate_password(password)?;
     let display_name = normalize_display_name(display_name)?;
 
@@ -608,7 +635,8 @@ async fn resolve_or_register_invitee(
                 ));
             }
             // Existing account → must authenticate before joining.
-            if !verify_password(password, &existing.password_hash)? {
+            if existing.status.is_pending() || !verify_password(password, &existing.password_hash)?
+            {
                 return Err(Error::Auth("invalid email or password".into()));
             }
             existing
@@ -660,6 +688,10 @@ mod tests {
         assert_eq!(normalize_email("  Foo@Bar.COM ").unwrap(), "foo@bar.com");
         assert!(normalize_email("not-an-email").is_err());
         assert!(normalize_email("   ").is_err());
+        for email in ["a@@example.com", "@example.com", "a@", "a\n@example.com"] {
+            assert!(normalize_email(email).is_err());
+        }
+        assert!(normalize_email(&format!("{}@example.com", "a".repeat(255))).is_err());
     }
 
     #[test]

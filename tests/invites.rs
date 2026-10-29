@@ -148,6 +148,7 @@ impl Fixture {
     /// load-bearing here.
     async fn accept(&self, token: &str, body: Option<Value>) -> (StatusCode, Value) {
         let mut builder = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri(format!("/api/invite/{token}"));
         let body = match body {
@@ -607,6 +608,7 @@ async fn admin_users_invites_grant_owner_for_new_existing_and_signed_in_accounts
             }
         }
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri(format!("/api/invite/{token}"))
             .header("content-type", "application/json")
@@ -616,6 +618,18 @@ async fn admin_users_invites_grant_owner_for_new_existing_and_signed_in_accounts
             ))
             .unwrap();
         let response = app.router.clone().oneshot(request).await.unwrap();
+        if flow == "new" {
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            assert!(
+                app.state
+                    .users
+                    .find_by_email(email)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            continue;
+        }
         assert_eq!(response.status(), StatusCode::OK, "{flow}");
         let body: Value =
             serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
@@ -732,6 +746,7 @@ async fn email_login_disabled_allows_signed_in_invite_acceptance() {
         .clone()
         .oneshot(
             Request::builder()
+                .header("x-soika-request", "1")
                 .method("POST")
                 .uri(format!("/api/invite/{token}"))
                 .header("cookie", cookie.split(';').next().unwrap())
@@ -745,5 +760,64 @@ async fn email_login_disabled_allows_signed_in_invite_acceptance() {
     assert_eq!(
         fixture.membership_role(team, user_id).await,
         Some(Role::Member)
+    );
+}
+
+#[tokio::test]
+async fn targeted_invite_cannot_be_accepted_by_a_different_email() {
+    let app = Fixture::spawn().await;
+    let team = app.seed_team().await;
+    let token = app
+        .mint_invite(
+            team,
+            Role::Admin,
+            Some("target@example.com"),
+            Duration::days(1),
+        )
+        .await;
+    let (status, _) = app.accept(&token, Some(json!({"email":"attacker@example.com","password":PASSWORD,"display_name":"Attacker"}))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        app.state
+            .users
+            .find_by_email("attacker@example.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let id = app.create_user("attacker@example.com").await;
+    let (_, cookie) = soika::auth::start_session(
+        &*app.state.sessions,
+        &*app.state.clock,
+        &app.state.config,
+        id,
+    )
+    .await
+    .unwrap();
+    let response = app
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .header("x-soika-request", "1")
+                .method("POST")
+                .uri(format!("/api/invite/{token}"))
+                .header("cookie", cookie.split(';').next().unwrap())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(app.membership_role(team, id).await.is_none());
+    assert!(
+        app.state
+            .invites
+            .find_by_token(&token)
+            .await
+            .unwrap()
+            .unwrap()
+            .accepted_at
+            .is_none()
     );
 }

@@ -30,7 +30,7 @@ path = "src/main.rs"
 serde_yaml_ng = "0.10.0"
 # HTTP / async runtime
 axum = { version = "0.8.9", features = ["macros"] }
-tokio = { version = "1.52.3", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.0", features = ["compression-full", "cors", "fs", "trace"] }
 
@@ -125,7 +125,7 @@ async-trait = "0.1.89"
 # RustCrypto. `webauthn-rs-core` is pulled in directly only for the protocol
 # enums the façade does not re-export (`ResidentKeyRequirement`).
 webauthn-rs = { version = "=0.6.1-dev", default-features = false, features = [
-    # Serialize the ceremony state so it can live in the signed challenge cookie.
+    # Serialize ceremony state for one-use server-side database storage.
     "danger-allow-state-serialisation",
     # Discoverable ("usernameless") credentials — the sign-in flow.
     "conditional-ui",

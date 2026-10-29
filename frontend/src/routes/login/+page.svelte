@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { auth, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { isCeremonyCancelled, passkeysSupported, signInWithPasskey } from '$lib/passkey';
@@ -53,7 +53,7 @@
   // The root layout (`+layout.ts`) already fetches GET /api/config once and
   // memoizes it, exposing it as `data.config` — read that instead of issuing a
   // duplicate request from this page.
-  const config = $derived($page.data.config);
+  const config = $derived(page.data.config);
 
   const canSubmit = $derived(email.trim() !== '' && password !== '');
 
@@ -72,18 +72,25 @@
   // site-relative path (starts with `/`, not `//`, no backslash — browsers
   // normalize `\` to `/`).
   function safeNext(next: string | null): string | null {
-    if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return null;
+    if (
+      !next ||
+      !next.startsWith('/') ||
+      next.startsWith('//') ||
+      next.includes('\\') ||
+      /[\u0000-\u001f\u007f-\u009f]/.test(next)
+    )
+      return null;
     return next;
   }
 
   // Full navigation (not fetch): the next hop is an external provider redirect.
   const ssoHref = $derived.by(() => {
-    const next = safeNext($page.url.searchParams.get('next'));
+    const next = safeNext(page.url.searchParams.get('next'));
     return next ? `/auth/oidc/login?next=${encodeURIComponent(next)}` : '/auth/oidc/login';
   });
 
   $effect(() => {
-    const slug = $page.url.searchParams.get('error');
+    const slug = page.url.searchParams.get('error');
     if (slug) toast.error(ERROR_MESSAGES[slug] ?? $t('sign_in_failed'));
   });
 
@@ -115,7 +122,7 @@
     try {
       const user = await signInWithPasskey();
       authStore.set(user);
-      await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
+      await goto(safeNext(page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
       // A dismissed system dialog is a deliberate choice, not a failure.
       if (!isCeremonyCancelled(err)) toast.error(errorMessage(err, $t('passkey_sign_in_failed')));
@@ -131,7 +138,7 @@
       const user = await auth.login({ email, password });
       writeStoredEmail(email);
       authStore.set(user);
-      await goto(safeNext($page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
+      await goto(safeNext(page.url.searchParams.get('next')) ?? '/', { invalidateAll: true });
     } catch (err) {
       toast.error(errorMessage(err, $t('login_failed')));
     } finally {

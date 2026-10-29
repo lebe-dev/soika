@@ -25,5 +25,8 @@ pub trait InviteRepository: Send + Sync {
     async fn list_for_team(&self, team_id: Id) -> Result<Vec<Invite>>;
     /// Mark an invite accepted at the given time.
     async fn mark_accepted(&self, token: &str, accepted_at: Timestamp) -> Result<()>;
+    /// Atomically consume a valid invite and grant membership to its recipient.
+    /// Existing Admin membership is never downgraded by a Contributor invitation.
+    async fn accept(&self, token: &str, user_id: Id, now: Timestamp) -> Result<()>;
     async fn delete(&self, token: &str) -> Result<()>;
 }

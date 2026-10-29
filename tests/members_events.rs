@@ -94,6 +94,7 @@ impl Fixture {
     async fn login(&self, email: &str) -> String {
         let body = json!({ "email": email, "password": PASSWORD }).to_string();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json")
@@ -126,6 +127,7 @@ impl Fixture {
 
     async fn send(&self, method: &str, uri: &str, cookie: &str, body: Body) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method(method)
             .uri(uri)
             .header("cookie", cookie)
@@ -152,6 +154,7 @@ impl Fixture {
             "exception": { "values": [{ "type": "ValueError", "value": "boom" }] }
         });
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri(format!("/api/{project_id}/store/"))
             .header(
@@ -415,6 +418,7 @@ async fn adding_existing_member_cannot_demote_last_admin() {
         .unwrap();
     let cookie = app.login("audit-admin@example.com").await;
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("POST")
         .uri(format!("/api/teams/{team}/members"))
         .header("cookie", cookie)
@@ -480,6 +484,7 @@ async fn config_scopes_private_fields_and_team_roles_to_session() {
     assert_eq!(config["admin"]["users"].as_array().unwrap().len(), 2);
     assert!(!config.to_string().contains("password_hash"));
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .uri("/api/config")
         .header("cookie", cookie)
         .body(Body::empty())

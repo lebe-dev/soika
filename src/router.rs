@@ -50,7 +50,6 @@ pub fn build(state: AppState) -> Router {
         .layer(ingest_cors);
 
     let api_routes = Router::new()
-        .merge(ingest_routes)
         .route("/config", get(api::config::get))
         .route("/client-config", get(api::client_config::get))
         // --- Projects ---
@@ -147,7 +146,12 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/admin/users/{id}",
             patch(api::settings::set_user_role).delete(api::settings::delete_user),
-        );
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth::csrf::protect,
+        ))
+        .merge(ingest_routes);
 
     let auth_routes = Router::new()
         .route("/auth/login", post(auth::login))
@@ -164,7 +168,11 @@ pub fn build(state: AppState) -> Router {
             post(auth::passkey_login_options),
         )
         .route("/auth/passkey/login", post(auth::passkey_login))
-        .route("/auth/config", get(auth::auth_config));
+        .route("/auth/config", get(auth::auth_config))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth::csrf::protect,
+        ));
 
     Router::new()
         // Health
@@ -178,6 +186,33 @@ pub fn build(state: AppState) -> Router {
         .nest("/api", api_routes)
         // SPA + embedded static assets — fallback last.
         .fallback(web::spa_fallback)
+        .layer(axum::middleware::from_fn(
+            |request: axum::extract::Request, next: axum::middleware::Next| async move {
+                let private = request.uri().path().starts_with("/auth/")
+                    || request.uri().path().starts_with("/api/");
+                let mut response = next.run(request).await;
+                let headers = response.headers_mut();
+                headers.insert(
+                    "x-content-type-options",
+                    axum::http::HeaderValue::from_static("nosniff"),
+                );
+                headers.insert(
+                    "x-frame-options",
+                    axum::http::HeaderValue::from_static("DENY"),
+                );
+                headers.insert(
+                    "referrer-policy",
+                    axum::http::HeaderValue::from_static("no-referrer"),
+                );
+                if private {
+                    headers.insert(
+                        "cache-control",
+                        axum::http::HeaderValue::from_static("private, no-store"),
+                    );
+                }
+                response
+            },
+        ))
         .layer(CompressionLayer::new())
         // Per-request span for correlation: every log emitted while handling a
         // request inherits `request_id` (a generated UUID), `method`, and the

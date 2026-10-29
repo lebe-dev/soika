@@ -24,6 +24,7 @@ use crate::config::LockoutConfig;
 /// Above this many tracked keys, opportunistically drop idle entries on write to
 /// keep the map bounded under a wide spray of distinct (IP, email) pairs.
 const PRUNE_THRESHOLD: usize = 10_000;
+const OVERFLOW_KEY: &str = "<overflow>";
 
 /// Outcome of a pre-login lockout check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +119,12 @@ impl LoginGuard {
         }
         // Recover from poisoning instead of panicking (see `record_failure_at`).
         let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        match entries.get(key).and_then(|e| e.locked_until) {
+        let entry = entries.get(key).or_else(|| {
+            (entries.len() >= PRUNE_THRESHOLD)
+                .then(|| entries.get(OVERFLOW_KEY))
+                .flatten()
+        });
+        match entry.and_then(|e| e.locked_until) {
             Some(until) if now < until => LockoutDecision::Locked {
                 retry_after_secs: secs_until(now, until),
             },
@@ -144,8 +150,15 @@ impl LoginGuard {
             entries.retain(|_, e| !e.is_idle(now, window));
         }
 
+        // Keep active lockouts and cap attacker-controlled distinct accounts.
+        // New keys share an overflow budget once the map is full.
+        let tracked_key = if entries.len() >= PRUNE_THRESHOLD && !entries.contains_key(key) {
+            OVERFLOW_KEY
+        } else {
+            key
+        };
         let entry = entries
-            .entry(key.to_owned())
+            .entry(tracked_key.to_owned())
             .or_insert_with(|| Entry::new(now));
 
         // Roll the failure-counting window forward when it has elapsed (and we
@@ -201,35 +214,12 @@ pub fn lockout_key(ip: &str, email: &str) -> String {
     format!("{ip}|{email}")
 }
 
-/// Best-effort client IP for rate-keying.
-///
-/// Honors the first hop in `X-Forwarded-For`, then `X-Real-IP`, falling back to
-/// the TCP peer address. These headers are trusted only when the service runs
-/// behind a reverse proxy that sets them; direct deployments fall through to the
-/// socket peer. Returns `"unknown"` when no source is available so keying still
-/// works (all such attempts then share one bucket).
-pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
-    if let Some(ip) = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        return ip.to_string();
-    }
-
-    if let Some(ip) = headers
-        .get("x-real-ip")
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        return ip.to_string();
-    }
-
-    peer.map(|p| p.ip().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
+/// Use the TCP peer for rate-keying. Forwarding headers are attacker-controlled
+/// unless a separately configured proxy trust policy exists. Behind a proxy,
+/// clients share its IP bucket (password buckets still include the account).
+pub fn client_ip(_headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
+    peer.map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| "unknown".into())
 }
 
 #[cfg(test)]
@@ -373,21 +363,21 @@ mod tests {
     }
 
     #[test]
-    fn client_ip_prefers_forwarded_for_first_hop() {
+    fn client_ip_ignores_spoofed_forwarded_for() {
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-forwarded-for",
             HeaderValue::from_static("203.0.113.7, 10.0.0.1"),
         );
         let peer = Some("198.51.100.2:443".parse().unwrap());
-        assert_eq!(client_ip(&headers, peer), "203.0.113.7");
+        assert_eq!(client_ip(&headers, peer), "198.51.100.2");
     }
 
     #[test]
-    fn client_ip_falls_back_to_real_ip_then_peer() {
+    fn client_ip_ignores_spoofed_real_ip() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
-        assert_eq!(client_ip(&headers, None), "203.0.113.9");
+        assert_eq!(client_ip(&headers, None), "unknown");
 
         let peer = Some("198.51.100.2:443".parse().unwrap());
         assert_eq!(client_ip(&HeaderMap::new(), peer), "198.51.100.2");
@@ -396,5 +386,16 @@ mod tests {
     #[test]
     fn client_ip_unknown_when_no_source() {
         assert_eq!(client_ip(&HeaderMap::new(), None), "unknown");
+    }
+    #[test]
+    fn account_spray_is_bounded_and_overflow_fails_closed() {
+        let guard = LoginGuard::new(cfg(1));
+        let now = Instant::now();
+        for i in 0..PRUNE_THRESHOLD + 100 {
+            guard.record_failure_at(&format!("peer|{i}@example.com"), now);
+        }
+        assert!(guard.entries.lock().unwrap().len() <= PRUNE_THRESHOLD + 1);
+        assert!(guard.check_at("peer|new@example.com", now).is_locked());
+        assert!(guard.check_at("peer|0@example.com", now).is_locked());
     }
 }

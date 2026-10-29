@@ -59,6 +59,7 @@ impl TestApp {
     ) -> (StatusCode, Option<String>, Value) {
         let body = json!({ "email": email, "password": password }).to_string();
         let mut builder = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json");
@@ -232,7 +233,7 @@ async fn successful_login_resets_the_counter() {
 }
 
 #[tokio::test]
-async fn lockout_is_scoped_to_ip_and_email() {
+async fn spoofed_forwarded_headers_cannot_bypass_account_lockout() {
     let app = TestApp::spawn(lockout_config(true, 2)).await;
 
     // Lock (1.1.1.1, alice) with two failures, confirmed by a 429 on the third.
@@ -243,9 +244,9 @@ async fn lockout_is_scoped_to_ip_and_email() {
     let (status, _, _) = app.login(EMAIL, "wrong", Some("1.1.1.1")).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 
-    // The same account from a different IP is unaffected (keyed separately).
+    // A forged forwarding header cannot escape the TCP-peer bucket.
     let (status, _, _) = app.login(EMAIL, "wrong", Some("2.2.2.2")).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 
     // A different account from the locked IP is likewise unaffected.
     let (status, _, _) = app.login("bob@example.com", "wrong", Some("1.1.1.1")).await;

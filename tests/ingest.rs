@@ -132,7 +132,13 @@ impl TestApp {
         headers: &[(&str, &str)],
         body: Vec<u8>,
     ) -> (StatusCode, Option<String>, Value) {
-        let mut builder = Request::builder().method("POST").uri(uri);
+        let mut builder = Request::builder()
+            .header("x-soika-request", "1")
+            .method("POST")
+            .extension(axum::extract::ConnectInfo(
+                "203.0.113.7:443".parse::<std::net::SocketAddr>().unwrap(),
+            ))
+            .uri(uri);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }
@@ -213,7 +219,10 @@ impl TestApp {
         headers: &[(&str, &str)],
         body: Vec<u8>,
     ) -> (StatusCode, Option<String>) {
-        let mut builder = Request::builder().method(method).uri(uri);
+        let mut builder = Request::builder()
+            .header("x-soika-request", "1")
+            .method(method)
+            .uri(uri);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }
@@ -495,7 +504,7 @@ async fn ingest_enriches_event_with_client_ip_and_browser() {
     assert_eq!(status, StatusCode::OK);
 
     let payload = app.latest_event_payload().await;
-    // Client IP from the first X-Forwarded-For hop, derived server-side.
+    // Client IP from the TCP peer; forwarding headers do not override it.
     assert_eq!(payload["user"]["ip_address"], json!("203.0.113.7"));
     assert_eq!(
         payload["request"]["env"]["REMOTE_ADDR"],

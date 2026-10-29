@@ -3,13 +3,10 @@
 //!
 //! WebAuthn is a two-step ceremony: the server issues a challenge, the browser
 //! signs it, and the server verifies the response against the state it issued.
-//! That state MUST be remembered server-side — soika keeps it in an HMAC-signed,
-//! short-lived, `HttpOnly` cookie (the same shape as the OIDC state cookie in
-//! [`crate::auth::oidc`]) rather than a table or an in-process map: the value is
-//! tamper-evident, expires on its own, and needs no write on every sign-in click.
-//!
-//! Two cookie names are used so a registration state can never be replayed into
-//! an authentication ceremony (or vice versa).
+//! State is stored in the database and consumed atomically before verification.
+//! The HttpOnly challenge cookie holds only a random opaque handle, so copying
+//! an old cookie and assertion cannot replay a completed ceremony.
+//! Separate purposes isolate registration from authentication.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -135,7 +132,7 @@ pub fn decode_challenge<S: DeserializeOwned>(
     Ok(payload)
 }
 
-/// Build the `Set-Cookie` value storing a signed ceremony state:
+/// Build the `Set-Cookie` value storing an opaque ceremony handle:
 /// `HttpOnly`, `SameSite=Lax`, `Path=/`, short `Max-Age`, `Secure` behind TLS.
 pub fn build_challenge_cookie(
     name: &str,

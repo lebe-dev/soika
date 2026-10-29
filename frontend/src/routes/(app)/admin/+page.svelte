@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t, locale } from '$lib/i18n';
   import { untrack } from 'svelte';
-  import { version } from '$app/environment';
+  import { version } from '$app/env';
   import { invalidateAll } from '$app/navigation';
   import { api, errorMessage, type InstanceRole, type UpdateSettingsRequest } from '$lib/api';
   import { reportUnexpected } from '$lib/report';

@@ -82,3 +82,46 @@ async fn created_session_matches_a_fresh_read() {
     assert_eq!(found.created_at, created.created_at);
     assert_eq!(found.expires_at, created.expires_at);
 }
+
+#[tokio::test]
+async fn authentication_challenges_are_expiring_purpose_bound_and_single_use() {
+    let state = test_db().await;
+    let now = chrono::Utc::now();
+    let repo = &state.auth_challenges;
+    repo.create(
+        "one-use",
+        "login",
+        "state",
+        now + chrono::Duration::minutes(5),
+    )
+    .await
+    .unwrap();
+    assert!(
+        repo.take("one-use", "register", now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (a, b) = tokio::join!(
+        repo.take("one-use", "login", now),
+        repo.take("one-use", "login", now)
+    );
+    let results = [a.unwrap(), b.unwrap()];
+    assert_eq!(
+        results
+            .iter()
+            .filter(|value| value.as_deref() == Some("state"))
+            .count(),
+        1
+    );
+    assert_eq!(results.iter().filter(|value| value.is_none()).count(), 1);
+    repo.create(
+        "expired",
+        "login",
+        "state",
+        now - chrono::Duration::seconds(1),
+    )
+    .await
+    .unwrap();
+    assert!(repo.take("expired", "login", now).await.unwrap().is_none());
+}

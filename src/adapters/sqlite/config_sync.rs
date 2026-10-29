@@ -80,7 +80,7 @@ impl SqliteConfigSync {
                         .sso_groups
                         .iter()
                         .flatten()
-                        .map(|g| (g.group.to_lowercase(), g.role.as_str().to_string()))
+                        .map(|g| (g.group.clone(), g.role.as_str().to_string()))
                         .collect();
                     let changed = current_emails
                         .into_iter()
@@ -147,7 +147,7 @@ impl SqliteConfigSync {
                         "INSERT INTO team_group_grants(team_id, group_path, role) VALUES (?, ?, ?)",
                     )
                     .bind(&team_id)
-                    .bind(grant.group.to_lowercase())
+                    .bind(grant.group.clone())
                     .bind(grant.role.as_str())
                     .execute(&mut *tx)
                     .await?;
@@ -387,7 +387,7 @@ impl ConfigSync for SqliteConfigSync {
                 .await?;
             for group in groups
                 .iter()
-                .map(|g| g.to_lowercase())
+                .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
             {
                 sqlx::query(

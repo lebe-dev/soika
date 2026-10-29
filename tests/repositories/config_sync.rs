@@ -133,6 +133,14 @@ async fn email_and_group_grants_use_maximum_role_and_remove_revoked_memberships(
         .unwrap();
     assert_eq!(
         db.teams.member_role(id, user).await.unwrap(),
+        Some(TeamRole::Contributor)
+    );
+    db.config_sync
+        .reconcile_user(user, &["ACME/Platform".into()])
+        .await
+        .unwrap();
+    assert_eq!(
+        db.teams.member_role(id, user).await.unwrap(),
         Some(TeamRole::Admin)
     );
     db.config_sync
@@ -221,6 +229,7 @@ async fn management_sources_are_independent_and_ingestion_checks_orphans() {
                 .clone()
                 .oneshot(
                     Request::builder()
+                        .header("x-soika-request", "1")
                         .uri(uri)
                         .method(method)
                         .header("cookie", &cookie)
@@ -253,6 +262,7 @@ async fn management_sources_are_independent_and_ingestion_checks_orphans() {
             .await
             .unwrap();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .uri(format!("/api/{project_id}/store/?sentry_key=test-dsn"))
             .method("POST")
             .header("content-type", "application/json")

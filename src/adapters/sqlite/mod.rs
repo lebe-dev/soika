@@ -42,3 +42,6 @@ pub use session::SqliteSessionRepository;
 pub use settings::SqliteSettingsRepository;
 pub use team::SqliteTeamRepository;
 pub use user::SqliteUserRepository;
+
+mod auth_challenge;
+pub use auth_challenge::SqliteAuthChallengeRepository;

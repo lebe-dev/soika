@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { auth, type User } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -45,7 +45,7 @@
   const visibleItems = $derived(items.filter((item) => !item.adminOnly || canManageInstance));
 
   function isActive(href: string): boolean {
-    const path = $page.url.pathname;
+    const path = page.url.pathname;
     if (href === '/') return path === '/';
     return path === href || path.startsWith(`${href}/`);
   }

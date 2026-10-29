@@ -86,7 +86,7 @@ accepted. The default is an empty list. Invalid entries prevent startup.
 The grant applies to new and existing accounts, across password sign-in,
 OAuth/OIDC (including GitHub), invite acceptance and passkeys. Normal authentication,
 email verification, allowed-domain, sign-up and account-approval gates still apply.
-Listing an address does not create an account or approve a pending one. Listed
+Listing an address does not create an account or approve a pending one. Listed addresses cannot register locally, including through invites, because registration does not verify mailbox ownership. Create and verify local accounts before adding them to `ADMIN_USERS`, or provision them through verified SSO. Existing self-registered local emails are unverified claims; inspect their ownership before granting privileges. A non-empty `ADMIN_USERS` disables anonymous first-run setup, preventing a second bootstrap Owner outside the configured identities. Only an Owner may approve a pending effective Owner account. Listed
 local accounts may use their password even when SSO is enabled; listed accounts
 may use SSO even when their stored role is `Owner`. Unlisted stored Owners retain
 the password-only SSO protection.
@@ -356,7 +356,7 @@ be approved by an instance admin before it receives a session.
 
 Passkeys coexist with password login and require SSO to be disabled. Enabling
 `PASSKEY_ENABLED` together with `OAUTH_ENABLED` is a startup error. An account
-with no registered key is unaffected. Deleting a user deletes its credentials.
+with no registered key is unaffected. Deleting a user deletes its credentials. Ceremony state is stored in the database and consumed atomically once; the browser cookie carries only a random handle. This works across replicas sharing the database. Unfinished ceremonies from before the upgrade must be restarted. Anonymous login options are limited to 300 requests per minute per instance, independently of failed assertions.
 
 ## Interface language
 
@@ -609,13 +609,13 @@ unavailable for GitHub OAuth. `OAUTH_GROUPS_CLAIM` defaults to `groups`. Soika
 reads the claim from the verified ID token, otherwise from the provider's
 userinfo endpoint, checking that its subject matches. Configure the claim name
 for your GitLab version (for example `groups_direct` for an ID-token claim).
-Paths match exactly, case-insensitively: parent groups and subgroups never imply
+Paths match exactly, including letter case: parent groups and subgroups never imply
 each other. Email and group grants combine using the highest role.
 
 Each SSO login saves a group snapshot and recomputes membership; startup uses
 these snapshots when rules change. Removal from a GitLab group takes effect on
 the person's **next SSO login**, not immediately for an existing session. Group
-snapshots are personal data and are removed with their account. Logs record
+snapshots are personal data and are removed with their account. The security migration clears older, case-folded snapshots because their original group names cannot be recovered safely; users with group-only access must sign in through SSO again after upgrading. Logs record
 user IDs and group counts, never group paths or email addresses. Without OAuth,
 a warning explains that new users cannot join YAML-managed teams.
 
@@ -653,3 +653,38 @@ invite. Before deleting an account that is a team's last Admin, assign another
 Admin. Removing or demoting the last stored instance Owner is also refused within
 the write transaction. SQLite takes an immediate write lock; PostgreSQL serializes
 these infrequent administrative changes with table locks.
+
+
+## Browser requests and security boundaries
+
+Set `BASE_URL` to the exact public origin used by the SPA, including the port
+when applicable. State-changing `/auth/*` and cookie API requests require a
+matching `Origin` or `Referer`. If both are absent, automated clients must send
+`X-Soika-Request: 1`. Null or foreign origins and cross-site Fetch Metadata are
+rejected. The SPA sends the fallback header automatically; ingestion retains
+its separate permissive CORS policy. Reverse proxies must preserve the source
+origin headers. SSO callbacks use their state/nonce/PKCE checks instead.
+
+Authentication uses the same session policy for every API resource: pending
+accounts cannot use existing sessions or acquire a session by password,
+passkey, or invite acceptance. Password failures for SSO accounts are throttled
+and do not disclose whether an email exists. Local unverified registrations
+cannot claim configured Owner identities. Addressed invitations require the
+matching account, and accepting an invite consumes it and grants team access in
+one transaction. Contributor invitations never demote an existing team Admin.
+
+Login throttling and event IP enrichment use only the TCP peer, ignoring
+`X-Forwarded-For` and `X-Real-IP`. Behind a reverse proxy, clients share its IP
+bucket; password buckets additionally include the normalized email. Apply any
+per-client throttling at the proxy. Login failure tracking is bounded; new
+account names share an overflow budget when the table is full. These in-memory
+limits reset on restart and are not shared across replicas.
+
+Session-dependent API/auth responses use `Cache-Control: private, no-store`.
+Responses disallow framing and MIME sniffing and use `Referrer-Policy:
+no-referrer` to avoid leaking invitation URLs. Internal errors return a generic
+message; operators diagnose the cause from server logs. OIDC and GitHub HTTP
+calls have a 15-second timeout and do not follow redirects.
+
+The [security audit](SECURITY_AUDIT.md) records the fixes, dependency patch and
+remaining deployment assumptions.

@@ -5,7 +5,7 @@
   // Profile — change display name, notifications toggle, change password
   // Wires to GET/PATCH /profile via the shared API client.
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { passkeys as passkeysApi, profile as profileApi, errorMessage } from '$lib/api';
   import type { Passkey } from '$lib/api';
   import { isCeremonyCancelled, passkeysSupported, registerPasskey } from '$lib/passkey';
@@ -29,7 +29,7 @@
   const user = $derived(authStore.user);
 
   const canChangeDisplayName = $derived(
-    user?.auth_provider !== 'oidc' || $page.data.config?.sso_allow_display_name_change === true
+    user?.auth_provider !== 'oidc' || page.data.config?.sso_allow_display_name_change === true
   );
   // OIDC accounts have no local password, so the change-password card is hidden.
   const canChangePassword = $derived(user?.auth_provider !== 'oidc');
@@ -118,8 +118,8 @@
   // (`/api/config`) — the routes are `404` otherwise, so there is nothing to
   // manage. Browser support is checked separately: an unsupported browser can
   // still see and delete keys registered elsewhere, it just cannot add one.
-  const passkeyEnabled = $derived($page.data.config?.passkey_enabled ?? false);
-  const timezone = $derived($page.data.telemetry?.timezone ?? null);
+  const passkeyEnabled = $derived(page.data.config?.passkey_enabled ?? false);
+  const timezone = $derived(page.data.telemetry?.timezone ?? null);
 
   let passkeyList = $state<Passkey[]>([]);
   let addingPasskey = $state(false);
@@ -131,7 +131,7 @@
   // so the feature flag is known here — no reactive re-fetch loop needed.
   onMount(() => {
     passkeySupported = passkeysSupported();
-    if (passkeyEnabled) passkeyList = $page.data.config?.passkeys ?? [];
+    if (passkeyEnabled) passkeyList = page.data.config?.passkeys ?? [];
   });
 
   async function addPasskey(event: SubmitEvent) {

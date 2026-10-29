@@ -3,7 +3,7 @@
   import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { invites, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -26,7 +26,7 @@
   let submitting = $state(false);
 
   const needsSignIn = $derived(
-    !authStore.isAuthenticated && $page.data.config?.password_login_enabled === false
+    !authStore.isAuthenticated && page.data.config?.password_login_enabled === false
   );
   const signInHref = $derived(`/login?next=${encodeURIComponent(`/invite/${data.token}`)}`);
 

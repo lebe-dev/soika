@@ -73,6 +73,34 @@ pub fn session_id_from_headers(secret_key: &str, headers: &HeaderMap) -> Option<
     signing::verify_str(secret_key.as_bytes(), &raw).ok()
 }
 
+/// Shared session policy for every authenticated HTTP extractor.
+pub async fn authenticate_user(
+    state: &crate::AppState,
+    headers: &HeaderMap,
+) -> Result<crate::domain::User> {
+    let id = session_id_from_headers(&state.config.secret_key, headers)
+        .ok_or_else(|| Error::Auth("missing or invalid session".into()))?;
+    let session = state
+        .sessions
+        .find(&id)
+        .await?
+        .ok_or_else(|| Error::Auth("session not found or expired".into()))?;
+    let user = state
+        .users
+        .find_by_id(session.user_id)
+        .await?
+        .ok_or_else(|| Error::Auth("user no longer exists".into()))?;
+    if user.status.is_pending() {
+        return Err(Error::Auth("account is awaiting approval".into()));
+    }
+    let user = state.config.admin_users.apply(user);
+    if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
+        return Err(Error::Auth("sign in with SSO".into()));
+    }
+    tracing::Span::current().record("user_id", tracing::field::display(user.id));
+    Ok(user)
+}
+
 /// Create a new server-side session for `user_id` and return the session record
 /// plus the `Set-Cookie` header value to send to the client.
 pub async fn start_session(

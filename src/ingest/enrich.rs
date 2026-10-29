@@ -3,7 +3,7 @@
 //! Browser / edge SDKs cannot know the client's public IP and don't ship a
 //! parsed browser/OS context — Sentry's own ingestion derives these from the
 //! HTTP request at accept time. We mirror that: take the client IP from the
-//! connection (honoring proxy headers, via [`crate::auth::client_ip`]) and parse
+//! connection (via [`crate::auth::client_ip`]) and parse
 //! the `User-Agent` into `contexts.browser` / `contexts.os`, then merge them into
 //! the event payload.
 //!
@@ -462,7 +462,7 @@ mod tests {
         headers.insert("user-agent", HeaderValue::from_static(CHROME_WIN));
         headers.insert("referer", HeaderValue::from_static("https://app.example/x"));
 
-        let meta = RequestMeta::from_request(&headers, None);
+        let meta = RequestMeta::from_request(&headers, Some("203.0.113.7:443".parse().unwrap()));
         assert_eq!(meta.client_ip.as_deref(), Some("203.0.113.7"));
         assert_eq!(meta.user_agent.as_deref(), Some(CHROME_WIN));
         assert_eq!(meta.referer.as_deref(), Some("https://app.example/x"));

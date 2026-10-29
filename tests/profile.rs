@@ -59,6 +59,7 @@ impl Fixture {
     async fn login(&self) -> String {
         let body = json!({ "email": EMAIL, "password": PASSWORD }).to_string();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json")
@@ -81,6 +82,7 @@ impl Fixture {
 
     async fn patch_profile(&self, cookie: &str, body: &Value) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("PATCH")
             .uri("/api/profile")
             .header("cookie", cookie)
@@ -164,6 +166,7 @@ async fn sso_display_name_policy() {
             .clone()
             .oneshot(
                 Request::builder()
+                    .header("x-soika-request", "1")
                     .uri("/auth/config")
                     .header("cookie", cookie)
                     .body(Body::empty())

@@ -39,6 +39,8 @@ pub trait UserRepository: Send + Sync {
     /// Atomically create the account and Contributor memberships in the currently
     /// configured default teams. Defaults are never applied to existing users.
     async fn create(&self, new: NewUser) -> Result<User>;
+    /// Create the first stored Owner only; check and insert share a write lock.
+    async fn create_initial_owner(&self, new: NewUser) -> Result<User>;
     async fn find_by_id(&self, id: Id) -> Result<Option<User>>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>>;
     async fn update(&self, id: Id, update: UserUpdate) -> Result<User>;

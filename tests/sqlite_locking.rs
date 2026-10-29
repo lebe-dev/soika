@@ -119,6 +119,7 @@ impl TestApp {
     async fn ingest(&self, event_id: &str) -> (StatusCode, Option<String>) {
         let uri = format!("/api/{}/envelope/", self.project.id);
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri(uri)
             .header("x-sentry-auth", sentry_auth(DSN_KEY))

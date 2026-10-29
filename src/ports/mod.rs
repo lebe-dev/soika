@@ -34,3 +34,6 @@ pub use session::SessionRepository;
 pub use settings::SettingsRepository;
 pub use team::TeamRepository;
 pub use user::{NewUser, UserRepository, UserUpdate};
+
+mod auth_challenge;
+pub use auth_challenge::AuthChallengeRepository;

@@ -3,7 +3,7 @@
 //! These drive the real router in-process against a fresh `:memory:` database.
 //! A full ceremony cannot be replayed here — signing an assertion needs a real
 //! authenticator — so the tests cover everything around it: the feature gate,
-//! the signed challenge cookies, ownership of stored credentials, the per-user
+//! the opaque challenge cookies, ownership of stored credentials, the per-user
 //! quota, and the rejection paths a forged or replayed response takes.
 
 mod common;
@@ -105,6 +105,7 @@ async fn seed_passkey(state: &AppState, user_id: Id, credential_id: &str, name: 
 
 async fn login_session_cookie(router: &axum::Router, email: &str) -> String {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("POST")
         .uri("/auth/login")
         .header("content-type", "application/json")
@@ -136,7 +137,10 @@ async fn send(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, Vec<String>, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder()
+        .header("x-soika-request", "1")
+        .method(method)
+        .uri(uri);
     if let Some(c) = cookie {
         builder = builder.header("cookie", c);
     }
@@ -238,7 +242,7 @@ async fn auth_config_advertises_the_feature_flag() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn login_options_issue_a_challenge_and_a_signed_cookie() {
+async fn login_options_issue_a_challenge_and_an_opaque_cookie() {
     let (router, _) = build_app(true).await;
 
     let (status, cookies, body) =
@@ -571,5 +575,56 @@ async fn admin_settings_reports_enabled_passkey_configuration() {
         json!({
             "rp_id": "localhost", "rp_origin": "http://localhost", "max_per_user": 2
         })
+    );
+}
+
+#[tokio::test]
+async fn consumed_challenge_cannot_be_replayed_even_after_a_failed_assertion() {
+    let (router, _) = build_app(true).await;
+    let (_, cookies, _) = send(&router, "POST", "/auth/passkey/login/options", None, None).await;
+    let cookie = cookie_header(&cookies, "soika_passkey_auth");
+    let handle = cookie.split_once('=').unwrap().1;
+    assert_eq!(handle.len(), 43); // Opaque 256-bit handle, no serialized ceremony.
+    let (status, _, _) = send(
+        &router,
+        "POST",
+        "/auth/passkey/login",
+        Some(&cookie),
+        Some(fake_assertion()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, body) = send(
+        &router,
+        "POST",
+        "/auth/passkey/login",
+        Some(&cookie),
+        Some(fake_assertion()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        body["error"],
+        "authentication error: passkey challenge expired or already used"
+    );
+}
+
+#[tokio::test]
+async fn anonymous_challenge_creation_has_a_rate_budget() {
+    let (_, mut state) = build_app(true).await;
+    state.rate_limiter =
+        std::sync::Arc::new(soika::ingest::RateLimiter::new(1, Duration::from_secs(60)));
+    let router = router::build(state);
+    assert_eq!(
+        send(&router, "POST", "/auth/passkey/login/options", None, None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&router, "POST", "/auth/passkey/login/options", None, None)
+            .await
+            .0,
+        StatusCode::TOO_MANY_REQUESTS
     );
 }

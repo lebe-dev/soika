@@ -151,6 +151,7 @@ impl Fixture {
     async fn login(&self, email: &str) -> String {
         let body = json!({ "email": email, "password": PASSWORD }).to_string();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json")
@@ -199,6 +200,7 @@ impl Fixture {
         body: &Value,
     ) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method(method)
             .uri(uri)
             .header("cookie", cookie)
@@ -210,6 +212,7 @@ impl Fixture {
 
     async fn send(&self, method: &str, uri: &str, cookie: &str, body: Body) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method(method)
             .uri(uri)
             .header("cookie", cookie)

@@ -84,7 +84,7 @@ impl PgConfigSync {
                         .sso_groups
                         .iter()
                         .flatten()
-                        .map(|g| (g.group.to_lowercase(), g.role.as_str().to_string()))
+                        .map(|g| (g.group.clone(), g.role.as_str().to_string()))
                         .collect();
                     let changed = current_emails
                         .into_iter()
@@ -139,7 +139,7 @@ impl PgConfigSync {
                     .await?;
                 }
                 for grant in team.sso_groups.iter().flatten() {
-                    sqlx::query("INSERT INTO team_group_grants(team_id, group_path, role) VALUES ($1, $2, $3)").bind(team_id).bind(grant.group.to_lowercase()).bind(grant.role.as_str()).execute(&mut *tx).await?;
+                    sqlx::query("INSERT INTO team_group_grants(team_id, group_path, role) VALUES ($1, $2, $3)").bind(team_id).bind(grant.group.clone()).bind(grant.role.as_str()).execute(&mut *tx).await?;
                 }
                 // Recompute only declared teams; orphan teams keep their frozen membership.
                 let users = sqlx::query("SELECT id, email FROM users")
@@ -385,7 +385,7 @@ impl ConfigSync for PgConfigSync {
                 .await?;
             for group in groups
                 .iter()
-                .map(|g| g.to_lowercase())
+                .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
             {
                 sqlx::query(

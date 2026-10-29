@@ -74,6 +74,7 @@ impl Fixture {
     async fn login(&self, email: &str) -> String {
         let body = json!({ "email": email, "password": PASSWORD }).to_string();
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method("POST")
             .uri("/auth/login")
             .header("content-type", "application/json")
@@ -118,6 +119,7 @@ impl Fixture {
         body: &Value,
     ) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method(method)
             .uri(uri)
             .header("cookie", cookie)
@@ -129,6 +131,7 @@ impl Fixture {
 
     async fn send(&self, method: &str, uri: &str, cookie: &str, body: Body) -> (StatusCode, Value) {
         let request = Request::builder()
+            .header("x-soika-request", "1")
             .method(method)
             .uri(uri)
             .header("cookie", cookie)
@@ -508,57 +511,45 @@ fn test_config() -> Config {
 }
 
 #[tokio::test]
-async fn admin_users_registration_returns_owner_but_stores_member() {
+async fn admin_users_registration_rejects_reserved_emails() {
     let mut app = Fixture::spawn().await;
     app.set_admin_users(" ALICE@EXAMPLE.COM, bob@example.com ");
     app.state.settings.set_allow_signup(true).await.unwrap();
-    for (email, expected) in [
-        ("alice@example.com", "owner"),
-        ("bob@example.com", "owner"),
-        ("other@example.com", "member"),
-    ] {
-        let (status, user) = app
+    for email in ["alice@example.com", "BOB@example.com"] {
+        let (status, _) = app
             .post_json(
                 "/auth/register",
                 "",
-                &json!({
-                    "email": email, "password": PASSWORD, "display_name": "alice@example.com"
-                }),
+                &json!({"email":email,"password":PASSWORD,"display_name":"Visitor"}),
             )
             .await;
-        assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(user["instance_role"], expected);
-        assert_eq!(
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(
             app.state
                 .users
-                .find_by_email(email)
+                .find_by_email(&email.to_ascii_lowercase())
                 .await
                 .unwrap()
-                .unwrap()
-                .instance_role,
-            InstanceRole::Member
+                .is_none()
         );
     }
-}
-
-#[tokio::test]
-async fn admin_users_registration_and_password_login_ignore_email_case() {
-    let mut app = Fixture::spawn().await;
-    app.set_admin_users("alice@example.com");
-    app.state.settings.set_allow_signup(true).await.unwrap();
     let (status, user) = app
         .post_json(
             "/auth/register",
             "",
-            &json!({
-                "email": "AlIcE@ExAmPlE.CoM", "password": PASSWORD, "display_name": "Alice"
-            }),
+            &json!({"email":"other@example.com","password":PASSWORD,"display_name":"Visitor"}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(user["instance_role"], "owner");
-    assert_eq!(user["email"], "alice@example.com");
+    assert_eq!(user["instance_role"], "member");
+}
 
+#[tokio::test]
+async fn admin_users_password_login_ignores_email_case() {
+    let mut app = Fixture::spawn().await;
+    app.set_admin_users("alice@example.com");
+    app.create_user("alice@example.com", InstanceRole::Member)
+        .await;
     let (status, user) = app
         .post_json(
             "/auth/login",
@@ -945,4 +936,45 @@ async fn registration_uses_defaults_but_existing_login_and_approval_do_not() {
     app.state.teams.remove_member(team, new).await.unwrap();
     app.login("new@example.com").await;
     assert!(app.state.teams.list_for_user(new).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn manager_cannot_activate_a_pending_environment_owner() {
+    let mut app = Fixture::spawn().await;
+    app.create_user("manager@example.com", InstanceRole::Manager)
+        .await;
+    let owner = app
+        .create_user("pending-owner@example.com", InstanceRole::Member)
+        .await;
+    app.state
+        .users
+        .update(
+            owner,
+            soika::ports::UserUpdate {
+                status: Some(soika::domain::UserStatus::Pending),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    app.set_admin_users("pending-owner@example.com");
+    let cookie = app.login("manager@example.com").await;
+    let (status, _) = app
+        .post_json(
+            &format!("/api/admin/users/{owner}/approve"),
+            &cookie,
+            &json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        app.state
+            .users
+            .find_by_id(owner)
+            .await
+            .unwrap()
+            .unwrap()
+            .status
+            .is_pending()
+    );
 }

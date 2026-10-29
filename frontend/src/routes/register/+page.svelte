@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n';
   import { MIN_DISPLAY_NAME_LENGTH } from '$lib/display-name';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { auth, ApiError, errorMessage } from '$lib/api';
   import { authStore } from '$lib/stores/auth.svelte';
   import { Button } from '$lib/components/ui/button';
@@ -21,7 +21,7 @@
   let password = $state('');
   let submitting = $state(false);
   let signupDisabled = $state(false);
-  const config = $derived($page.data.config);
+  const config = $derived(page.data.config);
 
   // `null` config => the layout bootstrap failed; keep the form available until we
   // know (the register endpoint still gates). Surface a non-blocking toast so the

@@ -80,6 +80,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
     Ok(AppState {
         config: Arc::new(config),
         config_sync: repos.config_sync,
+        auth_challenges: repos.auth_challenges,
         sync_report: Arc::new(Default::default()),
         users: repos.users,
         sessions: repos.sessions,
@@ -106,6 +107,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
 
 /// Every repository port, as wired into [`AppState`].
 struct Repositories {
+    auth_challenges: Arc<dyn ports::AuthChallengeRepository>,
     config_sync: Arc<dyn ports::ConfigSync>,
     users: Arc<dyn ports::UserRepository>,
     sessions: Arc<dyn ports::SessionRepository>,
@@ -135,6 +137,9 @@ fn sqlite_repositories(
     };
 
     Repositories {
+        auth_challenges: Arc::new(adapters::sqlite::SqliteAuthChallengeRepository::new(
+            pool.clone(),
+        )),
         config_sync: Arc::new(adapters::sqlite::SqliteConfigSync::new(
             pool.clone(),
             write.clone(),
@@ -166,6 +171,9 @@ fn postgres_repositories(
     };
 
     Repositories {
+        auth_challenges: Arc::new(adapters::postgres::PgAuthChallengeRepository::new(
+            pool.clone(),
+        )),
         config_sync: Arc::new(adapters::postgres::PgConfigSync::new(
             pool.clone(),
             write.clone(),

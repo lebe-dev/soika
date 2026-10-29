@@ -12,7 +12,6 @@ use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::session_id_from_headers;
 use crate::domain::{Id, Team, TeamRole, Timestamp, User};
 use crate::error::Error;
 use crate::state::AppState;
@@ -48,20 +47,19 @@ impl IntoResponse for ApiError {
             Error::DbBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        // 5xx faults carry their cause only in the response body, which never
-        // reaches the operator. Log it so the real reason (e.g. the SMTP error
-        // behind a failed test-email) surfaces in tracing and Sentry instead of
-        // tower-http's contentless "response failed".
-        //
-        // Lock contention is logged at `warn`: it is load, not a defect, and
-        // promoting every burst to a Sentry issue would bury real faults.
+        // Log internal causes while returning only a generic client message.
+        // Lock contention is expected load, so keep it at warn level.
         if self.0.is_busy() {
             tracing::warn!(error = %self.0, "request failed: database is busy");
         } else if status.is_server_error() {
             tracing::error!(error = %self.0, "request failed");
         }
         let body = Json(ErrorBody {
-            error: self.0.to_string(),
+            error: if status.is_server_error() {
+                "internal server error".into()
+            } else {
+                self.0.to_string()
+            },
         });
         (status, body).into_response()
     }
@@ -150,28 +148,7 @@ impl FromRequestParts<AppState> for OptionalAuthUser {
 /// the signature and extract the inner opaque session id before looking it up,
 /// otherwise the raw signed value never matches a stored session id.
 async fn authenticate(parts: &Parts, state: &AppState) -> Result<User, Error> {
-    let session_id = session_id_from_headers(&state.config.secret_key, &parts.headers)
-        .ok_or_else(|| Error::Auth("no session".into()))?;
-
-    let session = state
-        .sessions
-        .find(&session_id)
-        .await?
-        .ok_or_else(|| Error::Auth("invalid or expired session".into()))?;
-
-    state
-        .users
-        .find_by_id(session.user_id)
-        .await?
-        .ok_or_else(|| Error::Auth("session user no longer exists".into()))
-        .and_then(|user| {
-            tracing::Span::current().record("user_id", tracing::field::display(user.id));
-            let user = state.config.admin_users.apply(user);
-            if state.oidc.is_some() && !crate::domain::session_allowed_with_sso(&user) {
-                return Err(Error::Auth("sign in with SSO".into()));
-            }
-            Ok(user)
-        })
+    crate::auth::session::authenticate_user(state, &parts.headers).await
 }
 
 /// Parse a path id segment into a domain [`Id`], mapping a bad UUID to a 400.

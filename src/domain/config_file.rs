@@ -133,7 +133,7 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
         }
         let mut groups = BTreeSet::new();
         for g in t.sso_groups.iter().flatten() {
-            if g.group.trim().is_empty() || !groups.insert(g.group.to_lowercase()) {
+            if g.group.trim().is_empty() || !groups.insert(g.group.clone()) {
                 return Err(Error::validation("empty or duplicate SSO group"));
             }
         }

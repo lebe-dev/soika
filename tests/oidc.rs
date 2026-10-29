@@ -140,7 +140,10 @@ async fn get(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, Option<String>, Vec<String>) {
-    let mut builder = Request::builder().method("GET").uri(uri);
+    let mut builder = Request::builder()
+        .header("x-soika-request", "1")
+        .method("GET")
+        .uri(uri);
     if let Some(c) = cookie {
         builder = builder.header("cookie", c);
     }
@@ -169,6 +172,7 @@ async fn get(
 /// POST a JSON body and return (status, parsed JSON body).
 async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("POST")
         .uri(uri)
         .header("content-type", "application/json")
@@ -210,6 +214,7 @@ async fn seed_user(state: &AppState, email: &str, password: &str, is_admin: bool
 
 async fn get_json(router: &axum::Router, uri: &str) -> (StatusCode, Value) {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("GET")
         .uri(uri)
         .body(Body::empty())
@@ -234,6 +239,7 @@ async fn get_json_with_cookie(
     cookie: &str,
 ) -> (StatusCode, Value) {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("GET")
         .uri(uri)
         .header("cookie", cookie)
@@ -256,6 +262,7 @@ async fn get_json_with_cookie(
 /// `Cookie` request header for follow-up authenticated calls.
 async fn login_session_cookie(router: &axum::Router, email: &str, password: &str) -> String {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method("POST")
         .uri("/auth/login")
         .header("content-type", "application/json")
@@ -548,6 +555,7 @@ async fn email_login_disabled_blocks_passwords_in_every_sso_mode() {
                 .clone()
                 .oneshot(
                     Request::builder()
+                        .header("x-soika-request", "1")
                         .method("POST")
                         .uri("/auth/login")
                         .header("content-type", "application/json")
@@ -684,6 +692,7 @@ async fn send_with_cookie(
     cookie: &str,
 ) -> (StatusCode, Value) {
     let request = Request::builder()
+        .header("x-soika-request", "1")
         .method(method)
         .uri(uri)
         .header("cookie", cookie)
@@ -1368,7 +1377,7 @@ async fn declarative_grants_approve_new_sso_accounts_and_apply_groups() {
     use soika::domain::config_file::*;
     let email = "granted@example.com";
     let mut claims = verified_claims(email);
-    claims.groups = vec!["Acme/Platform".into()];
+    claims.groups = vec!["acme/platform".into()];
     let (_, mut state) = build_app(Some(Arc::new(FakeProvider::with_approval(claims)))).await;
     let settings = ManagementSettings {
         team_source: ManagementSource::Yaml,
@@ -1446,4 +1455,200 @@ async fn admin_authentication_status_reflects_runtime_methods_and_gates() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn concurrent_setup_creates_exactly_one_owner() {
+    let (_, state) = build_app(None).await;
+    let app = router::build(state.clone());
+    let setup = |email: &str| {
+        Request::builder().header("x-soika-request", "1").method("POST").uri("/auth/setup")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::json!({"email":email,"password":"long-password","display_name":"Owner","org_name":"Test"}).to_string())).unwrap()
+    };
+    let (a, b) = tokio::join!(
+        app.clone().oneshot(setup("first@example.com")),
+        app.oneshot(setup("second@example.com"))
+    );
+    let mut statuses = vec![a.unwrap().status().as_u16(), b.unwrap().status().as_u16()];
+    statuses.sort();
+    assert_eq!(statuses, vec![201, 409]);
+    assert_eq!(state.users.count_owners().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn pending_users_cannot_use_password_or_existing_sessions() {
+    let (app, state) = build_app(None).await;
+    seed_user(&state, "pending-local@example.com", "supersecret", false).await;
+    let id = state
+        .users
+        .find_by_email("pending-local@example.com")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    state
+        .users
+        .update(
+            id,
+            soika::ports::UserUpdate {
+                status: Some(UserStatus::Pending),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        state
+            .users
+            .find_by_id(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status
+            .is_pending()
+    );
+    let (_, cookie) =
+        soika::auth::start_session(&*state.sessions, &*state.clock, &state.config, id)
+            .await
+            .unwrap();
+    for path in ["/api/projects", "/api/teams", "/api/settings"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .header("x-soika-request", "1")
+                    .uri(path)
+                    .header("cookie", cookie.split(';').next().unwrap())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
+    }
+    let response = app.oneshot(Request::builder().header("x-soika-request", "1").method("POST").uri("/auth/login").header("content-type","application/json").body(Body::from(serde_json::json!({"email":"pending-local@example.com","password":"supersecret"}).to_string())).unwrap()).await.unwrap();
+    assert_ne!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn browser_cross_origin_writes_are_rejected_but_ingest_keeps_cors() {
+    let (app, _) = build_app(None).await;
+    for (origin, fetch_site) in [
+        ("https://evil.example", "cross-site"),
+        ("http://evil.localhost", "same-site"),
+        ("null", "cross-site"),
+    ] {
+        for path in [
+            "/auth/logout",
+            "/auth/passkey/login/options",
+            "/auth/setup",
+            "/api/teams",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .header("x-soika-request", "1")
+                        .method("POST")
+                        .uri(path)
+                        .header("origin", origin)
+                        .header("sec-fetch-site", fetch_site)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}: {origin}");
+        }
+    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .header("x-soika-request", "1")
+                .method("OPTIONS")
+                .uri("/api/1/envelope/")
+                .header("origin", "https://sdk.example")
+                .header("access-control-request-method", "POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()["access-control-allow-origin"], "*");
+}
+
+#[tokio::test]
+async fn missing_origin_requires_an_explicit_non_browser_header() {
+    let (app, _) = build_app(None).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .header("origin", "http://localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn configured_admin_identities_disable_anonymous_setup() {
+    let (_, mut state) = build_app(None).await;
+    Arc::make_mut(&mut state.config).admin_users =
+        soika::config::AdminUsers::parse("owner@example.com").unwrap();
+    let app = router::build(state.clone());
+    let (status, _) = post_json(&app, "/auth/setup", serde_json::json!({"email":"attacker@example.com","password":"long-password","display_name":"Attacker","org_name":"Test"})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(state.users.count().await.unwrap(), 0);
+    let (_, cfg) = get_json(&app, "/auth/config").await;
+    assert_eq!(cfg["admin_enabled"], false);
+}
+
+#[tokio::test]
+async fn sso_accounts_do_not_leak_existence_or_skip_failed_password_lockout() {
+    let (_, mut state) = build_app(Some(Arc::new(FakeProvider::new(verified_claims(
+        "existing@example.com",
+    )))))
+    .await;
+    seed_user(&state, "existing@example.com", "supersecret", false).await;
+    let mut config = state.config.lockout.clone();
+    config.max_attempts = 1;
+    state.login_guard = Arc::new(soika::auth::LoginGuard::new(config));
+    let app = router::build(state);
+    let mut responses = vec![];
+    for email in ["existing@example.com", "unknown@example.com"] {
+        responses.push(
+            post_json(
+                &app,
+                "/auth/login",
+                serde_json::json!({"email":email,"password":"wrong-password"}),
+            )
+            .await,
+        );
+    }
+    assert_eq!(responses[0], responses[1]);
+    assert_eq!(responses[0].0, StatusCode::UNAUTHORIZED);
+    let (status, _) = post_json(
+        &app,
+        "/auth/login",
+        serde_json::json!({"email":"existing@example.com","password":"wrong-password"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 }

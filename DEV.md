@@ -6,7 +6,7 @@ frontend dependencies.
 
 ## Local setup
 
-Install the Rust toolchain from `rust-toolchain.toml`, `just`, Node.js, and yarn.
+Install the Rust toolchain from `rust-toolchain.toml`, `just`, Node.js >=22.17, and yarn.
 Copy `.env.example` to `.env` and set a local `SECRET_KEY`. The Justfile loads
 `.env` automatically.
 
@@ -23,7 +23,7 @@ just dist            # build frontend assets embedded in the binary
 The backend defaults to `sqlite://soika.db`. On first run, open `/setup` to
 create the initial Owner account. For the frontend-only dev server, configure
 its API proxy in `frontend/vite.config.ts` as needed for your local backend.
-Configuration variables and their defaults are documented in `.env.example`.
+Set `BASE_URL` to the browser origin (including the Vite port when accessed directly), because browser writes are checked against it. Configuration variables and their defaults are documented in `.env.example`.
 
 ## Project structure
 
@@ -109,3 +109,11 @@ just lint                      # backend lint (also formats)
 just lint-frontend             # Prettier and Svelte checks
 ```
 
+
+
+SvelteKit 3 configuration lives in `frontend/sveltekit.config.js`, passed to
+`sveltekit(...)` in `frontend/vite.config.ts`. After dependency installation,
+`yarn run check` synchronizes generated types. The frontend uses a Yarn resolution
+to `frontend/vendor/deepmerge`: the upstream 4.3.1 build dependency is locally
+patched for CVE-2026-93753. Keep the patch and its prototype-poisoning regression
+test until an upstream fix can replace it; see [the audit](docs/SECURITY_AUDIT.md).

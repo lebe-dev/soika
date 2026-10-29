@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import { writable, type Readable } from 'svelte/store';
 import { setLocale } from '$lib/i18n';
 import Login from './+page.svelte';
 
@@ -9,9 +8,9 @@ const { page, supported } = vi.hoisted(() => ({
   page: { current: null as unknown },
   supported: vi.fn(() => true)
 }));
-vi.mock('$app/stores', () => ({
-  page: {
-    subscribe: (run: (value: unknown) => void) => (page.current as Readable<unknown>).subscribe(run)
+vi.mock('$app/state', () => ({
+  get page() {
+    return page.current;
   }
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -25,7 +24,7 @@ vi.mock('$lib/components/ui/sonner', () => ({ toast: { error: vi.fn() } }));
 let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
 function render(passwordEnabled: boolean, sso: boolean, passkey: boolean) {
-  page.current = writable({
+  page.current = {
     url: new URL('https://test.home/login'),
     data: {
       config: {
@@ -36,7 +35,7 @@ function render(passwordEnabled: boolean, sso: boolean, passkey: boolean) {
         allow_signup: true
       }
     }
-  });
+  };
   flushSync(() => {
     component = mount(Login, { target });
   });

@@ -77,6 +77,7 @@ async fn http_logs_redact_paths_queries_headers_and_correlate_boundaries() {
         app.clone()
             .oneshot(
                 Request::builder()
+                    .header("x-soika-request", "1")
                     .uri(uri)
                     .header("authorization", "Bearer secret-header")
                     .header("cookie", "session=secret-cookie")
@@ -139,7 +140,10 @@ fn project_api_faults_are_logged_and_auth_contention_is_handled() {
     tracing::subscriber::with_default(subscriber, || {
         let response =
             soika::api::projects::error_response(Error::internal("repository unavailable"));
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
         let busy = Error::db_busy("create session", Error::Db(sqlx::Error::PoolClosed));
         let response = soika::auth::handlers::AuthError(busy).into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -148,4 +152,25 @@ fn project_api_faults_are_logged_and_auth_contention_is_handled() {
     assert_eq!(logs.matches("ERROR").count(), 1, "{logs}");
     assert!(logs.contains("repository unavailable"), "{logs}");
     assert_eq!(logs.matches("WARN").count(), 1, "{logs}");
+}
+
+#[tokio::test]
+async fn internal_error_responses_do_not_disclose_causes() {
+    use axum::response::IntoResponse;
+    let responses = [
+        soika::auth::handlers::AuthError(soika::Error::internal("password=secret")).into_response(),
+        soika::api::teams::ApiError(soika::Error::Mail("password=secret".into())).into_response(),
+        soika::api::projects::error_response(soika::Error::internal("password=secret")),
+    ];
+    for response in responses {
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"], "internal server error");
+    }
 }

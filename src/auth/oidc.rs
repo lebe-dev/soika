@@ -340,6 +340,7 @@ async fn load_group_claims(
 fn build_http_client() -> Result<openidconnect::reqwest::Client> {
     openidconnect::reqwest::ClientBuilder::new()
         .redirect(openidconnect::reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| Error::internal(format!("failed to build OIDC HTTP client: {e}")))
 }

@@ -5,7 +5,7 @@
 // nothing is sent until the SDK has been initialized post sign-in.
 import { translate } from '$lib/i18n';
 import * as Sentry from '@sentry/svelte';
-import type { HandleClientError } from '@sveltejs/kit';
+import type { HandleClientError } from '@sveltejs/kit/hooks';
 
 export const handleError: HandleClientError = ({ error }) => {
   Sentry.captureException(error);

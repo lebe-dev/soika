@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { Button } from '$lib/components/ui/button';
   import * as Card from '$lib/components/ui/card';
   import Clock from '@lucide/svelte/icons/clock';
@@ -15,7 +15,7 @@
   // The bootstrap `GET /api/config` is fetched once by the root layout
   // (`data.config`); we read it here for the provider name. The page is
   // informational and renders fine without it.
-  const config = $derived($page.data.config);
+  const config = $derived(page.data.config);
 
   // Surface a non-blocking toast if the layout bootstrap failed, so the
   // anonymous-route failure isn't silent.

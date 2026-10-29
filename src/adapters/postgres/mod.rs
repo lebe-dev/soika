@@ -40,3 +40,6 @@ pub use session::PgSessionRepository;
 pub use settings::PgSettingsRepository;
 pub use team::PgTeamRepository;
 pub use user::PgUserRepository;
+
+mod auth_challenge;
+pub use auth_challenge::PgAuthChallengeRepository;

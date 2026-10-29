@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t, locale } from '$lib/i18n';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { projects, errorMessage, type Issue, type IssueStatus } from '$lib/api';
   import { reportUnexpected } from '$lib/report';
@@ -33,7 +33,7 @@
 
   // Seed the active filter from the URL (?status=) so links/back are stable.
   const urlStatus = $derived(
-    ($page.url.searchParams.get('status') as Filter | null) ?? 'unresolved'
+    (page.url.searchParams.get('status') as Filter | null) ?? 'unresolved'
   );
 
   type Sort = 'last_seen' | 'event_count';
@@ -43,7 +43,7 @@
   ]);
 
   // Seed the active sort from the URL (?sort=) the same way as the status filter.
-  const urlSort = $derived(($page.url.searchParams.get('sort') as Sort | null) ?? 'last_seen');
+  const urlSort = $derived((page.url.searchParams.get('sort') as Sort | null) ?? 'last_seen');
 
   // First-class field filters (Stories 4.4 / 5.2). `level` is a small set of
   // known severities; environment/release are free-form so they use text inputs.
@@ -57,9 +57,9 @@
     { value: 'debug', label: $t('debug') }
   ]);
 
-  const urlLevel = $derived(($page.url.searchParams.get('level') as Level | null) ?? 'all');
-  const urlEnvironment = $derived($page.url.searchParams.get('environment') ?? '');
-  const urlRelease = $derived($page.url.searchParams.get('release') ?? '');
+  const urlLevel = $derived((page.url.searchParams.get('level') as Level | null) ?? 'all');
+  const urlEnvironment = $derived(page.url.searchParams.get('environment') ?? '');
+  const urlRelease = $derived(page.url.searchParams.get('release') ?? '');
 
   // Filters persist per project (environment/release values don't generalize
   // across projects) so leaving and returning to the Issues tab restores the
@@ -81,7 +81,7 @@
 
   $effect(() => {
     const id = projectId;
-    const url = $page.url;
+    const url = page.url;
     if (FILTER_PARAMS.some((key) => url.searchParams.has(key))) return;
 
     const stored = readJson<Partial<StoredIssueFilters>>(filtersStorageKey(id));
@@ -108,13 +108,13 @@
       return;
     }
 
-    const next = new URL(url);
+    const next = new URL(url.href);
     if (status !== 'unresolved') next.searchParams.set('status', status);
     if (sort !== 'last_seen') next.searchParams.set('sort', sort);
     if (level !== 'all') next.searchParams.set('level', level);
     if (environment !== '') next.searchParams.set('environment', environment);
     if (release !== '') next.searchParams.set('release', release);
-    goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+    goto(next, { replace: true, reset: false });
   });
 
   let issues = $state<Issue[]>([]);
@@ -187,11 +187,11 @@
   // null value (or a value equal to `clearOn`) removes the param so we never
   // send a blank filter to the API.
   function setParam(key: string, value: string | null, clearOn: string | undefined = undefined) {
-    const url = new URL($page.url);
+    const url = new URL(page.url.href);
     const trimmed = value?.trim() ?? '';
     if (trimmed === '' || trimmed === clearOn) url.searchParams.delete(key);
     else url.searchParams.set(key, trimmed);
-    goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+    goto(url, { replace: true, reset: false });
 
     writeJson<StoredIssueFilters>(filtersStorageKey(projectId), {
       status: (url.searchParams.get('status') as Filter | null) ?? 'unresolved',

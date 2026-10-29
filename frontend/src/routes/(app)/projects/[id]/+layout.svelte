@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
   import type { Snippet } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { cn } from '$lib/utils';
   import type { LayoutData } from './$types';
   import BellOff from '@lucide/svelte/icons/bell-off';
@@ -39,7 +39,7 @@
     }
   ]);
 
-  const path = $derived($page.url.pathname);
+  const path = $derived(page.url.pathname);
 </script>
 
 {#if project.orphaned_at}<div

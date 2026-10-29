@@ -109,6 +109,56 @@ impl InviteRepository for PgInviteRepository {
         Ok(())
     }
 
+    async fn accept(&self, token: &str, user_id: Id, now: Timestamp) -> Result<()> {
+        crate::adapters::retry::retry_write(
+            &crate::config::WritePolicy::default(),
+            "accept invite",
+            || async {
+                let mut tx = self.db.begin().await?;
+                let invite: Option<(Id, String, Option<String>)> = sqlx::query_as(
+                    "UPDATE invites SET accepted_at = $1 WHERE token = $2 AND accepted_at IS NULL \
+                 AND expires_at > $3 RETURNING team_id, role, email",
+                )
+                .bind(ts(now))
+                .bind(token)
+                .bind(ts(now))
+                .fetch_optional(&mut *tx)
+                .await?;
+                let (team, role, recipient) = invite
+                    .ok_or_else(|| crate::Error::Auth("invite expired or already used".into()))?;
+                let user: Option<(String, String)> =
+                    sqlx::query_as("SELECT email, status FROM users WHERE id = $1")
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                let (email, status) =
+                    user.ok_or_else(|| crate::Error::Auth("user no longer exists".into()))?;
+                if status != "active"
+                    || recipient.is_some_and(|target| !target.eq_ignore_ascii_case(&email))
+                {
+                    return Err(crate::Error::Forbidden(
+                        "invite is not available to this account".into(),
+                    ));
+                }
+                sqlx::query(
+                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                 VALUES ($1, $2, $3, $4) \
+                 ON CONFLICT(team_id, user_id) DO UPDATE SET role = CASE \
+                 WHEN team_members.role = 'admin' THEN 'admin' ELSE excluded.role END",
+                )
+                .bind(team)
+                .bind(user_id)
+                .bind(role)
+                .bind(ts(now))
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(())
+            },
+        )
+        .await
+    }
+
     async fn delete(&self, token: &str) -> Result<()> {
         sqlx::query("DELETE FROM invites WHERE token = $1")
             .bind(token)

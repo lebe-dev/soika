@@ -23,6 +23,7 @@ async fn send(
         .clone()
         .oneshot(
             Request::builder()
+                .header("x-soika-request", "1")
                 .method(method)
                 .uri(path)
                 .header("content-type", "application/json")

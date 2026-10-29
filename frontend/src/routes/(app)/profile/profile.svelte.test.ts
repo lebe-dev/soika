@@ -13,10 +13,7 @@ const { update, success, failure, config } = vi.hoisted(() => ({
   config: { passkey_enabled: false, sso_allow_display_name_change: false }
 }));
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('$app/stores', async () => {
-  const { readable } = await import('svelte/store');
-  return { page: readable({ data: { config, telemetry: null } }) };
-});
+vi.mock('$app/state', () => ({ page: { data: { config, telemetry: null } } }));
 vi.mock('$lib/api', () => ({
   profile: { update },
   passkeys: {},
