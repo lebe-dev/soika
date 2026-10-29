@@ -140,12 +140,53 @@ impl TeamRepository for SqliteTeamRepository {
             .ok_or_else(|| Error::not_found(format!("team not found: {id}")))
     }
 
-    async fn delete(&self, id: Id) -> Result<()> {
-        sqlx::query("DELETE FROM teams WHERE id = ?")
-            .bind(id_to_db(id))
-            .execute(&self.db)
-            .await?;
-        Ok(())
+    async fn delete(&self, id: Id, move_projects_to: Option<Id>) -> Result<()> {
+        if move_projects_to == Some(id) {
+            return Err(Error::validation(
+                "target team must differ from deleted team",
+            ));
+        }
+        super::write::retry_write(
+            &crate::config::WritePolicy::default(),
+            "delete team",
+            || async {
+                let mut tx = super::write::begin_write(&self.db).await?;
+                if let Some(target) = move_projects_to {
+                    let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM teams WHERE id = ?")
+                        .bind(id_to_db(target))
+                        .fetch_one(&mut *tx)
+                        .await?;
+                    if exists == 0 {
+                        return Err(Error::not_found("target team not found"));
+                    }
+                    sqlx::query(
+                        "UPDATE projects SET team_id = ?, updated_at = ? WHERE team_id = ?",
+                    )
+                    .bind(id_to_db(target))
+                    .bind(ts_to_db(chrono::Utc::now()))
+                    .bind(id_to_db(id))
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                let count: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE team_id = ?")
+                        .bind(id_to_db(id))
+                        .fetch_one(&mut *tx)
+                        .await?;
+                if count > 0 {
+                    return Err(Error::Conflict(
+                        "team still owns projects; move them to another team first".into(),
+                    ));
+                }
+                sqlx::query("DELETE FROM teams WHERE id = ?")
+                    .bind(id_to_db(id))
+                    .execute(&mut *tx)
+                    .await?;
+                tx.commit().await?;
+                Ok(())
+            },
+        )
+        .await
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {

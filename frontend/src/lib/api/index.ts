@@ -165,7 +165,10 @@ export const teams = {
   get: (id: Id, ctx?: Ctx) => http.get<Team>(`/teams/${id}`, { fetch: ctx?.fetch }),
   update: (id: Id, body: UpdateTeamRequest, ctx?: Ctx) =>
     http.patch<Team>(`/teams/${id}`, { body, fetch: ctx?.fetch }),
-  remove: (id: Id, ctx?: Ctx) => http.delete<void>(`/teams/${id}`, { fetch: ctx?.fetch }),
+  remove: (id: Id, target?: Id, ctx?: Ctx) =>
+    http.delete<void>(`/teams/${id}${target ? `?move_projects_to=${target}` : ''}`, {
+      fetch: ctx?.fetch
+    }),
   addMember: (id: Id, body: AddTeamMemberRequest, ctx?: Ctx) =>
     http.post<Team>(`/teams/${id}/members`, { body, fetch: ctx?.fetch }),
   setMemberRole: (id: Id, userId: Id, body: SetTeamMemberRoleRequest, ctx?: Ctx) =>

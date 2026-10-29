@@ -28,7 +28,11 @@ export const load: PageLoad = async ({ params, parent, url, fetch }) => {
       users = await admin.users({ fetch });
     }
 
-    return { team, users };
+    const targets =
+      authed.instance_role === 'owner' || authed.instance_role === 'manager'
+        ? await teams.list({ fetch })
+        : [];
+    return { team, users, targets };
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.isNotFound) error(404, 'Team not found');

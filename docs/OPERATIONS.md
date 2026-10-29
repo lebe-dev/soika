@@ -468,3 +468,10 @@ SENTRY_ENVIRONMENT=production   # optional environment tag
 ## License
 
 [MIT](LICENSE.md)
+
+### Deleting teams
+
+Deleting a team never deletes its projects. Move projects to another team in the
+deletion dialog, or pass `move_projects_to=<team_id>` to `DELETE /api/teams/{id}`.
+The transfer and deletion are atomic. Without a target, a team that still owns
+projects returns HTTP 409. Project IDs, DSNs, events and mute rules are preserved.

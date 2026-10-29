@@ -112,12 +112,58 @@ impl TeamRepository for PgTeamRepository {
             .ok_or_else(|| Error::not_found(format!("team not found: {id}")))
     }
 
-    async fn delete(&self, id: Id) -> Result<()> {
-        sqlx::query("DELETE FROM teams WHERE id = $1")
-            .bind(id)
-            .execute(&self.db)
-            .await?;
-        Ok(())
+    async fn delete(&self, id: Id, move_projects_to: Option<Id>) -> Result<()> {
+        if move_projects_to == Some(id) {
+            return Err(Error::validation(
+                "target team must differ from deleted team",
+            ));
+        }
+        crate::adapters::retry::retry_write(
+            &crate::config::WritePolicy::default(),
+            "delete team",
+            || async {
+                let mut tx = self.db.begin().await?;
+                // Serialize transfers with concurrent project creation and team deletion.
+                sqlx::query("LOCK TABLE teams, projects IN SHARE ROW EXCLUSIVE MODE")
+                    .execute(&mut *tx)
+                    .await?;
+                if let Some(target) = move_projects_to {
+                    let exists: i64 =
+                        sqlx::query_scalar("SELECT COUNT(*) FROM teams WHERE id = $1")
+                            .bind(target)
+                            .fetch_one(&mut *tx)
+                            .await?;
+                    if exists == 0 {
+                        return Err(Error::not_found("target team not found"));
+                    }
+                    sqlx::query(
+                        "UPDATE projects SET team_id = $1, updated_at = $2 WHERE team_id = $3",
+                    )
+                    .bind(target)
+                    .bind(now())
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                let count: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE team_id = $1")
+                        .bind(id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                if count > 0 {
+                    return Err(Error::Conflict(
+                        "team still owns projects; move them to another team first".into(),
+                    ));
+                }
+                sqlx::query("DELETE FROM teams WHERE id = $1")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                tx.commit().await?;
+                Ok(())
+            },
+        )
+        .await
     }
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {

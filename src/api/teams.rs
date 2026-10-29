@@ -6,7 +6,7 @@
 //! dedicated shared module — see the integration followups.
 
 use axum::Json;
-use axum::extract::{FromRequestParts, Path, State};
+use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
@@ -376,14 +376,20 @@ pub async fn update(
     Ok(Json(view))
 }
 
+#[derive(Deserialize)]
+pub struct DeleteTeamQuery {
+    move_projects_to: Option<Id>,
+}
+
 /// `DELETE /teams/{id}` — delete a team (instance manager/owner).
 pub async fn delete(
     _admin: AdminUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<DeleteTeamQuery>,
 ) -> Result<StatusCode, ApiError> {
     let id = parse_id(&id)?;
-    state.teams.delete(id).await?;
+    state.teams.delete(id, query.move_projects_to).await?;
     tracing::info!(team_id = %id, "team deleted");
     Ok(StatusCode::NO_CONTENT)
 }

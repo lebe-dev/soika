@@ -420,7 +420,7 @@
   "frame_count": "{count, plural, one {# frame} other {# frames}}",
   "show_system_frames": "Show system frames ({count})",
   "hide_system_frames": "Hide system frames ({count})",
-  "delete_team_confirm": "Delete “{name}”? Members lose access to its projects. This cannot be undone.",
+  "delete_team_confirm": "Delete team “{name}”?",
   "project_not_found": "Project not found",
   "issue_not_found": "Issue not found",
   "no_project_access": "You do not have access to this project",
@@ -465,5 +465,8 @@
   "unknown": "Unknown",
   "default_teams_title": "Teams for new users",
   "default_teams_description": "New accounts join the selected teams as Contributors, including sign-up, invitations and first SSO sign-in. Existing users and their memberships are unchanged. Leave all teams unchecked to assign none.",
-  "default_teams_empty": "Create a team first to configure default membership."
+  "default_teams_empty": "Create a team first to configure default membership.",
+  "team_transfer_required": "This team owns {count} projects. Select a team to move them to before deletion.",
+  "move_projects_to": "Move projects to",
+  "select_team": "Select a team"
 }

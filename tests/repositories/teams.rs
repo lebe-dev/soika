@@ -14,7 +14,7 @@ async fn create_rename_list_delete() {
     assert_eq!(renamed.name, "Platform");
     assert_eq!(renamed.created_at, t.created_at);
 
-    repo.delete(t.id).await.unwrap();
+    repo.delete(t.id, None).await.unwrap();
     assert!(repo.find_by_id(t.id).await.unwrap().is_none());
 }
 
@@ -92,4 +92,35 @@ async fn membership_add_remove_and_listing() {
     assert!(repo.list_for_user(u1).await.unwrap().is_empty());
     assert!(!repo.is_member(team.id, u1).await.unwrap());
     assert_eq!(repo.member_role(team.id, u1).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn deletion_preserves_projects_and_requires_explicit_transfer() {
+    let db = test_db().await;
+    let source = insert_team(&db, "source").await;
+    let target = insert_team(&db, "target").await;
+    let project = insert_project(&db, source, "keep", "stable-dsn").await;
+    assert!(matches!(
+        db.teams.delete(source, None).await,
+        Err(Error::Conflict(_))
+    ));
+    assert!(matches!(
+        db.teams.delete(source, Some(source)).await,
+        Err(Error::Validation(_))
+    ));
+    assert!(db.teams.delete(source, Some(Id::new_v4())).await.is_err());
+    assert_eq!(
+        db.projects
+            .find_by_id(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .team_id,
+        source
+    );
+    db.teams.delete(source, Some(target)).await.unwrap();
+    let kept = db.projects.find_by_id(project).await.unwrap().unwrap();
+    assert_eq!(kept.team_id, target);
+    assert_eq!(kept.dsn_public_key, "stable-dsn");
+    assert!(db.teams.find_by_id(source).await.unwrap().is_none());
 }

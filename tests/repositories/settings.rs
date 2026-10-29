@@ -73,7 +73,7 @@ async fn deleting_default_team_removes_setting_and_does_not_block_new_users() {
     let db = test_db().await;
     let team = insert_team(&db, "A").await;
     db.settings.set_default_team_ids(vec![team]).await.unwrap();
-    db.teams.delete(team).await.unwrap();
+    db.teams.delete(team, None).await.unwrap();
     assert!(db.settings.default_team_ids().await.unwrap().is_empty());
     let user = insert_user(&db, "new@example.com").await;
     assert!(db.teams.list_for_user(user).await.unwrap().is_empty());

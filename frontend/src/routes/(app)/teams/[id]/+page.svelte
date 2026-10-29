@@ -98,11 +98,12 @@
   // --- Delete ---
   let deleteOpen = $state(false);
   let deleting = $state(false);
+  let transferTarget = $state('');
 
   async function deleteTeam() {
     deleting = true;
     try {
-      await teamsApi.remove(team.id);
+      await teamsApi.remove(team.id, transferTarget || undefined);
       toast.success($t('team_deleted'));
       deleteOpen = false;
       await goto('/teams');
@@ -524,11 +525,26 @@
         {$t('delete_team_confirm', { values: { name: team.name } })}
       </Dialog.Description>
     </Dialog.Header>
+    {#if team.projects.length > 0}
+      <p class="text-sm">
+        {$t('team_transfer_required', { values: { count: team.projects.length } })}
+      </p>
+      <NativeSelect bind:value={transferTarget} aria-label={$t('move_projects_to')}>
+        <option value="">{$t('select_team')}</option>
+        {#each data.targets.filter((target) => target.id !== team.id) as target}
+          <option value={target.id}>{target.name}</option>
+        {/each}
+      </NativeSelect>
+    {/if}
     <Dialog.Footer>
       <Button type="button" variant="outline" onclick={() => (deleteOpen = false)}
         >{$t('cancel')}</Button
       >
-      <Button variant="destructive" disabled={deleting} onclick={deleteTeam}>
+      <Button
+        variant="destructive"
+        disabled={deleting || (team.projects.length > 0 && !transferTarget)}
+        onclick={deleteTeam}
+      >
         {deleting ? $t('deleting') : $t('delete_team')}
       </Button>
     </Dialog.Footer>
