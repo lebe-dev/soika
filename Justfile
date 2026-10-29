@@ -83,12 +83,18 @@ test-postgres name="":
     trap 'docker rm -f soika-test-postgres >/dev/null 2>&1 || true' EXIT
     SOIKA_TEST_DB=postgres cargo test {{ name }}
 
-# Run the backend tests with an LCOV coverage report (read by SonarQube via
-# `sonar.rust.lcov.reportPaths`). Requires `cargo install cargo-llvm-cov`.
+# Combine SQLite and PostgreSQL backend coverage for SonarQube. Requires Docker
+# and `cargo install cargo-llvm-cov` (`sonar.rust.lcov.reportPaths`).
 # `--remap-path-prefix` makes source paths workspace-relative so they resolve
 # inside the dockerized sonar-scanner (which mounts the repo at its host path).
 test-backend-coverage:
-    cargo llvm-cov --lcov --remap-path-prefix --output-path lcov.info
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'docker rm -f soika-test-postgres >/dev/null 2>&1 || true' EXIT
+    cargo llvm-cov clean --workspace
+    SOIKA_TEST_DB=sqlite cargo llvm-cov --no-report --remap-path-prefix
+    SOIKA_TEST_DB=postgres cargo llvm-cov --no-report --remap-path-prefix
+    cargo llvm-cov report --lcov --remap-path-prefix --output-path lcov.info
 
 # Run the frontend tests with a V8 coverage report. The lcov paths are emitted
 # relative to `frontend/`; rewrite them to be repo-root-relative so the

@@ -110,7 +110,8 @@ just lint-frontend             # Prettier and Svelte checks
 ```
 
 SonarQube analysis runs with `just sonar-scan`; it regenerates both coverage
-reports before scanning. The scanner also mounts Git metadata read-only so
+reports before scanning; backend coverage combines SQLite and PostgreSQL
+test runs and requires Docker. The scanner also mounts Git metadata read-only so
 linked worktrees can be analyzed. Helm charts (`helm-chart/**`) are excluded from
 SonarQube and checked separately with `just test-chart`. Frontend test helpers
 under `frontend/src/test/` are classified as test code.
