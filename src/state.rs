@@ -36,7 +36,9 @@ pub struct AppState {
     pub invites: Arc<dyn InviteRepository>,
     /// WebAuthn credentials (passkeys) registered by users.
     pub passkeys: Arc<dyn PasskeyRepository>,
+    pub notifications: Arc<dyn crate::ports::NotificationRepository>,
     pub settings: Arc<dyn SettingsRepository>,
+    pub alertmanager: Arc<crate::alertmanager::Alertmanager>,
     pub mailer: Arc<dyn Mailer>,
     /// Tera templates for outbound email (loaded once at startup).
     pub templates: Arc<Templates>,

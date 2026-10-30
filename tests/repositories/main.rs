@@ -14,6 +14,7 @@ mod favorites;
 mod invites;
 mod issues;
 mod mute_rules;
+mod notifications;
 mod passkeys;
 mod projects;
 mod sessions;
@@ -111,6 +112,7 @@ mod fixtures {
             default_events_retention: 1000,
             default_retention_days: 0,
             retention_cron: "0 0 * * * *".into(),
+            alertmanager_url: None,
             webhooks_enabled: false,
             smtp_enabled: false,
             smtp: None,

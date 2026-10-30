@@ -309,6 +309,7 @@ fn test_config(database_url: &str, db: DbConfig) -> Config {
         default_events_retention: 5,
         default_retention_days: 0,
         retention_cron: "0 0 * * * *".into(),
+        alertmanager_url: None,
         webhooks_enabled: false,
         smtp_enabled: false,
         smtp: None,

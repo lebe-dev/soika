@@ -255,6 +255,7 @@ async fn management_sources_are_independent_and_ingestion_checks_orphans() {
                     version: 1,
                     projects: Some(vec![]),
                     teams: None,
+                    notifications: None,
                 },
                 &settings,
                 1000,
@@ -312,6 +313,7 @@ async fn declarative_teams_suspend_default_memberships_without_erasing_preferenc
     let file = ConfigFile {
         version: 1,
         projects: None,
+        notifications: None,
         teams: Some(vec![TeamConfig {
             name: "Platform".into(),
             members: Some(vec![]),
@@ -501,5 +503,81 @@ async fn sync_updates_transfers_and_restores_teams_and_reports_grant_bindings() 
     assert_eq!(
         db.teams.member_role(after.team_id, local).await.unwrap(),
         Some(TeamRole::Contributor)
+    );
+}
+
+#[tokio::test]
+async fn notification_yaml_sync_is_independent_atomic_and_preserved_when_returning_to_ui() {
+    let db = test_db().await;
+    let settings = ManagementSettings {
+        notification_source: ManagementSource::Yaml,
+        ..Default::default()
+    };
+    let text = "version: 1\nnotifications:\n  alertmanager:\n    enabled: true\n    url: http://alertmanager:9093\n";
+    let file = parse(text, &settings).unwrap();
+    let report = db.config_sync.apply(&file, &settings, 1000).await.unwrap();
+    assert!(report.loaded);
+    let applied = db.notifications.get().await.unwrap();
+    assert!(applied.alertmanager.enabled);
+    assert_eq!(applied.alertmanager.url, "http://alertmanager:9093");
+    let empty = ConfigFile {
+        version: 1,
+        ..Default::default()
+    };
+    db.config_sync
+        .apply(&empty, &ManagementSettings::default(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(db.notifications.get().await.unwrap(), applied);
+
+    let mut invalid = file;
+    invalid.notifications.as_mut().unwrap().alertmanager.url = "not a url".into();
+    assert!(
+        db.config_sync
+            .apply(&invalid, &settings, 1000)
+            .await
+            .is_err()
+    );
+    assert_eq!(db.notifications.get().await.unwrap(), applied);
+}
+
+#[tokio::test]
+async fn notification_yaml_startup_uses_environment_default_and_rejects_missing_effective_url() {
+    let file = ConfigFixture::new("version: 1\nnotifications: {alertmanager: {enabled: true}}\n");
+    let mut state = test_db().await;
+    file.configure(
+        &mut state,
+        ManagementSettings {
+            notification_source: ManagementSource::Yaml,
+            ..Default::default()
+        },
+    );
+    assert!(
+        soika::config_sync::synchronize(state.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        !state
+            .notifications
+            .get()
+            .await
+            .unwrap()
+            .alertmanager
+            .enabled
+    );
+    std::sync::Arc::make_mut(&mut state.config).alertmanager_url =
+        Some("http://alertmanager:9093".into());
+    let state = soika::config_sync::synchronize(state).await.unwrap();
+    let stored = state.notifications.get().await.unwrap();
+    assert!(stored.alertmanager.enabled);
+    assert_eq!(stored.alertmanager.url, "");
+    assert_eq!(
+        stored
+            .effective(state.config.alertmanager_url.as_deref())
+            .unwrap()
+            .alertmanager
+            .url,
+        "http://alertmanager:9093"
     );
 }

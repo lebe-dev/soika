@@ -27,6 +27,7 @@ struct ConfigView {
 
 #[derive(Serialize)]
 struct AdminConfig {
+    notifications: crate::api::notifications::NotificationView,
     settings: settings::SettingsView,
     users: Vec<settings::AdminUserRow>,
 }
@@ -40,6 +41,12 @@ pub async fn get(
         .filter(|u| u.instance_role.can_manage_instance())
     {
         Some(user) => Some(AdminConfig {
+            notifications: crate::api::notifications::get(
+                AdminUser(user.clone()),
+                State(state.clone()),
+            )
+            .await?
+            .0,
             settings: settings::get(AdminUser(user.clone()), State(state.clone()))
                 .await?
                 .0,

@@ -1,4 +1,4 @@
-//! In-process background scheduler — retention cleanup.
+//! In-process background scheduler — retention, mute expiry and alert refresh.
 //!
 //! Runs as a `tokio` task in the same runtime as the HTTP server (no broker,
 //! ). Parses `RETENTION_CRON` (croner) and enforces per-project event
@@ -13,7 +13,7 @@
 //! repository — only `events` rows are deleted.
 //!
 //! Outbound mail is sent inline from the ingest pipeline via [`crate::notify`];
-//! the scheduler owns only periodic, time-driven work.
+//! the scheduler also refreshes durable Alertmanager alerts every minute.
 
 use std::time::Duration;
 
@@ -37,9 +37,21 @@ const MAX_SLEEP: Duration = Duration::from_secs(60);
 /// HTTP server keeps running (retention is best-effort, not load-bearing).
 pub fn spawn(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        if let Err(err) = run_loop(&state).await {
-            tracing::error!(error = %err, "scheduler: stopped");
-        }
+        let retention = async {
+            if let Err(error) = run_loop(&state).await {
+                tracing::error!(error = %error, "scheduler: retention stopped");
+            }
+        };
+        let notifications = async {
+            let mut interval = tokio::time::interval(crate::alertmanager::REFRESH_INTERVAL);
+            loop {
+                interval.tick().await;
+                if let Err(error) = crate::alertmanager::refresh(&state).await {
+                    tracing::warn!(error = %error, "Alertmanager refresh failed");
+                }
+            }
+        };
+        tokio::join!(retention, notifications);
     })
 }
 
@@ -332,6 +344,7 @@ mod tests {
             default_events_retention,
             default_retention_days,
             retention_cron: "0 */15 * * * *".into(),
+            alertmanager_url: None,
             webhooks_enabled: false,
             smtp_enabled: false,
             smtp: None,

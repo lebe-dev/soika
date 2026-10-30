@@ -22,6 +22,7 @@ pub struct ManagementSettings {
     pub path: String,
     pub project_source: ManagementSource,
     pub team_source: ManagementSource,
+    pub notification_source: ManagementSource,
     pub project_orphan_policy: OrphanPolicy,
     pub team_orphan_policy: OrphanPolicy,
 }
@@ -31,6 +32,7 @@ impl Default for ManagementSettings {
             path: "/etc/soika/config.yaml".into(),
             project_source: ManagementSource::Ui,
             team_source: ManagementSource::Ui,
+            notification_source: ManagementSource::Ui,
             project_orphan_policy: OrphanPolicy::Readonly,
             team_orphan_policy: OrphanPolicy::Readonly,
         }
@@ -40,6 +42,7 @@ impl Default for ManagementSettings {
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
     pub version: u32,
+    pub notifications: Option<super::notifications::NotificationConfig>,
     pub projects: Option<Vec<ProjectConfig>>,
     pub teams: Option<Vec<TeamConfig>>,
 }
@@ -93,6 +96,12 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
         file.teams = None;
     } else if file.teams.is_none() {
         return Err(Error::validation("teams section is required"));
+    }
+    if settings.notification_source == ManagementSource::Yaml {
+        file.notifications
+            .as_ref()
+            .ok_or_else(|| Error::validation("notifications section is required"))?
+            .validate_stored()?;
     }
     validate_projects(file.projects.iter().flatten())?;
     validate_teams(file.teams.iter().flatten())?;
@@ -282,6 +291,9 @@ impl SyncReport {
 /// Ignore sections owned by the UI before interpreting or expanding their values.
 pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &ManagementSettings) {
     if let serde_yaml_ng::Value::Mapping(map) = value {
+        if settings.notification_source == ManagementSource::Ui {
+            map.remove(serde_yaml_ng::Value::String("notifications".into()));
+        }
         if settings.project_source == ManagementSource::Ui {
             map.remove(serde_yaml_ng::Value::String("projects".into()));
         }

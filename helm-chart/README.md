@@ -4,7 +4,7 @@ This chart deploys the single-binary Soika image with SQLite or PostgreSQL 15+.
 It uses one replica and a `Recreate` deployment strategy: the retention scheduler,
 ingestion rate limiter, and login lockout are per process. The application runs
 the selected database's migrations at startup; no migration Job is needed.
-Chart version: `0.1.2`. Default application image: `tinyops/soika:0.8.0`.
+Chart version: `0.3.0`. Default application image: `tinyops/soika:0.10.0`.
 
 ## Publishing
 
@@ -179,3 +179,53 @@ claim, по умолчанию `groups`. Без OAuth новые пользов�
 от массового удаления нет. Смена slug означает новый проект и новый DSN.
 
 Подробности: [Configuration as code](../docs/OPERATIONS.md#configuration-as-code-gitops).
+
+## Notifications
+
+В **Admin → Notifications** находятся Email/SMTP, Webhooks проектов и Alertmanager.
+По умолчанию `NOTIFICATION_MANAGEMENT_SOURCE=ui`: URL Alertmanager и шаблоны
+labels/annotations сохраняются через UI в БД. `ALERTMANAGER_URL` в `envs` задаёт
+адрес по умолчанию: пустой URL в UI/YAML использует его, явно указанный URL
+имеет приоритет. Изменение переменной окружения применяется после rollout.
+Для GitOps установите значение
+`yaml` в полном списке `envs` и заполните `configFile.content.notifications`:
+
+```yaml
+envs:
+  - name: BIND_ADDR
+    value: "0.0.0.0:8080"
+  - name: DATABASE_URL
+    value: "sqlite:///app/data/soika.db?mode=rwc"
+  - name: BASE_URL
+    value: "https://errors.example.com"
+  - name: NOTIFICATION_MANAGEMENT_SOURCE
+    value: "yaml"
+configFile:
+  content:
+    version: 1
+    projects: []
+    teams: []
+    notifications:
+      alertmanager:
+        enabled: true
+        url: http://alertmanager.monitoring:9093
+        labels:
+          alertname: SoikaIssue
+          project: '{{ project_slug }}'
+          severity: '{{ level }}'
+        annotations:
+          summary: '{{ title }}'
+          issue_url: '{{ issue_url }}'
+          trigger: '{{ trigger }}'
+```
+
+Helm передаёт `{{ variable }}` буквально, без `tpl`. Изменение содержимого
+`configFile` меняет checksum и вызывает rollout; для `existingConfigMap`
+после обновления внешнего ConfigMap перезапустите Deployment самостоятельно.
+Режим уведомлений не зависит от источника проектов и команд. В YAML-режиме
+настройки в UI доступны только для чтения. По умолчанию канал выключен.
+
+Soika отправляет алерты через `/api/v2/alerts`, продлевает открытые каждую минуту
+и закрывает их при resolve/mute/удалении. Старые ошибки при включении не отправляются.
+SMTP и Webhooks сохраняют настройки `SMTP_*` и `WEBHOOKS_ENABLED`.
+Список переменных и поведение доставки описаны в [Notifications](../docs/NOTIFICATIONS.md).

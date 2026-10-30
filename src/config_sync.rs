@@ -1,7 +1,7 @@
 //! Startup file loading. Values are expanded after YAML parsing to prevent YAML injection.
 use crate::{AppState, Error, Result, domain::config_file::*};
 use std::sync::Arc;
-pub const DEFAULT_FILE: &str = "version: 1\nprojects: []\nteams: []\n";
+pub const DEFAULT_FILE: &str = "version: 1\nprojects: []\nteams: []\nnotifications: {}\n";
 fn expand(value: &str) -> Result<String> {
     let mut out = String::new();
     let mut remaining = value;
@@ -62,7 +62,8 @@ fn read_configuration(settings: &ManagementSettings) -> Result<(ConfigFile, bool
 pub async fn synchronize(mut state: AppState) -> Result<AppState> {
     let settings = &state.config.management;
     let enabled = settings.project_source == ManagementSource::Yaml
-        || settings.team_source == ManagementSource::Yaml;
+        || settings.team_source == ManagementSource::Yaml
+        || settings.notification_source == ManagementSource::Yaml;
     let mut desired = ConfigFile {
         version: 1,
         ..Default::default()
@@ -92,6 +93,11 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
             );
         }
     }
+    let notifications = match &desired.notifications {
+        Some(config) => config.clone(),
+        None => state.notifications.get().await?,
+    };
+    notifications.effective(state.config.alertmanager_url.as_deref())?;
     let mut report = state
         .config_sync
         .apply(&desired, settings, state.config.default_events_retention)

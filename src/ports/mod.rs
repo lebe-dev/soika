@@ -37,3 +37,9 @@ pub use user::{NewUser, UserRepository, UserUpdate};
 
 mod auth_challenge;
 pub use auth_challenge::AuthChallengeRepository;
+
+mod notifications;
+pub use notifications::NotificationRepository;
+
+mod alertmanager;
+pub use alertmanager::AlertmanagerClient;

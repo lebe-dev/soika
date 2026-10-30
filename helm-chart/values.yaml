@@ -18,6 +18,11 @@ envs:
     value: "ui"
   - name: TEAM_MANAGEMENT_SOURCE
     value: "ui"
+  - name: NOTIFICATION_MANAGEMENT_SOURCE
+    value: "ui"
+  # Default URL; an explicit URL in UI/YAML takes precedence.
+  - name: ALERTMANAGER_URL
+    value: ""
   - name: CONFIG_PATH
     value: "/etc/soika/config.yaml"
   # delete permanently removes missing projects and their events.
@@ -152,3 +157,21 @@ configFile:
     version: 1
     projects: []
     teams: []
+    # Alertmanager values support literal {{ variable }} placeholders.
+    # Set NOTIFICATION_MANAGEMENT_SOURCE=yaml to manage this section here.
+    notifications:
+      alertmanager:
+        enabled: false
+        url: ""
+        labels:
+          alertname: SoikaIssue
+          project: "{{ project_slug }}"
+          severity: "{{ level }}"
+        annotations:
+          summary: "{{ title }}"
+          description: "{{ culprit }}"
+          issue_url: "{{ issue_url }}"
+          trigger: "{{ trigger }}"
+          environment: "{{ environment }}"
+          release: "{{ release }}"
+          event_count: "{{ event_count }}"

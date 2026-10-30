@@ -43,3 +43,6 @@ pub use user::PgUserRepository;
 
 mod auth_challenge;
 pub use auth_challenge::PgAuthChallengeRepository;
+
+mod notifications;
+pub use notifications::PgNotificationRepository;

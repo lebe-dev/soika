@@ -21,6 +21,8 @@
       <dd>{management.settings.project_source === 'ui' ? 'UI' : $t('configuration_file')}</dd>
       <dt>{$t('teams')} <code>TEAM_MANAGEMENT_SOURCE</code></dt>
       <dd>{management.settings.team_source === 'ui' ? 'UI' : $t('configuration_file')}</dd>
+      <dt>{$t('notifications_tab')} <code>NOTIFICATION_MANAGEMENT_SOURCE</code></dt>
+      <dd>{management.settings.notification_source === 'ui' ? 'UI' : $t('configuration_file')}</dd>
       <dt>{$t('configuration_file')}</dt>
       <dd>{management.settings.path}</dd>
       <dt>{$t('status')}</dt>

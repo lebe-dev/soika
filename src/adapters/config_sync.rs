@@ -75,10 +75,22 @@ where
         .fetch_all(&mut **tx)
         .await?;
         validate_plan(desired, settings, &existing_teams, &existing_projects)?;
+        if settings.notification_source == ManagementSource::Yaml
+            && let Some(notifications) = &desired.notifications
+        {
+            notifications.validate_stored()?;
+            sqlx::query::<DB>(DB::sql(
+                "UPDATE notification_settings SET config = ? WHERE id = 1",
+            ))
+            .bind(serde_json::to_string(notifications)?)
+            .execute(&mut **tx)
+            .await?;
+        }
         let now = DB::now();
         let mut report = SyncReport {
             loaded: settings.project_source == ManagementSource::Yaml
-                || settings.team_source == ManagementSource::Yaml,
+                || settings.team_source == ManagementSource::Yaml
+                || settings.notification_source == ManagementSource::Yaml,
             synced_at: Some(chrono::Utc::now()),
             projects_in_file: desired.projects.as_ref().map_or(0, Vec::len),
             teams_in_file: desired.teams.as_ref().map_or(0, Vec::len),

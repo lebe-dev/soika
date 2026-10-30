@@ -1,14 +1,15 @@
 //! Notification orchestration.
 //!
 //! Decides who to notify on new-issue / regression events and dispatches over
-//! two channels under the SAME suppression rules:
+//! three channels under the SAME suppression rules:
 //!
 //! - **email** — one message per opted-in member of the project's owning team;
+//! - **Alertmanager** — durable firing/resolved alerts with configurable templates;
 //! - **webhook** ([`Project::webhook_url`]) — a single HTTP POST JSON payload to
 //!   a per-project URL, generalizing the email-only path so channels like
 //!   Telegram can be added later through the same seam.
 //!
-//! Both channels respect three independent suppression rules:
+//! All channels respect three independent suppression rules:
 //!
 //! - **project mute** ([`Project::muted`]) — suppresses notifications for the
 //!   whole project;
@@ -238,8 +239,12 @@ async fn dispatch(
         }
     }
 
-    // Webhook delivery is independent of SMTP and controlled by its own
-    // instance-wide switch. Failures are swallowed.
+    // Each project-scoped channel is independent of SMTP. Delivery failures
+    // are logged without failing ingestion.
+    if let Err(error) = crate::alertmanager::notify(state, project, issue, trigger.as_str()).await {
+        tracing::warn!(error = %error, issue_id = %issue.id, channel = "alertmanager", "notification delivery failed");
+    }
+
     if state.config.webhooks_enabled
         && let Some(url) = project.webhook_url.as_deref()
     {
@@ -718,6 +723,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".into(),
             // No SMTP: the mailer is disabled, proving the webhook fires
             // independently of SMTP configuration.
+            alertmanager_url: None,
             webhooks_enabled: true,
             smtp_enabled: false,
             smtp: None,

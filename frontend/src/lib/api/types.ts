@@ -69,7 +69,7 @@ export interface User {
  * separately).
  */
 export interface AuthConfig {
-  admin?: { settings: ServiceSettings; users: AdminUser[] };
+  admin?: { settings: ServiceSettings; users: AdminUser[]; notifications?: NotificationView };
   passkeys?: Passkey[];
   oauth_enabled: boolean;
   admin_enabled: boolean;
@@ -455,6 +455,7 @@ export interface ManagementStatus {
     path: string;
     project_source: 'ui' | 'yaml';
     team_source: 'ui' | 'yaml';
+    notification_source: 'ui' | 'yaml';
     project_orphan_policy: 'readonly' | 'delete';
     team_orphan_policy: 'readonly' | 'delete';
   };
@@ -541,4 +542,27 @@ export interface SetUserRoleRequest {
 /** `DELETE /admin/users/{id}` response: the id of the removed account. */
 export interface DeletedUser {
   id: string;
+}
+
+export interface AlertmanagerConfig {
+  enabled: boolean;
+  url: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+}
+export interface NotificationConfig {
+  alertmanager: AlertmanagerConfig;
+}
+export interface NotificationView {
+  default_url?: string | null;
+  source: 'ui' | 'yaml';
+  config: NotificationConfig;
+  variables: string[];
+}
+export interface AlertmanagerAlert {
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  startsAt: string;
+  endsAt: string;
+  generatorURL: string;
 }

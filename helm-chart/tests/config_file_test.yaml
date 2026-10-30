@@ -49,3 +49,15 @@ tests:
       - notEqual:
           path: spec.template.metadata.annotations["checksum/config-file"]
           value: 71cd42bb7870679becceb4ceda9f74f4545d03e8b701de23fd2c154f7834398a
+  - it: preserves literal notification templates
+    template: config-file-configmap.yaml
+    set:
+      configFile.content.notifications.alertmanager.enabled: true
+      configFile.content.notifications.alertmanager.url: http://alertmanager.monitoring:9093
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: '\{\{ title \}\}'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'url: http://alertmanager.monitoring:9093'

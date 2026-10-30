@@ -5,6 +5,9 @@
 
 import { http, type Fetch } from './client';
 import type {
+  NotificationConfig,
+  NotificationView,
+  AlertmanagerAlert,
   AcceptInviteRequest,
   AddTeamMemberRequest,
   AdminUser,
@@ -187,6 +190,14 @@ export const teams = {
     })
 };
 
+export const notifications = {
+  get: (ctx?: Ctx) => http.get<NotificationView>('/settings/notifications', { fetch: ctx?.fetch }),
+  update: (body: NotificationConfig, ctx?: Ctx) =>
+    http.put<NotificationView>('/settings/notifications', { body, fetch: ctx?.fetch }),
+  preview: (body: NotificationConfig, ctx?: Ctx) =>
+    http.post<AlertmanagerAlert>('/settings/notifications/preview', { body, fetch: ctx?.fetch })
+};
+
 export const settings = {
   get: (ctx?: Ctx) => http.get<ServiceSettings>('/settings', { fetch: ctx?.fetch }),
   update: (body: UpdateSettingsRequest, ctx?: Ctx) =>
@@ -214,6 +225,7 @@ export const admin = {
 
 /** Aggregate namespace so callers can `import { api } from '$lib/api'`. */
 export const api = {
+  notifications,
   auth,
   invites,
   passkeys,

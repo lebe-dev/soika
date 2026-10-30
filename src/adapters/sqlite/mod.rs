@@ -45,3 +45,6 @@ pub use user::SqliteUserRepository;
 
 mod auth_challenge;
 pub use auth_challenge::SqliteAuthChallengeRepository;
+
+mod notifications;
+pub use notifications::SqliteNotificationRepository;

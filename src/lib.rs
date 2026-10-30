@@ -6,6 +6,7 @@
 //! uses `anyhow`.
 
 pub mod adapters;
+pub mod alertmanager;
 pub mod api;
 pub mod auth;
 pub mod config;
@@ -92,7 +93,11 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
         mute_rules: repos.mute_rules,
         invites: repos.invites,
         passkeys: repos.passkeys,
+        notifications: repos.notifications,
         settings: repos.settings,
+        alertmanager: Arc::new(alertmanager::Alertmanager::new(Arc::new(
+            adapters::alertmanager::HttpAlertmanager::new()?,
+        ))),
         mailer,
         templates,
         clock: Arc::new(SystemClock),
@@ -119,6 +124,7 @@ struct Repositories {
     mute_rules: Arc<dyn ports::TagMuteRuleRepository>,
     invites: Arc<dyn ports::InviteRepository>,
     passkeys: Arc<dyn ports::PasskeyRepository>,
+    notifications: Arc<dyn ports::NotificationRepository>,
     settings: Arc<dyn ports::SettingsRepository>,
 }
 
@@ -154,6 +160,9 @@ fn sqlite_repositories(
         mute_rules: Arc::new(SqliteTagMuteRuleRepository::new(pool.clone())),
         invites: Arc::new(SqliteInviteRepository::new(pool.clone())),
         passkeys: Arc::new(SqlitePasskeyRepository::new(pool.clone())),
+        notifications: Arc::new(adapters::sqlite::SqliteNotificationRepository::new(
+            pool.clone(),
+        )),
         settings: Arc::new(SqliteSettingsRepository::new(pool)),
     }
 }
@@ -188,6 +197,9 @@ fn postgres_repositories(
         mute_rules: Arc::new(PgTagMuteRuleRepository::new(pool.clone())),
         invites: Arc::new(PgInviteRepository::new(pool.clone())),
         passkeys: Arc::new(PgPasskeyRepository::new(pool.clone())),
+        notifications: Arc::new(adapters::postgres::PgNotificationRepository::new(
+            pool.clone(),
+        )),
         settings: Arc::new(PgSettingsRepository::new(pool)),
     }
 }

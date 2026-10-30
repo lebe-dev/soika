@@ -27,6 +27,7 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import Avatar from '$lib/components/avatar.svelte';
   import TeamList from '$lib/components/team-list.svelte';
+  import NotificationsPanel from '$lib/components/notifications-panel.svelte';
   import AuthenticationPanel from '$lib/components/authentication-panel.svelte';
   import ManagementCard from '$lib/components/management-card.svelte';
   import DefaultTeams from '$lib/components/default-teams.svelte';
@@ -228,6 +229,8 @@
     <Tabs.List>
       <Tabs.Trigger value="settings">{$t('service_settings')}</Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+      <Tabs.Trigger value="notifications">{$t('notifications_tab')}</Tabs.Trigger>
+      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="authentication">{$t('authentication')}</Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
       <Tabs.Trigger value="users">
@@ -244,58 +247,20 @@
       <AuthenticationPanel authentication={data.settings.authentication} />
     </Tabs.Content>
 
-    <!-- Service settings -->
-    <Tabs.Content value="settings" class="space-y-6">
-      {#if data.settings.management}<ManagementCard management={data.settings.management} />{/if}
+    <Tabs.Content value="notifications" class="space-y-6">
+      {#if data.notifications}<NotificationsPanel view={data.notifications} />{/if}
       <Card.Root>
-        <Card.Header>
-          <Card.Title>{$t('organization')}</Card.Title>
-          <Card.Description>{$t('the_display_name_shown_across_the_instance')}</Card.Description>
-        </Card.Header>
-        <Card.Content class="space-y-4">
-          <div class="grid gap-2">
-            <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
-            <Input id="org-name" bind:value={orgName} class="max-w-sm" disabled={saving} />
-          </div>
+        <Card.Header><Card.Title>{$t('notifications_webhooks')}</Card.Title></Card.Header>
+        <Card.Content class="space-y-2">
+          <Badge variant="outline"
+            >{data.telemetry?.webhooks_enabled ? $t('enabled') : $t('disabled')}</Badge
+          >
+          <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
         </Card.Content>
       </Card.Root>
-
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>{$t('registration')}</Card.Title>
-          <Card.Description>
-            {$t('control_whether_new_users_can_register_without_an_invite')}
-          </Card.Description>
-        </Card.Header>
-        <Card.Content>
-          <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div class="space-y-0.5">
-              <p class="text-sm font-medium">{$t('allow_public_sign_up')}</p>
-              <p class="text-muted-foreground text-sm">
-                {$t('when_off_accounts_are_created_only_via_invite')}
-              </p>
-            </div>
-            <Button
-              variant={allowSignup ? 'default' : 'outline'}
-              size="sm"
-              disabled={saving || data.telemetry?.team_management_source === 'yaml'}
-              aria-pressed={allowSignup}
-              onclick={() => (allowSignup = !allowSignup)}
-            >
-              {#if allowSignup}
-                <Check class="size-4" />
-                {$t('enabled')}
-              {:else}
-                {$t('disabled')}
-              {/if}
-            </Button>
-          </div>
-        </Card.Content>
-      </Card.Root>
-
       <Card.Root class={!smtp.enabled ? 'opacity-50 grayscale' : undefined}>
         <Card.Header>
-          <Card.Title>SMTP</Card.Title>
+          <Card.Title>{$t('notifications_email')}</Card.Title>
           <Card.Description>
             {$t('email_delivery_is_configured_via_environment_variables_and_shown_here_read_only')}
           </Card.Description>
@@ -356,6 +321,56 @@
               {$t('email_delivery_disabled_by_smtp_enabled')}
             </p>
           {/if}
+        </Card.Content>
+      </Card.Root>
+    </Tabs.Content>
+
+    <!-- Service settings -->
+    <Tabs.Content value="settings" class="space-y-6">
+      {#if data.settings.management}<ManagementCard management={data.settings.management} />{/if}
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>{$t('organization')}</Card.Title>
+          <Card.Description>{$t('the_display_name_shown_across_the_instance')}</Card.Description>
+        </Card.Header>
+        <Card.Content class="space-y-4">
+          <div class="grid gap-2">
+            <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
+            <Input id="org-name" bind:value={orgName} class="max-w-sm" disabled={saving} />
+          </div>
+        </Card.Content>
+      </Card.Root>
+
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>{$t('registration')}</Card.Title>
+          <Card.Description>
+            {$t('control_whether_new_users_can_register_without_an_invite')}
+          </Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
+            <div class="space-y-0.5">
+              <p class="text-sm font-medium">{$t('allow_public_sign_up')}</p>
+              <p class="text-muted-foreground text-sm">
+                {$t('when_off_accounts_are_created_only_via_invite')}
+              </p>
+            </div>
+            <Button
+              variant={allowSignup ? 'default' : 'outline'}
+              size="sm"
+              disabled={saving || data.telemetry?.team_management_source === 'yaml'}
+              aria-pressed={allowSignup}
+              onclick={() => (allowSignup = !allowSignup)}
+            >
+              {#if allowSignup}
+                <Check class="size-4" />
+                {$t('enabled')}
+              {:else}
+                {$t('disabled')}
+              {/if}
+            </Button>
+          </div>
         </Card.Content>
       </Card.Root>
 

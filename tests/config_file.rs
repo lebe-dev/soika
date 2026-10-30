@@ -32,3 +32,17 @@ fn ui_sections_are_ignored_even_when_their_content_is_not_a_valid_entity() {
     };
     assert!(parse("version: 1\nprojects: []\nteams: ignored", &settings).is_ok());
 }
+
+#[test]
+fn notification_source_is_independent_and_requires_valid_yaml_section() {
+    use soika::domain::config_file::*;
+    let mut settings = ManagementSettings::default();
+    let invalid = "version: 1\nnotifications: {alertmanager: {labels: {bad: '{{ secret }}'}}}\n";
+    assert!(parse(invalid, &settings).unwrap().notifications.is_none());
+    settings.notification_source = ManagementSource::Yaml;
+    assert!(parse("version: 1", &settings).is_err());
+    assert!(parse(invalid, &settings).is_err());
+    let file = parse("version: 1\nnotifications:\n  alertmanager:\n    enabled: true\n    url: http://alertmanager:9093\n    labels: {alertname: SoikaIssue, project: '{{ project_slug }}'}", &settings).unwrap();
+    assert!(file.notifications.unwrap().alertmanager.enabled);
+    assert!(file.projects.is_none());
+}

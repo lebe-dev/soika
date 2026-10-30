@@ -138,6 +138,14 @@ pub fn build(state: AppState) -> Router {
             get(api::settings::get).patch(api::settings::update),
         )
         .route("/settings/test-email", post(api::settings::test_email))
+        .route(
+            "/settings/notifications",
+            get(api::notifications::get).put(api::notifications::update),
+        )
+        .route(
+            "/settings/notifications/preview",
+            post(api::notifications::preview),
+        )
         .route("/admin/users", get(api::settings::list_users))
         .route(
             "/admin/users/{id}/approve",

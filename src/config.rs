@@ -395,6 +395,8 @@ pub struct Config {
     pub smtp_enabled: bool,
     /// Whether outgoing webhooks are enabled (`WEBHOOKS_ENABLED`, default `false`).
     pub webhooks_enabled: bool,
+    /// Default Alertmanager base URL; UI/YAML can override it.
+    pub alertmanager_url: Option<String>,
     /// Optional SMTP settings (`SMTP_*`).
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
@@ -434,6 +436,7 @@ impl std::fmt::Debug for Config {
             .field("retention_cron", &self.retention_cron)
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
+            .field("alertmanager_url", &self.alertmanager_url)
             .field("smtp", &self.smtp)
             .field("oidc", &self.oidc)
             .field("passkey", &self.passkey)
@@ -477,6 +480,17 @@ impl Config {
 
         let smtp_enabled = parse_bool(&env_or("SMTP_ENABLED", "false"));
         let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
+        let alertmanager_url = std::env::var("ALERTMANAGER_URL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        if let Some(url) = &alertmanager_url {
+            crate::domain::notifications::AlertmanagerConfig {
+                url: url.clone(),
+                ..Default::default()
+            }
+            .validate()?;
+        }
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
@@ -510,6 +524,7 @@ impl Config {
             retention_cron,
             smtp_enabled,
             webhooks_enabled,
+            alertmanager_url,
             smtp,
             oidc,
             passkey,
@@ -889,6 +904,7 @@ fn management_from_env() -> Result<crate::domain::config_file::ManagementSetting
         path: env_or("CONFIG_PATH", "/etc/soika/config.yaml"),
         project_source: source("PROJECT_MANAGEMENT_SOURCE")?,
         team_source: source("TEAM_MANAGEMENT_SOURCE")?,
+        notification_source: source("NOTIFICATION_MANAGEMENT_SOURCE")?,
         project_orphan_policy: policy("PROJECT_ORPHAN_POLICY")?,
         team_orphan_policy: policy("TEAM_ORPHAN_POLICY")?,
     })

@@ -190,11 +190,16 @@ invite makes the user a member of that team. Issuing or revoking a team's
 invites is allowed for an instance `Owner`/`Manager` or a team `Admin` of that
 team.
 
-## Email and webhook notifications
+## Notifications
+
+**Admin → Notifications** also configures the Alertmanager channel and its label/
+annotation templates. Choose UI or YAML ownership with
+`NOTIFICATION_MANAGEMENT_SOURCE=ui|yaml` (default `ui`), independently of projects
+and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
 `SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,
-invite delivery and the admin test-email action. The Admin → SMTP card shows
+invite delivery and the admin test-email action. The Admin → Notifications → Email / SMTP card shows
 whether delivery is enabled and configured.
 
 Project webhooks are also disabled by default. Set `WEBHOOKS_ENABLED=true` to
@@ -530,6 +535,8 @@ file status and the last synchronization report.
 | yaml | ui | Projects reference teams created in the UI; invites work |
 | ui | yaml | Create projects in the UI within file-defined teams |
 | yaml | yaml | Projects, teams and memberships come from the file |
+
+`NOTIFICATION_MANAGEMENT_SOURCE` independently selects `ui` or `yaml` for notification settings; see [Notifications](NOTIFICATIONS.md).
 
 `CONFIG_PATH` defaults to `/etc/soika/config.yaml`. A readable, valid file is
 required whenever either source is `yaml`. `version: 1` and the section for each

@@ -9,6 +9,7 @@ mod invite;
 mod issue;
 mod membership;
 mod mute_rule;
+pub mod notifications;
 mod passkey;
 mod project;
 mod settings;

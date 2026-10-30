@@ -7,3 +7,5 @@ pub mod postgres;
 pub(crate) mod retry;
 pub(crate) mod short_id;
 pub mod sqlite;
+
+pub mod alertmanager;
