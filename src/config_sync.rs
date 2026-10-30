@@ -59,6 +59,30 @@ fn read_configuration(settings: &ManagementSettings) -> Result<(ConfigFile, bool
     let desired = parse(&expanded, settings)?;
     Ok((desired, default_file))
 }
+fn apply_alertmanager_labels(
+    config: &mut crate::domain::notifications::AlertmanagerConfig,
+    value: &str,
+) -> Result<()> {
+    if value.trim().is_empty() {
+        return Ok(());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for entry in value.split(',') {
+        let (key, value) = entry.split_once('=').ok_or_else(|| {
+            Error::validation("ALERTMANAGER_LABELS must contain comma-separated name=value pairs")
+        })?;
+        let key = key.trim();
+        if key.is_empty() || !seen.insert(key.to_string()) {
+            return Err(Error::validation(
+                "ALERTMANAGER_LABELS contains an empty or duplicate name",
+            ));
+        }
+        config
+            .labels
+            .insert(key.to_string(), value.trim().to_string());
+    }
+    Ok(())
+}
 pub async fn synchronize(mut state: AppState) -> Result<AppState> {
     let settings = &state.config.management;
     let enabled = settings.project_source == ManagementSource::Yaml
@@ -97,6 +121,9 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         let mut notifications = crate::domain::notifications::NotificationConfig::default();
         notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;
         notifications.alertmanager.url = state.config.alertmanager_url.clone().unwrap_or_default();
+        if let Ok(labels) = std::env::var("ALERTMANAGER_LABELS") {
+            apply_alertmanager_labels(&mut notifications.alertmanager, &labels)?;
+        }
         notifications.validate()?;
         state.notifications.set(&notifications).await?;
         state
@@ -154,4 +181,41 @@ pub fn require_ui_management(state: &AppState, team: bool) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod alertmanager_label_tests {
+    use super::*;
+
+    #[test]
+    fn env_labels_extend_defaults_and_validate_templates() {
+        let mut config = crate::domain::notifications::AlertmanagerConfig::default();
+        apply_alertmanager_labels(&mut config, "team=platform, severity={{ level }}, url=a=b")
+            .unwrap();
+        assert_eq!(config.labels["alertname"], "SoikaIssue");
+        assert_eq!(config.labels["team"], "platform");
+        assert_eq!(config.labels["severity"], "{{ level }}");
+        assert_eq!(config.labels["url"], "a=b");
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn env_labels_reject_malformed_duplicates_and_invalid_values() {
+        for value in [
+            "team",
+            "=value",
+            "team=a,team=b",
+            "team=a,",
+            "issue_id=x",
+            "team={{ secret }}",
+        ] {
+            let mut config = crate::domain::notifications::AlertmanagerConfig::default();
+            assert!(
+                apply_alertmanager_labels(&mut config, value)
+                    .and_then(|()| config.validate())
+                    .is_err(),
+                "{value}"
+            );
+        }
+    }
 }

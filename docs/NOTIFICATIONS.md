@@ -79,7 +79,12 @@ section is ignored. Preview renders sample data without sending an alert.
 Set `SERVICE_MANAGEMENT_SOURCE=env` to use environment variables instead.
 At startup, `NOTIFICATIONS_ALERTMANAGER_ENABLED` sets the channel enabled state,
 `ALERTMANAGER_URL` sets its URL and `ORGANIZATION_NAME` sets the organization name.
-Notification templates use built-in defaults. Existing database values are replaced.
+`ALERTMANAGER_LABELS` adds or overrides labels using comma-separated `name=value`
+pairs, for example `team=platform,environment=production`. Values support the same
+templates as the UI, such as `service={{ project_slug }}`. Whitespace around names
+and values is trimmed; commas cannot be used in values. Duplicate names and invalid
+labels or templates prevent startup. Unspecified labels and annotations use built-in
+defaults. Existing database values are replaced.
 The UI shows “Configured through environment variables”; notification editing,
 test sends and organization-name changes are blocked in the UI and API, including
 for Owners. Restart Soika to apply environment changes. `yaml` and `yml` are not
