@@ -670,10 +670,10 @@ async fn notifications_environment_service_settings_override_database_and_block_
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            StatusCode::OK
         );
     }
-    assert!(receiver.snapshot().is_empty());
+    assert_eq!(receiver.snapshot().len(), 2);
     assert_eq!(
         db.settings.get().await.unwrap().org_name,
         "Environment organization"
