@@ -52,6 +52,7 @@ docker run -d \
 ## Docs
 
 - [Installation and configuration](docs/OPERATIONS.md)
+- [Frequently asked questions](docs/FAQ.md)
 - [Outgoing webhooks](docs/WEBHOOKS.md)
 - [Helm chart](helm-chart/README.md)
 - [User interface](docs/UI.md)
