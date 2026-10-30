@@ -46,3 +46,24 @@ fn notification_source_is_independent_and_requires_valid_yaml_section() {
     assert!(file.notifications.unwrap().alertmanager.enabled);
     assert!(file.projects.is_none());
 }
+
+#[test]
+fn env_project_labels_are_validated_even_for_ui_projects() {
+    let settings = ManagementSettings {
+        service_source: ManagementSource::Env,
+        ..Default::default()
+    };
+    let file = parse("version: 1\nnotifications:\n  alertmanager:\n    project_labels:\n      api: {team: platform, severity: '{{ level }}'}\n", &settings).unwrap();
+    assert_eq!(file.alertmanager_project_labels["api"]["team"], "platform");
+    for labels in [
+        "{issue_id: x}",
+        "{bad-name: x}",
+        "{team: '{{ secret }}'}",
+        "{alertname: ''}",
+    ] {
+        let yaml = format!(
+            "version: 1\nnotifications:\n  alertmanager:\n    project_labels:\n      api: {labels}\n"
+        );
+        assert!(parse(&yaml, &settings).is_err(), "{yaml}");
+    }
+}

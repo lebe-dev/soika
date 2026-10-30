@@ -122,6 +122,39 @@ async fn notifications_lifecycle_refresh_resolve_and_regression() {
         .unwrap();
     assert_eq!(receiver.snapshot()[3].annotations["trigger"], "regression");
 }
+
+#[tokio::test]
+async fn env_project_labels_apply_to_delivery_and_refresh_identity() {
+    let mut db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    let path = std::env::temp_dir().join(format!("soika-labels-{}.yaml", Id::new_v4()));
+    let yaml = |team: &str| {
+        format!(
+            "version: 1\nnotifications:\n  alertmanager:\n    project_labels:\n      p: {{team: {team}, severity: warning}}\n"
+        )
+    };
+    std::fs::write(&path, yaml("first")).unwrap();
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    Arc::make_mut(&mut db.config).management.path = path.to_str().unwrap().into();
+    Arc::make_mut(&mut db.config).alertmanager_url = Some(receiver.url.clone());
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    let first = receiver.snapshot()[0].clone();
+    assert_eq!(first.labels["team"], "first");
+    assert_eq!(first.labels["severity"], "warning");
+    assert_eq!(first.labels["project"], "p");
+    std::fs::write(&path, yaml("second")).unwrap();
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    let alerts = receiver.snapshot();
+    assert_eq!(alerts[1].labels, first.labels);
+    assert!(alerts[1].ends_at <= chrono::Utc::now());
+    assert_eq!(alerts[2].labels["team"], "second");
+    std::fs::remove_file(path).unwrap();
+}
 #[tokio::test]
 async fn notifications_retry_failed_delivery_and_close_snapshot_after_template_change() {
     let db = notification_db().await;

@@ -167,9 +167,13 @@ configFile:
     teams: []
     # Alertmanager values support literal {{ variable }} placeholders.
     # Legacy YAML notification management uses NOTIFICATION_MANAGEMENT_SOURCE=yaml
-    # with SERVICE_MANAGEMENT_SOURCE omitted; env mode ignores this section.
+    # with SERVICE_MANAGEMENT_SOURCE omitted; env mode reads only project_labels.
     notifications:
       alertmanager:
+        # In env mode, project labels override ALERTMANAGER_DEFAULT_LABELS by slug.
+        # project_labels:
+        #   api:
+        #     team: platform
         enabled: false
         # Base URL only; Soika appends /api/v2/alerts automatically.
         # Empty uses ALERTMANAGER_URL from the environment.

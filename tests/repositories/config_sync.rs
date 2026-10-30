@@ -256,6 +256,7 @@ async fn management_sources_are_independent_and_ingestion_checks_orphans() {
                     projects: Some(vec![]),
                     teams: None,
                     notifications: None,
+                    ..Default::default()
                 },
                 &settings,
                 1000,
@@ -319,6 +320,7 @@ async fn declarative_teams_suspend_default_memberships_without_erasing_preferenc
             members: Some(vec![]),
             sso_groups: None,
         }]),
+        ..Default::default()
     };
     db.config_sync
         .apply(&file, &db.config.management, 1000)

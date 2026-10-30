@@ -13,16 +13,28 @@ pub struct Alertmanager {
     client: std::sync::Arc<dyn crate::ports::AlertmanagerClient>,
     // Serialize initial sends and reconciliation within the single process.
     lock: tokio::sync::Mutex<()>,
+    project_labels: tokio::sync::RwLock<BTreeMap<String, BTreeMap<String, String>>>,
 }
 impl Alertmanager {
     pub fn new(client: std::sync::Arc<dyn crate::ports::AlertmanagerClient>) -> Self {
         Self {
             client,
             lock: tokio::sync::Mutex::new(()),
+            project_labels: tokio::sync::RwLock::new(BTreeMap::new()),
         }
     }
     async fn send(&self, endpoint: &str, alert: &AlertmanagerAlert) -> Result<()> {
         self.client.send(endpoint, alert).await
+    }
+    pub async fn set_project_labels(&self, labels: BTreeMap<String, BTreeMap<String, String>>) {
+        *self.project_labels.write().await = labels;
+    }
+    async fn project_config(&self, config: &AlertmanagerConfig, slug: &str) -> AlertmanagerConfig {
+        let mut config = config.clone();
+        if let Some(labels) = self.project_labels.read().await.get(slug) {
+            config.labels.extend(labels.clone());
+        }
+        config
     }
 }
 
@@ -123,8 +135,12 @@ pub async fn notify(
         return Ok(());
     }
     let org = state.settings.get().await?.org_name;
+    let project_config = state
+        .alertmanager
+        .project_config(&config, &project.slug)
+        .await;
     let alert = render_alert(
-        &config,
+        &project_config,
         &variables(state, &org, project, issue, trigger),
         state.clock.now(),
     )?;
@@ -215,8 +231,12 @@ async fn reconcile(
     let (Some(project), Some(issue)) = (project, issue) else {
         return Err(Error::Internal("live alert has no issue or project".into()));
     };
+    let project_config = state
+        .alertmanager
+        .project_config(config, &project.slug)
+        .await;
     let mut alert = render_alert(
-        config,
+        &project_config,
         &variables(state, org, &project, &issue, &saved.trigger),
         state.clock.now(),
     )?;

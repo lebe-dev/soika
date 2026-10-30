@@ -69,12 +69,14 @@ fn apply_alertmanager_labels(
     let mut seen = std::collections::BTreeSet::new();
     for entry in value.split(',') {
         let (key, value) = entry.split_once('=').ok_or_else(|| {
-            Error::validation("ALERTMANAGER_LABELS must contain comma-separated name=value pairs")
+            Error::validation(
+                "ALERTMANAGER_DEFAULT_LABELS must contain comma-separated name=value pairs",
+            )
         })?;
         let key = key.trim();
         if key.is_empty() || !seen.insert(key.to_string()) {
             return Err(Error::validation(
-                "ALERTMANAGER_LABELS contains an empty or duplicate name",
+                "ALERTMANAGER_DEFAULT_LABELS contains an empty or duplicate name",
             ));
         }
         config
@@ -93,7 +95,19 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         ..Default::default()
     };
     let mut default_file = false;
-    if enabled {
+    let env_file_exists = if settings.service_source == ManagementSource::Env {
+        std::path::Path::new(&settings.path)
+            .try_exists()
+            .map_err(|_| {
+                Error::validation(format!(
+                    "configuration file unreadable at {}",
+                    settings.path
+                ))
+            })?
+    } else {
+        false
+    };
+    if enabled || env_file_exists {
         (desired, default_file) = read_configuration(settings)?;
         let has_groups = desired
             .teams
@@ -121,10 +135,15 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         let mut notifications = crate::domain::notifications::NotificationConfig::default();
         notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;
         notifications.alertmanager.url = state.config.alertmanager_url.clone().unwrap_or_default();
-        if let Ok(labels) = std::env::var("ALERTMANAGER_LABELS") {
+        if let Ok(labels) = std::env::var("ALERTMANAGER_DEFAULT_LABELS") {
             apply_alertmanager_labels(&mut notifications.alertmanager, &labels)?;
         }
         notifications.validate()?;
+        for labels in desired.alertmanager_project_labels.values() {
+            let mut config = notifications.alertmanager.clone();
+            config.labels.extend(labels.clone());
+            config.validate()?;
+        }
         state.notifications.set(&notifications).await?;
         state
             .settings
@@ -153,6 +172,10 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
             .await?;
     }
     report.default_file = default_file;
+    state
+        .alertmanager
+        .set_project_labels(desired.alertmanager_project_labels)
+        .await;
     for action in &report.actions {
         tracing::info!(entity = %action.entity, key = %action.key, action = ?action.action, "configuration action applied");
     }

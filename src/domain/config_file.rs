@@ -1,7 +1,7 @@
 //! Declarative management types and validation. No file or environment IO.
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,6 +50,8 @@ pub struct ConfigFile {
     pub notifications: Option<super::notifications::NotificationConfig>,
     pub projects: Option<Vec<ProjectConfig>>,
     pub teams: Option<Vec<TeamConfig>>,
+    #[serde(skip)]
+    pub alertmanager_project_labels: BTreeMap<String, BTreeMap<String, String>>,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,9 +88,36 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
         Error::validation("invalid configuration YAML (duplicate key or invalid value)")
     })?;
     discard_ui_sections(&mut value, settings);
+    let project_labels = if settings.service_source == ManagementSource::Env {
+        let notifications = value
+            .as_mapping_mut()
+            .and_then(|m| m.remove(serde_yaml_ng::Value::String("notifications".into())));
+        match notifications {
+            Some(v) => {
+                serde_yaml_ng::from_value::<EnvNotifications>(v)
+                    .map_err(|_| Error::validation("invalid Alertmanager project labels"))?
+                    .alertmanager
+                    .project_labels
+            }
+            None => BTreeMap::new(),
+        }
+    } else {
+        BTreeMap::new()
+    };
     let mut file: ConfigFile = serde_yaml_ng::from_value(value).map_err(|_| {
         Error::validation("invalid configuration YAML (unknown field or invalid value)")
     })?;
+    file.alertmanager_project_labels = project_labels;
+    for (slug, labels) in &file.alertmanager_project_labels {
+        if slug.is_empty() || super::slugify(slug) != *slug {
+            return Err(Error::validation(
+                "invalid project slug in Alertmanager labels",
+            ));
+        }
+        let mut config = super::notifications::AlertmanagerConfig::default();
+        config.labels.extend(labels.clone());
+        config.validate()?;
+    }
     if file.version != 1 {
         return Err(Error::validation("configuration version must be 1"));
     }
@@ -111,6 +140,17 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
     validate_projects(file.projects.iter().flatten())?;
     validate_teams(file.teams.iter().flatten())?;
     Ok(file)
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct EnvNotifications {
+    alertmanager: EnvAlertmanager,
+}
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct EnvAlertmanager {
+    project_labels: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 fn validate_projects<'a>(projects: impl Iterator<Item = &'a ProjectConfig>) -> Result<()> {
@@ -296,7 +336,20 @@ impl SyncReport {
 /// Ignore sections owned by the UI before interpreting or expanding their values.
 pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &ManagementSettings) {
     if let serde_yaml_ng::Value::Mapping(map) = value {
-        if settings.notification_source != ManagementSource::Yaml {
+        if settings.service_source == ManagementSource::Env {
+            if let Some(notifications) =
+                map.get_mut(serde_yaml_ng::Value::String("notifications".into()))
+                && let Some(notifications) = notifications.as_mapping_mut()
+            {
+                notifications.retain(|key, _| key.as_str() == Some("alertmanager"));
+                if let Some(alertmanager) =
+                    notifications.get_mut(serde_yaml_ng::Value::String("alertmanager".into()))
+                    && let Some(alertmanager) = alertmanager.as_mapping_mut()
+                {
+                    alertmanager.retain(|key, _| key.as_str() == Some("project_labels"));
+                }
+            }
+        } else if settings.notification_source != ManagementSource::Yaml {
             map.remove(serde_yaml_ng::Value::String("notifications".into()));
         }
         if settings.project_source == ManagementSource::Ui {

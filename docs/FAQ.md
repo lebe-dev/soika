@@ -18,7 +18,7 @@ from the environment:
 | Default teams for new users | `DEFAULT_TEAM_IDS` | Empty list |
 | Alertmanager channel enabled | `NOTIFICATIONS_ALERTMANAGER_ENABLED` | `false` |
 | Alertmanager URL | `ALERTMANAGER_URL` | Empty |
-| Additional Alertmanager labels | `ALERTMANAGER_LABELS` | Empty |
+| Additional default Alertmanager labels | `ALERTMANAGER_DEFAULT_LABELS` | Empty |
 
 `DEFAULT_TEAM_IDS` accepts comma-separated UUIDs of existing teams. It affects
 new accounts; switching modes does not change existing users' team memberships.
@@ -26,7 +26,8 @@ Enabling Alertmanager requires a valid URL. Invalid configuration prevents
 startup.
 
 Alertmanager labels use built-in defaults extended or overridden by comma-separated
-`ALERTMANAGER_LABELS` name=value pairs; annotations use built-in defaults.
+`ALERTMANAGER_DEFAULT_LABELS` name=value pairs and project-specific YAML labels;
+annotations use built-in defaults.
 Previously saved UI settings and custom templates are not kept as a separate
 backup. Record any values you may want to restore before switching.
 
@@ -40,7 +41,8 @@ Alertmanager test-send action is also blocked. Every subsequent startup in
 Soika keeps the values last written to the database by `env` mode and allows
 editing them through the UI again. **It does not restore the settings that
 existed before you switched to `env`.** This includes notification templates:
-the last environment-managed labels and default annotations remain until you customize them again.
+the last environment-managed default labels and annotations remain until you customize
+them again. Project-specific YAML labels apply only in env mode.
 
 For example, if the organization was `Acme` in UI mode and `ORGANIZATION_NAME=Example`
 was applied in env mode, switching back to UI leaves the organization named
