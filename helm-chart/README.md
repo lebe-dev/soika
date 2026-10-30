@@ -195,12 +195,15 @@ labels/annotations сохраняются через UI в БД. `ALERTMANAGER_U
 **Enable Alertmanager** и сохраните изменения: флаг разрешает интеграцию,
 но не меняет сохранённое состояние канала. При включённом канале доступна
 отправка тестового алерта с фиксированным текстом на языке интерфейса.
-В режиме `yml` настройки и тестовая отправка заблокированы в UI и API;
-форма помечена «Конфигурация через YAML». Старое имя
-`NOTIFICATION_MANAGEMENT_SOURCE` поддерживается, только если новая переменная
-не задана; `yaml` принимается как синоним `yml`.
-Для GitOps установите значение
-`yml` в полном списке `envs` и заполните `configFile.content.notifications`:
+В режиме `env` настройки и тестовая отправка заблокированы в UI и API;
+форма помечена «Настраивается через переменные окружения». Имя организации
+берётся из `ORGANIZATION_NAME` и недоступно для изменения даже администраторам.
+При старте настройки уведомлений в БД заменяются значениями окружения:
+`NOTIFICATIONS_ALERTMANAGER_ENABLED` включает канал, `ALERTMANAGER_URL` задаёт
+адрес, шаблоны используются встроенные. Изменения применяются после rollout.
+Значения `yaml` и `yml` для `SERVICE_MANAGEMENT_SOURCE` больше не поддерживаются.
+
+Пример режима `env` (список `envs` заменяется целиком):
 
 ```yaml
 envs:
@@ -210,28 +213,20 @@ envs:
     value: "sqlite:///app/data/soika.db?mode=rwc"
   - name: BASE_URL
     value: "https://errors.example.com"
+  - name: SERVICE_MANAGEMENT_SOURCE
+    value: "env"
+  - name: ORGANIZATION_NAME
+    value: "My organization"
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "true"
-  - name: SERVICE_MANAGEMENT_SOURCE
-    value: "yml"
-configFile:
-  content:
-    version: 1
-    projects: []
-    teams: []
-    notifications:
-      alertmanager:
-        enabled: true
-        url: http://alertmanager.monitoring:9093
-        labels:
-          alertname: SoikaIssue
-          project: '{{ project_slug }}'
-          severity: '{{ level }}'
-        annotations:
-          summary: '{{ title }}'
-          issue_url: '{{ issue_url }}'
-          trigger: '{{ trigger }}'
+  - name: ALERTMANAGER_URL
+    value: "http://alertmanager.monitoring:9093"
 ```
+
+Секция `configFile.content.notifications` в режимах `ui` и `env` игнорируется.
+Для совместимости старый `NOTIFICATION_MANAGEMENT_SOURCE=yaml` работает,
+если `SERVICE_MANAGEMENT_SOURCE` отсутствует; только этот режим использует
+секцию уведомлений YAML.
 
 Helm передаёт `{{ variable }}` буквально, без `tpl`. Изменение содержимого
 `configFile` меняет checksum и вызывает rollout; для `existingConfigMap`
@@ -243,3 +238,9 @@ Soika отправляет алерты через `/api/v2/alerts`, продл�
 и закрывает их при resolve/mute/удалении. Старые ошибки при включении не отправляются.
 SMTP и Webhooks сохраняют настройки `SMTP_*` и `WEBHOOKS_ENABLED`.
 Список переменных и поведение доставки описаны в [Notifications](../docs/NOTIFICATIONS.md).
+
+В режиме `SERVICE_MANAGEMENT_SOURCE=env` все общие настройки сервиса недоступны
+для изменения через UI/API: имя организации (`ORGANIZATION_NAME`), регистрация
+(`ALLOW_SIGNUP`), команды новых пользователей (`DEFAULT_TEAM_IDS`, UUID через запятую;
+по умолчанию пусто) и уведомления. Команды должны существовать к моменту запуска.
+Mute, управление пользователями, проектами и командами сохраняют текущие правила доступа.

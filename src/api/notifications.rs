@@ -23,7 +23,11 @@ pub async fn get(
     State(state): State<AppState>,
 ) -> Result<Json<NotificationView>, ApiError> {
     Ok(Json(NotificationView {
-        source: state.config.management.notification_source,
+        source: if state.config.management.service_source == ManagementSource::Env {
+            ManagementSource::Env
+        } else {
+            state.config.management.notification_source
+        },
         feature_enabled: state.config.notifications_alertmanager_enabled,
         default_url: state.config.alertmanager_url.clone(),
         config: state.notifications.get().await?,
@@ -36,9 +40,11 @@ pub async fn update(
     Json(config): Json<NotificationConfig>,
 ) -> Result<Json<NotificationView>, ApiError> {
     require_feature(&state)?;
-    if state.config.management.notification_source == ManagementSource::Yaml {
+    if state.config.management.service_source == ManagementSource::Env
+        || state.config.management.notification_source != ManagementSource::Ui
+    {
         return Err(
-            Error::Forbidden("notifications are managed by the configuration file".into()).into(),
+            Error::Forbidden("notifications are managed by external configuration".into()).into(),
         );
     }
     config.effective(state.config.alertmanager_url.as_deref())?;
@@ -81,9 +87,11 @@ pub async fn test_alert(
     Json(request): Json<TestAlertRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_feature(&state)?;
-    if state.config.management.notification_source == ManagementSource::Yaml {
+    if state.config.management.service_source == ManagementSource::Env
+        || state.config.management.notification_source != ManagementSource::Ui
+    {
         return Err(
-            Error::Forbidden("notifications are managed by the configuration file".into()).into(),
+            Error::Forbidden("notifications are managed by external configuration".into()).into(),
         );
     }
     crate::alertmanager::send_test(&state, request.locale).await?;

@@ -217,6 +217,11 @@ pub async fn update(
     State(state): State<AppState>,
     Json(body): Json<UpdateSettings>,
 ) -> Result<Json<SettingsView>, ApiError> {
+    if state.config.management.service_source == crate::domain::config_file::ManagementSource::Env {
+        return Err(ApiError(Error::Forbidden(
+            "service settings are configured through environment variables".into(),
+        )));
+    }
     if body.allow_signup.is_some() || body.default_team_ids.is_some() {
         crate::config_sync::require_ui_management(&state, true)?;
     }

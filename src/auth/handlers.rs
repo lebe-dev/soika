@@ -355,7 +355,9 @@ pub async fn setup(
         Err(e) => return Err(AuthError(e)),
     };
 
-    state.settings.set_org_name(org_name.to_string()).await?;
+    if state.config.management.service_source != crate::domain::config_file::ManagementSource::Env {
+        state.settings.set_org_name(org_name.to_string()).await?;
+    }
     tracing::info!(user_id = %user.id, "instance initialized");
 
     let (_, cookie) =

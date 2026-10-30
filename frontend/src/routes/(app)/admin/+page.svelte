@@ -56,6 +56,8 @@
   let allowSignup = $state(untrack(() => data.settings.allow_signup));
   let saving = $state(false);
 
+  const serviceEnv = $derived(data.settings.management?.settings.service_source === 'env');
+
   const smtp = $derived(data.settings.smtp);
 
   // Test-email state: an optional recipient (blank → the current admin) and an
@@ -90,7 +92,7 @@
     }
 
     const body: UpdateSettingsRequest = {};
-    if (name !== data.settings.org_name) body.org_name = name;
+    if (!serviceEnv && name !== data.settings.org_name) body.org_name = name;
     if (allowSignup !== data.settings.allow_signup) body.allow_signup = allowSignup;
 
     saving = true;
@@ -336,7 +338,15 @@
         <Card.Content class="space-y-4">
           <div class="grid gap-2">
             <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
-            <Input id="org-name" bind:value={orgName} class="max-w-sm" disabled={saving} />
+            <Input
+              id="org-name"
+              bind:value={orgName}
+              class="max-w-sm"
+              disabled={saving || serviceEnv}
+            />
+            {#if serviceEnv}<p class="text-muted-foreground text-sm">
+                {$t('service_env_readonly')}
+              </p>{/if}
           </div>
         </Card.Content>
       </Card.Root>
@@ -359,7 +369,7 @@
             <Button
               variant={allowSignup ? 'default' : 'outline'}
               size="sm"
-              disabled={saving || data.telemetry?.team_management_source === 'yaml'}
+              disabled={saving || serviceEnv || data.telemetry?.team_management_source === 'yaml'}
               aria-pressed={allowSignup}
               onclick={() => (allowSignup = !allowSignup)}
             >
@@ -375,7 +385,7 @@
       </Card.Root>
 
       <div class="flex items-center gap-2">
-        <Button onclick={save} disabled={!dirty || saving}>
+        <Button onclick={save} disabled={serviceEnv || !dirty || saving}>
           {saving ? $t('saving') : $t('save_changes')}
         </Button>
         <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>{$t('reset')}</Button>
@@ -385,7 +395,11 @@
     <!-- Users overview: same roster layout as team members. -->
     <Tabs.Content value="users" class="space-y-6">
       {#if data.telemetry?.team_management_source !== 'yaml'}
-        <DefaultTeams teams={data.teams} defaultTeamIds={data.settings.default_team_ids} />
+        <DefaultTeams
+          teams={data.teams}
+          defaultTeamIds={data.settings.default_team_ids}
+          readonly={serviceEnv}
+        />
       {/if}
       <Card.Root class="shadow-sm">
         <Card.Header>

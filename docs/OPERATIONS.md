@@ -197,8 +197,8 @@ available (default `false`). When off, the Notifications tab shows that the feat
 is disabled in configuration, and no Alertmanager requests are sent.
 
 **Admin → Notifications** also configures the Alertmanager channel and its label/
-annotation templates. Choose UI or YAML ownership with
-`SERVICE_MANAGEMENT_SOURCE=ui|yml` (default `ui`), independently of projects
+annotation templates. Choose UI or environment ownership with
+`SERVICE_MANAGEMENT_SOURCE=ui|env` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
@@ -540,7 +540,7 @@ file status and the last synchronization report.
 | ui | yaml | Create projects in the UI within file-defined teams |
 | yaml | yaml | Projects, teams and memberships come from the file |
 
-`SERVICE_MANAGEMENT_SOURCE` independently selects `ui` or `yml` for notification settings; see [Notifications](NOTIFICATIONS.md).
+`SERVICE_MANAGEMENT_SOURCE` selects `ui` or `env` for notification settings and locks the organization name to `ORGANIZATION_NAME` in env mode; see [Notifications](NOTIFICATIONS.md).
 
 `CONFIG_PATH` defaults to `/etc/soika/config.yaml`. A readable, valid file is
 required whenever either source is `yaml`. `version: 1` and the section for each
@@ -702,3 +702,10 @@ calls have a 15-second timeout and do not follow redirects.
 
 The [security audit](SECURITY_AUDIT.md) records the fixes, dependency patch and
 remaining deployment assumptions.
+
+In `SERVICE_MANAGEMENT_SOURCE=env` mode, general service settings are read-only
+in the UI and API for all roles. `ORGANIZATION_NAME` sets the organization name,
+`ALLOW_SIGNUP` controls registration, and `DEFAULT_TEAM_IDS` supplies comma-separated
+UUIDs of existing teams assigned to new users (empty by default). Environment
+values apply at startup and replace saved settings. Project/team management,
+user administration and mute retain their existing permission rules.

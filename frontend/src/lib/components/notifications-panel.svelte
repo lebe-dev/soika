@@ -21,7 +21,7 @@
   let previewing = $state(false);
   let preview = $state('');
   let formError = $state('');
-  const readonly = $derived(view.source === 'yaml');
+  const readonly = $derived(view.source !== 'ui');
   const dirty = $derived(
     enabled !== view.config.alertmanager.enabled ||
       url !== view.config.alertmanager.url ||
@@ -130,7 +130,7 @@
     {:else}
       <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
       {#if readonly}<p class="rounded-md border p-3 text-sm">
-          {$t('notifications_yaml_readonly')}
+          {$t(view.source === 'env' ? 'service_env_readonly' : 'notifications_yaml_readonly')}
         </p>{/if}
       <div class="flex items-center justify-between gap-4">
         <span class="text-sm font-medium">{$t('notifications_alertmanager_enabled')}</span>
@@ -215,7 +215,7 @@
           </Button>
         {/if}
       </div>
-      {#if view.config.alertmanager.enabled}
+      {#if view.config.alertmanager.enabled && !readonly}
         <p class="text-muted-foreground text-sm">{$t('notifications_test_help')}</p>
       {/if}
       {#if preview}<pre

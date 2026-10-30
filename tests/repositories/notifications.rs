@@ -525,3 +525,99 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
     );
     assert_eq!(receiver.snapshot().len(), 3);
 }
+
+#[tokio::test]
+async fn notifications_environment_service_settings_override_database_and_block_admin_edits() {
+    let mut db = notification_db().await;
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    Arc::make_mut(&mut db.config).management.path = "/nonexistent-config.yaml".into();
+    let receiver = Receiver::start().await;
+    Arc::make_mut(&mut db.config).alertmanager_url = Some(receiver.url.clone());
+    Arc::make_mut(&mut db.config).organization_name = "Environment organization".into();
+    db.settings
+        .set_org_name("Database organization".into())
+        .await
+        .unwrap();
+    let default_team = insert_team(&db, "Environment default team").await;
+    Arc::make_mut(&mut db.config).management.default_team_ids = vec![default_team];
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.settings.default_team_ids().await.unwrap(),
+        vec![default_team]
+    );
+    assert_eq!(
+        db.settings.get().await.unwrap().org_name,
+        "Environment organization"
+    );
+    assert!(db.notifications.get().await.unwrap().alertmanager.enabled);
+    assert_eq!(
+        db.notifications.get().await.unwrap().alertmanager.url,
+        receiver.url
+    );
+    let (status, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "GET",
+        "/api/settings/notifications",
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["source"], "env");
+    assert_eq!(
+        db.settings.get().await.unwrap().allow_signup,
+        db.config.allow_signup
+    );
+    for role in [InstanceRole::Owner, InstanceRole::Manager] {
+        for body in [
+            serde_json::json!({"allow_signup": true}),
+            serde_json::json!({"default_team_ids": []}),
+        ] {
+            assert_eq!(
+                request(&db, role, "PATCH", "/api/settings", body).await.0,
+                StatusCode::FORBIDDEN
+            );
+        }
+        assert_eq!(
+            request(
+                &db,
+                role,
+                "PATCH",
+                "/api/settings",
+                serde_json::json!({"org_name": "Changed"})
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            request(
+                &db,
+                role,
+                "PUT",
+                "/api/settings/notifications",
+                serde_json::to_value(NotificationConfig::default()).unwrap()
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            request(
+                &db,
+                role,
+                "POST",
+                "/api/settings/notifications/test",
+                serde_json::json!({"locale":"en"})
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert!(receiver.snapshot().is_empty());
+    assert_eq!(
+        db.settings.get().await.unwrap().org_name,
+        "Environment organization"
+    );
+}

@@ -20,9 +20,12 @@ envs:
     value: "ui"
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "false"
-  # Notification settings source: ui (default) or yml (read-only in UI).
+  # General service settings source: ui (default) or env (read-only in UI).
   - name: SERVICE_MANAGEMENT_SOURCE
     value: "ui"
+  # In env mode: ORGANIZATION_NAME, ALLOW_SIGNUP, DEFAULT_TEAM_IDS and
+  # Alertmanager envs control settings; admin edits and test alerts are blocked.
+  # DEFAULT_TEAM_IDS is a comma-separated list of existing team UUIDs (default empty).
   # Default URL; an explicit URL in UI/YAML takes precedence.
   # Base URL only, e.g. https://somehost.com/ or https://somehost.com/alertmanager/.
   # Soika appends /api/v2/alerts automatically; do not include that endpoint.
@@ -163,7 +166,8 @@ configFile:
     projects: []
     teams: []
     # Alertmanager values support literal {{ variable }} placeholders.
-    # Set SERVICE_MANAGEMENT_SOURCE=yml to manage this section here.
+    # Legacy YAML notification management uses NOTIFICATION_MANAGEMENT_SOURCE=yaml
+    # with SERVICE_MANAGEMENT_SOURCE omitted; env mode ignores this section.
     notifications:
       alertmanager:
         enabled: false

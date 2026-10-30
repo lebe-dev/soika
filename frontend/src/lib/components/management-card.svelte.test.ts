@@ -23,6 +23,7 @@ describe('management status', () => {
             project_source: project,
             team_source: team,
             notification_source: 'ui',
+            service_source: 'ui',
             project_orphan_policy: 'readonly',
             team_orphan_policy: 'readonly'
           },

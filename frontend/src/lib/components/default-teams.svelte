@@ -10,8 +10,13 @@
 
   let {
     teams,
-    defaultTeamIds
-  }: { teams: Pick<TeamSummary, 'id' | 'name'>[]; defaultTeamIds: string[] } = $props();
+    defaultTeamIds,
+    readonly = false
+  }: {
+    teams: Pick<TeamSummary, 'id' | 'name'>[];
+    defaultTeamIds: string[];
+    readonly?: boolean;
+  } = $props();
   let saved = $state<string[]>(untrack(() => [...defaultTeamIds]));
   let selected = $state<string[]>(untrack(() => [...defaultTeamIds]));
   let saving = $state(false);
@@ -26,7 +31,7 @@
   );
 
   async function save() {
-    if (!dirty || saving) return;
+    if (readonly || !dirty || saving) return;
     saving = true;
     try {
       const result = await api.settings.update({ default_team_ids: [...selected] });
@@ -49,10 +54,11 @@
     <Card.Description>{$t('default_teams_description')}</Card.Description>
   </Card.Header>
   <Card.Content class="space-y-4">
+    {#if readonly}<p class="text-muted-foreground text-sm">{$t('service_env_readonly')}</p>{/if}
     {#if teams.length === 0}
       <p class="text-muted-foreground text-sm">{$t('default_teams_empty')}</p>
     {:else}
-      <fieldset disabled={saving} class="grid gap-2 sm:grid-cols-2">
+      <fieldset disabled={readonly || saving} class="grid gap-2 sm:grid-cols-2">
         <legend class="sr-only">{$t('default_teams_title')}</legend>
         {#each teams as team (team.id)}
           <label class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
@@ -68,10 +74,14 @@
       </fieldset>
     {/if}
     <div class="flex items-center gap-2">
-      <Button onclick={save} disabled={!dirty || saving}>
+      <Button onclick={save} disabled={readonly || !dirty || saving}>
         {saving ? $t('saving') : $t('save_changes')}
       </Button>
-      <Button variant="ghost" onclick={() => (selected = [...saved])} disabled={!dirty || saving}>
+      <Button
+        variant="ghost"
+        onclick={() => (selected = [...saved])}
+        disabled={readonly || !dirty || saving}
+      >
         {$t('reset')}
       </Button>
     </div>

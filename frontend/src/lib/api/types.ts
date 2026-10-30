@@ -455,6 +455,7 @@ export interface ManagementStatus {
     path: string;
     project_source: 'ui' | 'yaml';
     team_source: 'ui' | 'yaml';
+    service_source: 'ui' | 'env';
     notification_source: 'ui' | 'yaml';
     project_orphan_policy: 'readonly' | 'delete';
     team_orphan_policy: 'readonly' | 'delete';
@@ -556,7 +557,7 @@ export interface NotificationConfig {
 export interface NotificationView {
   feature_enabled: boolean;
   default_url?: string | null;
-  source: 'ui' | 'yaml';
+  source: 'ui' | 'env' | 'yaml';
   config: NotificationConfig;
   variables: string[];
 }

@@ -913,18 +913,33 @@ fn management_from_env() -> Result<crate::domain::config_file::ManagementSetting
         path: env_or("CONFIG_PATH", "/etc/soika/config.yaml"),
         project_source: source("PROJECT_MANAGEMENT_SOURCE")?,
         team_source: source("TEAM_MANAGEMENT_SOURCE")?,
-        notification_source: match std::env::var("SERVICE_MANAGEMENT_SOURCE") {
+        service_source: match std::env::var("SERVICE_MANAGEMENT_SOURCE") {
             Ok(value) => match value.as_str() {
                 "ui" => ManagementSource::Ui,
-                "yml" | "yaml" => ManagementSource::Yaml,
+                "env" => ManagementSource::Env,
                 _ => {
                     return Err(Error::validation(
-                        "SERVICE_MANAGEMENT_SOURCE must be ui or yml",
+                        "SERVICE_MANAGEMENT_SOURCE must be ui or env",
                     ));
                 }
             },
-            Err(std::env::VarError::NotPresent) => source("NOTIFICATION_MANAGEMENT_SOURCE")?,
+            Err(std::env::VarError::NotPresent) => ManagementSource::Ui,
             Err(_) => return Err(Error::validation("invalid SERVICE_MANAGEMENT_SOURCE")),
+        },
+        default_team_ids: env_or("DEFAULT_TEAM_IDS", "")
+            .split(',')
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(|id| {
+                id.parse().map_err(|_| {
+                    Error::validation("DEFAULT_TEAM_IDS must contain comma-separated team UUIDs")
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        notification_source: if std::env::var_os("SERVICE_MANAGEMENT_SOURCE").is_some() {
+            ManagementSource::Ui
+        } else {
+            source("NOTIFICATION_MANAGEMENT_SOURCE")?
         },
         project_orphan_policy: policy("PROJECT_ORPHAN_POLICY")?,
         team_orphan_policy: policy("TEAM_ORPHAN_POLICY")?,
@@ -1239,7 +1254,7 @@ mod tests {
     }
 
     #[test]
-    fn service_management_source_defaults_aliases_and_precedence() {
+    fn service_management_source_defaults_and_precedence() {
         let _guard = ENV_LOCK.lock().unwrap();
         let keys = [
             "SERVICE_MANAGEMENT_SOURCE",
@@ -1264,18 +1279,19 @@ mod tests {
         );
         for (value, expected) in [
             ("ui", crate::domain::config_file::ManagementSource::Ui),
-            ("yml", crate::domain::config_file::ManagementSource::Yaml),
-            ("yaml", crate::domain::config_file::ManagementSource::Yaml),
+            ("env", crate::domain::config_file::ManagementSource::Env),
         ] {
             unsafe {
                 std::env::set_var("SERVICE_MANAGEMENT_SOURCE", value);
             }
-            assert_eq!(management_from_env().unwrap().notification_source, expected);
+            assert_eq!(management_from_env().unwrap().service_source, expected);
         }
-        unsafe {
-            std::env::set_var("SERVICE_MANAGEMENT_SOURCE", "invalid");
+        for invalid in ["invalid", "yaml", "yml"] {
+            unsafe {
+                std::env::set_var("SERVICE_MANAGEMENT_SOURCE", invalid);
+            }
+            assert!(management_from_env().is_err());
         }
-        assert!(management_from_env().is_err());
         for (key, value) in keys.into_iter().zip(previous) {
             unsafe {
                 match value {

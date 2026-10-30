@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 pub enum ManagementSource {
     #[default]
     Ui,
+    Env,
     Yaml,
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +23,8 @@ pub struct ManagementSettings {
     pub path: String,
     pub project_source: ManagementSource,
     pub team_source: ManagementSource,
+    pub service_source: ManagementSource,
+    pub default_team_ids: Vec<super::Id>,
     pub notification_source: ManagementSource,
     pub project_orphan_policy: OrphanPolicy,
     pub team_orphan_policy: OrphanPolicy,
@@ -32,6 +35,8 @@ impl Default for ManagementSettings {
             path: "/etc/soika/config.yaml".into(),
             project_source: ManagementSource::Ui,
             team_source: ManagementSource::Ui,
+            service_source: ManagementSource::Ui,
+            default_team_ids: Vec::new(),
             notification_source: ManagementSource::Ui,
             project_orphan_policy: OrphanPolicy::Readonly,
             team_orphan_policy: OrphanPolicy::Readonly,
@@ -291,7 +296,7 @@ impl SyncReport {
 /// Ignore sections owned by the UI before interpreting or expanding their values.
 pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &ManagementSettings) {
     if let serde_yaml_ng::Value::Mapping(map) = value {
-        if settings.notification_source == ManagementSource::Ui {
+        if settings.notification_source != ManagementSource::Yaml {
             map.remove(serde_yaml_ng::Value::String("notifications".into()));
         }
         if settings.project_source == ManagementSource::Ui {

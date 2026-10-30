@@ -93,6 +93,21 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
             );
         }
     }
+    if settings.service_source == ManagementSource::Env {
+        let mut notifications = crate::domain::notifications::NotificationConfig::default();
+        notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;
+        notifications.alertmanager.url = state.config.alertmanager_url.clone().unwrap_or_default();
+        notifications.validate()?;
+        state.notifications.set(&notifications).await?;
+        state
+            .settings
+            .set_org_name(state.config.organization_name.clone())
+            .await?;
+        state
+            .settings
+            .set_allow_signup(state.config.allow_signup)
+            .await?;
+    }
     let notifications = match &desired.notifications {
         Some(config) => config.clone(),
         None => state.notifications.get().await?,
@@ -104,6 +119,12 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         .config_sync
         .apply(&desired, settings, state.config.default_events_retention)
         .await?;
+    if settings.service_source == ManagementSource::Env {
+        state
+            .settings
+            .set_default_team_ids(settings.default_team_ids.clone())
+            .await?;
+    }
     report.default_file = default_file;
     for action in &report.actions {
         tracing::info!(entity = %action.entity, key = %action.key, action = ?action.action, "configuration action applied");

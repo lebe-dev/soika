@@ -129,3 +129,15 @@ describe('default teams for new users', () => {
     expect(target.textContent).toContain('Существующие пользователи и их членство не изменяются');
   });
 });
+
+it('locks default teams when service settings come from environment variables', () => {
+  flushSync(() => {
+    component = mount(DefaultTeams, {
+      target,
+      props: { teams, defaultTeamIds: [], readonly: true }
+    });
+  });
+  expect(target.textContent).toContain('Configured through environment variables');
+  expect(target.querySelector('fieldset')!.disabled).toBe(true);
+  expect(button('Save changes').disabled).toBe(true);
+});

@@ -73,20 +73,21 @@ Alertmanager. A profile email opt-out does not suppress either project channel.
 ## UI or YAML configuration
 
 `SERVICE_MANAGEMENT_SOURCE=ui` (default) allows edits in **Admin → Notifications**.
-`yaml` is also accepted as an alias for `yml`. The legacy
-`NOTIFICATION_MANAGEMENT_SOURCE` is used only when `SERVICE_MANAGEMENT_SOURCE`
-is unset. This switch controls notification settings; project and team sources
-remain independent.
-Settings and templates are persisted in the database and apply without restart.
-The YAML `notifications` section is ignored in this mode, including environment
-references within it. The preview renders sample data without sending an alert.
+Settings and templates are persisted in the database. The YAML `notifications`
+section is ignored. Preview renders sample data without sending an alert.
 
-Set `SERVICE_MANAGEMENT_SOURCE=yml` to manage the same configuration in
-`CONFIG_PATH`. The `notifications` section becomes required. Invalid URLs,
-unknown fields/variables, invalid label names and malformed templates prevent
-startup. The UI shows the configuration read-only and API writes return `403`.
-YAML is loaded at startup; restart Soika to apply changes. These settings are
-independent of `PROJECT_MANAGEMENT_SOURCE` and `TEAM_MANAGEMENT_SOURCE`.
+Set `SERVICE_MANAGEMENT_SOURCE=env` to use environment variables instead.
+At startup, `NOTIFICATIONS_ALERTMANAGER_ENABLED` sets the channel enabled state,
+`ALERTMANAGER_URL` sets its URL and `ORGANIZATION_NAME` sets the organization name.
+Notification templates use built-in defaults. Existing database values are replaced.
+The UI shows “Configured through environment variables”; notification editing,
+test sends and organization-name changes are blocked in the UI and API, including
+for Owners. Restart Soika to apply environment changes. `yaml` and `yml` are not
+valid values for this variable. Project and team management remain independent.
+
+Legacy `NOTIFICATION_MANAGEMENT_SOURCE=yaml` remains supported only when
+`SERVICE_MANAGEMENT_SOURCE` is unset. It loads the following configuration from
+`CONFIG_PATH` at startup; notification editing and test sends are blocked.
 
 ```yaml
 version: 1
@@ -155,3 +156,10 @@ a replacement to fire. Resolution always reuses the last saved label set.
 
 See [operations](OPERATIONS.md#notifications) and the
 [Helm chart](../helm-chart/README.md#notifications) for deployment configuration.
+
+In `SERVICE_MANAGEMENT_SOURCE=env` mode, general service settings are read-only
+in the UI and API for all roles. `ORGANIZATION_NAME` sets the organization name,
+`ALLOW_SIGNUP` controls registration, and `DEFAULT_TEAM_IDS` supplies comma-separated
+UUIDs of existing teams assigned to new users (empty by default). Environment
+values apply at startup and replace saved settings. Project/team management,
+user administration and mute retain their existing permission rules.
