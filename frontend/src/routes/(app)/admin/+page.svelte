@@ -38,6 +38,10 @@
   // Admin — service settings, users, and teams overview.
   // Visible to instance managers (Owner | Manager); guarded in +page.ts.
   let { data }: { data: PageData } = $props();
+  const activeTab = $derived.by(() => {
+    const routeTab = page.url.pathname.split('/')[2];
+    return routeTab === 'auth' ? 'authentication' : (routeTab ?? 'settings');
+  });
 
   // Whether the current user is the instance Owner. Only an Owner may grant or
   // revoke the Owner role (the backend enforces this; the UI mirrors it).
@@ -228,8 +232,6 @@
     {/snippet}
   </PageHeader>
 
-  {@const routeTab = page.url.pathname.split('/')[2]}
-  {@const activeTab = routeTab === 'auth' ? 'authentication' : routeTab ?? 'settings'}
   <Tabs.Root value={activeTab}>
     <Tabs.List>
       <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
