@@ -14,7 +14,7 @@ docker run -d \
   -p 8080:8080 \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -v soika-data:/app/data \
-  tinyops/soika:0.9.0
+  tinyops/soika:0.10.0
 ```
 
 Open [http://localhost:8080](http://localhost:8080) and create the initial
@@ -29,7 +29,7 @@ docker run -d \
   -p 8080:8080 \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -e DATABASE_URL="postgres://soika:secret@db.example.com:5432/soika" \
-  tinyops/soika:0.9.0
+  tinyops/soika:0.10.0
 ```
 
 ## Features
@@ -52,6 +52,7 @@ docker run -d \
 ## Docs
 
 - [Installation and configuration](docs/OPERATIONS.md)
+- [Outgoing webhooks](docs/WEBHOOKS.md)
 - [Helm chart](helm-chart/README.md)
 - [User interface](docs/UI.md)
 - [Development](DEV.md)

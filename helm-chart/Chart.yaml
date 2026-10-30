@@ -3,4 +3,4 @@ name: soika
 description: Lightweight Sentry-compatible error tracker with SQLite or PostgreSQL storage
 type: application
 version: 0.2.1
-appVersion: "0.9.0"
+appVersion: "0.10.0"

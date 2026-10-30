@@ -203,6 +203,9 @@ When disabled, the webhook URL field in project settings is visually disabled
 and the service does not send webhook requests. These switches are read at
 startup; restart the service after changing them.
 
+Webhook payloads use the Alertmanager v4 JSON format since 0.10.0. See
+[Outgoing webhooks](WEBHOOKS.md) for setup, payload fields and delivery behavior.
+
 ## SSO via OIDC
 
 soika can delegate sign-in to an external OpenID Connect (OIDC) provider such as

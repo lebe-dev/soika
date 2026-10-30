@@ -24,11 +24,12 @@
 //! points are invoked from the ingest pipeline and never propagate
 //! transient delivery failures back to ingestion — those are logged.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::domain::{Id, Issue, IssueStatus, Project, User};
+use crate::domain::{Issue, IssueStatus, Project, Timestamp, User};
 use crate::mail;
 use crate::state::AppState;
 
@@ -101,7 +102,7 @@ pub async fn notify_regression(
 }
 
 /// The notification trigger, selecting which email template to render and the
-/// webhook payload's `trigger` string. Crate-visible so the pure
+/// webhook annotation's `trigger` string. Crate-visible so the pure
 /// [`build_webhook_payload`] helper can expose it in its signature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Trigger {
@@ -121,23 +122,40 @@ impl Trigger {
 }
 
 /// JSON body POSTed to a project's [`Project::webhook_url`] on a new-issue or
-/// regression notification. The shape is stable wire contract.
+/// regression notification, using the Alertmanager v4 webhook format.
 #[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebhookPayload {
-    /// `"new_issue"` or `"regression"` (see [`Trigger::as_str`]).
-    pub trigger: &'static str,
-    pub issue_id: Id,
-    pub project_id: Id,
-    pub title: String,
-    pub level: Option<String>,
-    pub event_count: i64,
-    /// Deep link to the issue in the dashboard.
-    pub issue_url: String,
+    pub version: &'static str,
+    pub group_key: String,
+    pub truncated_alerts: u64,
+    pub status: &'static str,
+    pub receiver: &'static str,
+    pub group_labels: BTreeMap<&'static str, String>,
+    pub common_labels: BTreeMap<&'static str, String>,
+    pub common_annotations: BTreeMap<&'static str, String>,
+    #[serde(rename = "externalURL")]
+    pub external_url: String,
+    pub alerts: Vec<WebhookAlert>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WebhookAlert {
+    pub status: &'static str,
+    pub labels: BTreeMap<&'static str, String>,
+    pub annotations: BTreeMap<&'static str, String>,
+    pub starts_at: Timestamp,
+    /// Go's zero time: the firing alert has no known end.
+    pub ends_at: &'static str,
+    #[serde(rename = "generatorURL")]
+    pub generator_url: String,
+    pub fingerprint: String,
 }
 
 /// Build the webhook payload for an issue notification (pure; unit-tested).
 ///
-/// `issue_url` is `{base_url}/projects/{project_short_id}/issues/{issue_short_id}`
+/// `generatorURL` is `{base_url}/projects/{project_short_id}/issues/{issue_short_id}`
 /// with any trailing slash on `base_url` trimmed (mirroring `mail.rs` link
 /// building and the frontend route `/projects/[id]/issues/[issueId]`, both of
 /// which use the short public ids — not the UUIDs — so the link resolves in the
@@ -153,14 +171,46 @@ pub(crate) fn build_webhook_payload(
         "{base}/projects/{}/issues/{}",
         project.short_id, issue.short_id
     );
+    let group_labels = BTreeMap::from([
+        ("project_id", project.id.to_string()),
+        ("issue_id", issue.id.to_string()),
+    ]);
+    let mut labels = group_labels.clone();
+    labels.insert("alertname", "SoikaIssue".to_string());
+    labels.insert("project", project.slug.clone());
+    if let Some(level) = &issue.level {
+        labels.insert("severity", level.clone());
+    }
+    // Changing values belong in annotations so a regression keeps its identity.
+    let annotations = BTreeMap::from([
+        ("summary", issue.title.clone()),
+        ("trigger", trigger.as_str().to_string()),
+        ("event_count", issue.event_count.to_string()),
+    ]);
+    let alert = WebhookAlert {
+        status: "firing",
+        labels: labels.clone(),
+        annotations: annotations.clone(),
+        starts_at: match trigger {
+            Trigger::NewIssue => issue.first_seen,
+            Trigger::Regression => issue.last_seen,
+        },
+        ends_at: "0001-01-01T00:00:00Z",
+        generator_url: issue_url,
+        // The issue UUID stays unique across projects with the same grouping hash.
+        fingerprint: issue.id.simple().to_string(),
+    };
     WebhookPayload {
-        trigger: trigger.as_str(),
-        issue_id: issue.id,
-        project_id: issue.project_id,
-        title: issue.title.clone(),
-        level: issue.level.clone(),
-        event_count: issue.event_count,
-        issue_url,
+        version: "4",
+        group_key: format!("soika:{}:{}", project.id, issue.id),
+        truncated_alerts: 0,
+        status: "firing",
+        receiver: "soika",
+        group_labels,
+        common_labels: labels,
+        common_annotations: annotations,
+        external_url: base.to_string(),
+        alerts: vec![alert],
     }
 }
 
@@ -440,51 +490,125 @@ mod tests {
     // --- Webhook channel -----------------------------------------
 
     #[test]
-    fn build_webhook_payload_sets_all_fields_and_issue_url() {
+    fn build_webhook_payload_matches_alertmanager_v4_contract() {
         let project = project_with_webhook(false);
         let issue = issue(IssueStatus::Unresolved);
-        // base_url has a trailing slash; the issue_url must not double it.
-        let payload = build_webhook_payload(
+        let payload = serde_json::to_value(build_webhook_payload(
             "https://errors.example.com/",
             &project,
             &issue,
             Trigger::NewIssue,
-        );
-
-        assert_eq!(payload.trigger, "new_issue");
-        assert_eq!(payload.issue_id, issue.id);
-        assert_eq!(payload.project_id, issue.project_id);
-        assert_eq!(payload.title, issue.title);
-        assert_eq!(payload.level, issue.level);
-        assert_eq!(payload.event_count, issue.event_count);
+        ))
+        .unwrap();
+        let labels = serde_json::json!({
+            "alertname": "SoikaIssue",
+            "project": project.slug,
+            "project_id": project.id,
+            "issue_id": issue.id,
+            "severity": "error",
+        });
+        let annotations = serde_json::json!({
+            "summary": issue.title,
+            "trigger": "new_issue",
+            "event_count": "1",
+        });
         assert_eq!(
-            payload.issue_url,
-            format!(
-                "https://errors.example.com/projects/{}/issues/{}",
-                project.short_id, issue.short_id
-            )
+            payload,
+            serde_json::json!({
+                "version": "4",
+                "groupKey": format!("soika:{}:{}", project.id, issue.id),
+                "truncatedAlerts": 0,
+                "status": "firing",
+                "receiver": "soika",
+                "groupLabels": { "project_id": project.id, "issue_id": issue.id },
+                "commonLabels": labels,
+                "commonAnnotations": annotations,
+                "externalURL": "https://errors.example.com",
+                "alerts": [{
+                    "status": "firing",
+                    "labels": labels,
+                    "annotations": annotations,
+                    "startsAt": issue.first_seen,
+                    "endsAt": "0001-01-01T00:00:00Z",
+                    "generatorURL": "https://errors.example.com/projects/web001/issues/iss001",
+                    "fingerprint": issue.id.simple().to_string(),
+                }],
+            })
         );
-        assert!(!payload.issue_url.contains("com//projects"));
     }
 
     #[test]
-    fn build_webhook_payload_uses_regression_trigger_string() {
+    fn regression_keeps_alert_identity_and_starts_at_latest_occurrence() {
         let project = project_with_webhook(false);
-        let issue = issue(IssueStatus::Unresolved);
-        let payload = build_webhook_payload(
+        let mut issue = issue(IssueStatus::Unresolved);
+        let original = serde_json::to_value(build_webhook_payload(
+            "https://errors.example.com",
+            &project,
+            &issue,
+            Trigger::NewIssue,
+        ))
+        .unwrap();
+        issue.last_seen += chrono::Duration::hours(1);
+        issue.event_count = 42;
+        issue.title = "Updated title".to_string();
+        let payload = serde_json::to_value(build_webhook_payload(
             "https://errors.example.com",
             &project,
             &issue,
             Trigger::Regression,
-        );
-        assert_eq!(payload.trigger, "regression");
-        // No trailing slash on base_url: still a single slash before /projects.
+        ))
+        .unwrap();
+        assert_eq!(payload["groupKey"], original["groupKey"]);
         assert_eq!(
-            payload.issue_url,
-            format!(
-                "https://errors.example.com/projects/{}/issues/{}",
-                project.short_id, issue.short_id
-            )
+            payload["alerts"][0]["fingerprint"],
+            original["alerts"][0]["fingerprint"]
+        );
+        assert_eq!(
+            payload["alerts"][0]["labels"],
+            original["alerts"][0]["labels"]
+        );
+        assert_eq!(payload["alerts"][0]["annotations"]["trigger"], "regression");
+        assert_eq!(payload["alerts"][0]["annotations"]["event_count"], "42");
+        assert_eq!(
+            payload["alerts"][0]["annotations"]["summary"],
+            "Updated title"
+        );
+        assert_eq!(
+            payload["alerts"][0]["startsAt"],
+            serde_json::json!(issue.last_seen)
+        );
+        assert_eq!(
+            payload["alerts"][0]["generatorURL"],
+            original["alerts"][0]["generatorURL"]
+        );
+    }
+
+    #[test]
+    fn webhook_without_level_has_only_string_labels_and_annotations() {
+        let project = project_with_webhook(false);
+        let mut issue = issue(IssueStatus::Unresolved);
+        issue.level = None;
+        let payload = serde_json::to_value(build_webhook_payload(
+            "https://errors.example.com",
+            &project,
+            &issue,
+            Trigger::NewIssue,
+        ))
+        .unwrap();
+        assert!(payload["commonLabels"].get("severity").is_none());
+        for field in ["commonLabels", "commonAnnotations"] {
+            assert!(
+                payload[field]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .all(serde_json::Value::is_string)
+            );
+        }
+        assert_eq!(payload["commonLabels"], payload["alerts"][0]["labels"]);
+        assert_eq!(
+            payload["commonAnnotations"],
+            payload["alerts"][0]["annotations"]
         );
     }
 
@@ -652,13 +776,20 @@ mod tests {
             .clone()
             .expect("webhook server received no POST");
         let json: serde_json::Value = serde_json::from_str(&body).expect("body was not JSON");
-        assert_eq!(json["trigger"], "new_issue");
-        assert_eq!(json["issue_id"], issue.id.to_string());
-        assert_eq!(json["project_id"], issue.project_id.to_string());
-        assert_eq!(json["title"], issue.title);
-        assert_eq!(json["event_count"], issue.event_count);
+        assert_eq!(json["version"], "4");
+        assert_eq!(json["status"], "firing");
+        assert_eq!(json["alerts"].as_array().unwrap().len(), 1);
+        let alert = &json["alerts"][0];
+        assert_eq!(alert["annotations"]["trigger"], "new_issue");
+        assert_eq!(alert["labels"]["issue_id"], issue.id.to_string());
+        assert_eq!(alert["labels"]["project_id"], project.id.to_string());
+        assert_eq!(alert["annotations"]["summary"], issue.title);
         assert_eq!(
-            json["issue_url"],
+            alert["annotations"]["event_count"],
+            issue.event_count.to_string()
+        );
+        assert_eq!(
+            alert["generatorURL"],
             format!(
                 "{url}/projects/{}/issues/{}",
                 project.short_id, issue.short_id
@@ -693,7 +824,8 @@ mod tests {
 
         let body = captured.body.lock().unwrap().clone().expect("no POST");
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(json["trigger"], "regression");
+        assert_eq!(json["status"], "firing");
+        assert_eq!(json["alerts"][0]["annotations"]["trigger"], "regression");
     }
 
     #[tokio::test]
