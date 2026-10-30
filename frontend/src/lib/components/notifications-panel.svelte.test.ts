@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { setLocale } from '$lib/i18n';
-import { api, type NotificationView } from '$lib/api';
+import { api, ApiError, type NotificationView } from '$lib/api';
 import Panel from './notifications-panel.svelte';
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn() }));
 vi.mock('$lib/api', async () => {
@@ -136,11 +136,13 @@ it('allows testing with unsaved settings and displays delivery failures', async 
   input.value = '{"alertname":"Changed"}';
   flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
   expect(button.disabled).toBe(false);
-  vi.mocked(api.notifications.test).mockRejectedValue(new Error('delivery failed'));
+  vi.mocked(api.notifications.test).mockRejectedValue(
+    new ApiError(500, 'Alertmanager delivery failed: connection refused', null)
+  );
   button.click();
   await vi.waitFor(() =>
     expect(target.querySelector('[role="alert"]')?.textContent).toContain(
-      'Failed to send test alert'
+      'Alertmanager delivery failed: connection refused'
     )
   );
   await vi.waitFor(() => expect(button.disabled).toBe(false));

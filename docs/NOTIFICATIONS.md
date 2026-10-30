@@ -45,6 +45,9 @@ matching the interface language, independently of notification templates. It sen
 `instance`. It creates no issue or refresh record and expires after five minutes.
 Success means Alertmanager accepted the request; downstream delivery follows its
 routing, grouping and silence rules. Transport failures are shown in the UI.
+The message identifies common DNS, connection, timeout and TLS certificate
+failures, or the HTTP status returned by Alertmanager, without including the
+endpoint URL or response body. Unrecognized failures use a general description.
 In UI mode, enter and save an explicit Alertmanager URL before testing. In env
 and YAML modes the configured URL or environment fallback is used.
 

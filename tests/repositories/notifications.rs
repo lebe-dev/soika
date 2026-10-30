@@ -558,12 +558,9 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
     }
     assert!(db.notifications.active("", 10).await.unwrap().is_empty());
     receiver.fail.store(true, Ordering::SeqCst);
-    assert_eq!(
-        request(&db, InstanceRole::Owner, "POST", path, body.clone())
-            .await
-            .0,
-        StatusCode::INTERNAL_SERVER_ERROR
-    );
+    let (status, error) = request(&db, InstanceRole::Owner, "POST", path, body.clone()).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(error["error"], "Alertmanager returned HTTP 503");
     let mut config = db.notifications.get().await.unwrap();
     config.alertmanager.enabled = false;
     db.notifications.set(&config).await.unwrap();

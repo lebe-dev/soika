@@ -82,9 +82,11 @@ pub fn error_response(err: Error) -> Response {
         // A locked database is transient, not a fault of this request: answer
         // `503` so the caller (or the SPA) can simply try again.
         Error::DbBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
-        Error::Db(_) | Error::Mail(_) | Error::Template(_) | Error::Internal(_) => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        Error::Db(_)
+        | Error::Mail(_)
+        | Error::Template(_)
+        | Error::Internal(_)
+        | Error::Alertmanager(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     if err.is_busy() {
         tracing::warn!(error = %err, "request failed: database is busy");

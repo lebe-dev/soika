@@ -55,7 +55,9 @@ impl IntoResponse for ApiError {
             tracing::error!(error = %self.0, "request failed");
         }
         let body = Json(ErrorBody {
-            error: if status.is_server_error() {
+            error: if let Error::Alertmanager(message) = &self.0 {
+                message.clone()
+            } else if status.is_server_error() {
                 "internal server error".into()
             } else {
                 self.0.to_string()

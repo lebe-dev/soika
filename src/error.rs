@@ -70,6 +70,10 @@ pub enum Error {
     /// Catch-all internal error.
     #[error("internal error: {0}")]
     Internal(String),
+
+    /// Redacted Alertmanager transport diagnosis, safe to show to an administrator.
+    #[error("{0}")]
+    Alertmanager(String),
 }
 
 impl Error {
