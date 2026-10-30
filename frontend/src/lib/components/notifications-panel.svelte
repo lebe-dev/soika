@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { api, errorMessage, type NotificationView, type NotificationConfig } from '$lib/api';
-  import { t } from '$lib/i18n';
+  import { t, currentLocale } from '$lib/i18n';
   import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
@@ -16,6 +16,7 @@
   let annotations = $state(
     untrack(() => JSON.stringify(view.config.alertmanager.annotations, null, 2))
   );
+  let sendingTest = $state(false);
   let saving = $state(false);
   let previewing = $state(false);
   let preview = $state('');
@@ -78,6 +79,20 @@
       reportUnexpected(error);
     } finally {
       saving = false;
+    }
+  }
+  async function sendTest() {
+    if (sendingTest) return;
+    sendingTest = true;
+    formError = '';
+    try {
+      await api.notifications.test(currentLocale());
+      toast.success($t('notifications_test_sent'));
+    } catch (error) {
+      formError = errorMessage(error, $t('notifications_test_failed'));
+      reportUnexpected(error);
+    } finally {
+      sendingTest = false;
     }
   }
   async function showPreview() {
@@ -190,7 +205,15 @@
         <Button variant="outline" onclick={showPreview} disabled={saving || previewing}
           >{$t('notifications_preview')}</Button
         >
+        {#if view.config.alertmanager.enabled}
+          <Button variant="outline" onclick={sendTest} disabled={saving || sendingTest || dirty}>
+            {sendingTest ? $t('notifications_test_sending') : $t('notifications_test')}
+          </Button>
+        {/if}
       </div>
+      {#if view.config.alertmanager.enabled}
+        <p class="text-muted-foreground text-sm">{$t('notifications_test_help')}</p>
+      {/if}
       {#if preview}<pre
           class="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs">{preview}</pre>{/if}
     {/if}

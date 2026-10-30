@@ -143,6 +143,10 @@ pub fn build(state: AppState) -> Router {
             get(api::notifications::get).put(api::notifications::update),
         )
         .route(
+            "/settings/notifications/test",
+            post(api::notifications::test_alert),
+        )
+        .route(
             "/settings/notifications/preview",
             post(api::notifications::preview),
         )

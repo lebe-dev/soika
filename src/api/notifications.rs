@@ -69,3 +69,19 @@ fn require_feature(state: &AppState) -> Result<(), ApiError> {
     }
     Ok(())
 }
+
+#[derive(serde::Deserialize)]
+pub struct TestAlertRequest {
+    pub locale: crate::domain::Locale,
+}
+
+pub async fn test_alert(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Json(request): Json<TestAlertRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_feature(&state)?;
+    crate::alertmanager::send_test(&state, request.locale).await?;
+    tracing::info!(actor_id = %admin.0.id, channel = "alertmanager", "test notification delivered");
+    Ok(Json(serde_json::json!({"ok": true})))
+}

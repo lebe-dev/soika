@@ -540,5 +540,10 @@
   "notifications_webhooks_help": "Controlled by WEBHOOKS_ENABLED. Configure each destination in project settings. Webhooks send the Alertmanager webhook format; the Alertmanager channel above sends to its API.",
   "notifications_email": "Email / SMTP",
   "notifications_default_url": "Leave the URL empty to use ALERTMANAGER_URL: {url}",
-  "notifications_feature_disabled": "Disabled in configuration (NOTIFICATIONS_ALERTMANAGER_ENABLED=false)."
+  "notifications_feature_disabled": "Disabled in configuration (NOTIFICATIONS_ALERTMANAGER_ENABLED=false).",
+  "notifications_test": "Send test alert",
+  "notifications_test_sending": "Sending…",
+  "notifications_test_sent": "Alertmanager accepted the test alert",
+  "notifications_test_failed": "Failed to send test alert",
+  "notifications_test_help": "Uses saved settings and fixed test text in your interface language. Save changes before testing. The alert expires after five minutes."
 }

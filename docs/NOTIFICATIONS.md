@@ -37,6 +37,15 @@ Disabling the channel through UI/YAML while the feature remains enabled still
 sends resolved payloads as described below. Configuration edits cannot enable
 the global feature flag.
 
+Owners and Managers can use **Send test alert** when the integration is enabled,
+including in YAML mode. Save pending UI changes first. The test uses the saved
+endpoint (including the environment fallback) and fixed English or Russian text
+matching the interface language, independently of notification templates. It sends
+`alertname=SoikaTestAlert`, `severity=info`, `test=true` and the Soika base URL as
+`instance`. It creates no issue or refresh record and expires after five minutes.
+Success means Alertmanager accepted the request; downstream delivery follows its
+routing, grouping and silence rules. Transport failures are shown in the UI.
+
 The channel is also disabled by default. Its configuration applies to every project,
 independently of Email and Webhooks. Enabling it does not send old issues.
 

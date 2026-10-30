@@ -191,6 +191,11 @@ export const teams = {
 };
 
 export const notifications = {
+  test: (locale: 'en' | 'ru', ctx?: Ctx) =>
+    http.post<{ ok: boolean }>('/settings/notifications/test', {
+      body: { locale },
+      fetch: ctx?.fetch
+    }),
   get: (ctx?: Ctx) => http.get<NotificationView>('/settings/notifications', { fetch: ctx?.fetch }),
   update: (body: NotificationConfig, ctx?: Ctx) =>
     http.put<NotificationView>('/settings/notifications', { body, fetch: ctx?.fetch }),

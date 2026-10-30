@@ -9,7 +9,7 @@ vi.mock('$lib/api', async () => {
   const actual = await vi.importActual<typeof import('$lib/api')>('$lib/api');
   return {
     ...actual,
-    api: { ...actual.api, notifications: { update: vi.fn(), preview: vi.fn() } }
+    api: { ...actual.api, notifications: { update: vi.fn(), preview: vi.fn(), test: vi.fn() } }
   };
 });
 vi.mock('$lib/report', () => ({ reportUnexpected: vi.fn() }));
@@ -98,3 +98,47 @@ it.each([
     expect(api.notifications.preview).not.toHaveBeenCalled();
   }
 );
+
+it.each(['en', 'ru'] as const)(
+  'sends a test in %s using saved settings in YAML mode',
+  async (language) => {
+    setLocale(language);
+    vi.mocked(api.notifications.test).mockResolvedValue({ ok: true });
+    render({
+      ...view,
+      source: 'yaml',
+      config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
+    });
+    const button = [...target.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes(language === 'ru' ? 'Отправить тестовый' : 'Send test alert')
+    )!;
+    expect(button.disabled).toBe(false);
+    button.click();
+    await vi.waitFor(() => expect(api.notifications.test).toHaveBeenCalledWith(language));
+  }
+);
+it('hides the test action when the channel is disabled', () => {
+  render();
+  expect(target.textContent).not.toContain('Send test alert');
+});
+it('disables testing with unsaved settings and displays delivery failures', async () => {
+  render({
+    ...view,
+    config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
+  });
+  const button = [...target.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Send test alert')
+  )!;
+  const input = target.querySelector<HTMLInputElement>('#alertmanager-url')!;
+  input.value = 'http://changed:9093';
+  flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
+  expect(button.disabled).toBe(true);
+  const reset = [...target.querySelectorAll('button')].find((b) => b.textContent === 'Reset')!;
+  flushSync(() => reset.click());
+  vi.mocked(api.notifications.test).mockRejectedValue(new Error('delivery failed'));
+  button.click();
+  await vi.waitFor(() =>
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Failed to send test alert')
+  );
+  await vi.waitFor(() => expect(button.disabled).toBe(false));
+});

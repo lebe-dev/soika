@@ -540,5 +540,10 @@
   "notifications_webhooks_help": "Включаются через WEBHOOKS_ENABLED. Адрес получателя задаётся в настройках проекта. Webhook отправляет формат уведомлений Alertmanager; канал Alertmanager выше обращается к его API.",
   "notifications_email": "Электронная почта / SMTP",
   "notifications_default_url": "Оставьте URL пустым, чтобы использовать ALERTMANAGER_URL: {url}",
-  "notifications_feature_disabled": "Отключено в конфигурации (NOTIFICATIONS_ALERTMANAGER_ENABLED=false)."
+  "notifications_feature_disabled": "Отключено в конфигурации (NOTIFICATIONS_ALERTMANAGER_ENABLED=false).",
+  "notifications_test": "Отправить тестовый алерт",
+  "notifications_test_sending": "Отправка…",
+  "notifications_test_sent": "Alertmanager принял тестовый алерт",
+  "notifications_test_failed": "Не удалось отправить тестовый алерт",
+  "notifications_test_help": "Используются сохранённые настройки и фиксированный текст на языке интерфейса. Перед проверкой сохраните изменения. Алерт истечёт через пять минут."
 }

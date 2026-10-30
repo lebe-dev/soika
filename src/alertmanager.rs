@@ -230,3 +230,48 @@ async fn reconcile(
     state.notifications.save_alert(saved).await?;
     state.alertmanager.send(&saved.endpoint, &saved.alert).await
 }
+
+/// Send a short-lived synthetic alert without creating an issue or refresh record.
+pub async fn send_test(state: &AppState, locale: crate::domain::Locale) -> Result<()> {
+    if !state.config.notifications_alertmanager_enabled {
+        return Err(Error::Forbidden("Alertmanager feature is disabled".into()));
+    }
+    let config = state
+        .notifications
+        .get()
+        .await?
+        .effective(state.config.alertmanager_url.as_deref())?
+        .alertmanager;
+    if !config.enabled {
+        return Err(Error::Forbidden(
+            "Alertmanager integration is disabled".into(),
+        ));
+    }
+    let (summary, description) = match locale {
+        crate::domain::Locale::En => (
+            "Soika test notification",
+            "This is a test alert sent from Soika administration to verify the Alertmanager integration.",
+        ),
+        crate::domain::Locale::Ru => (
+            "Тестовое уведомление Soika",
+            "Это тестовый алерт из админки Soika для проверки интеграции с Alertmanager.",
+        ),
+    };
+    let now = state.clock.now();
+    let alert = AlertmanagerAlert {
+        labels: BTreeMap::from([
+            ("alertname".into(), "SoikaTestAlert".into()),
+            ("severity".into(), "info".into()),
+            ("test".into(), "true".into()),
+            ("instance".into(), state.config.base_url.clone()),
+        ]),
+        annotations: BTreeMap::from([
+            ("summary".into(), summary.into()),
+            ("description".into(), description.into()),
+        ]),
+        starts_at: now,
+        ends_at: now + chrono::Duration::seconds(ALERT_TTL),
+        generator_url: state.config.base_url.clone(),
+    };
+    state.alertmanager.send(&endpoint(&config), &alert).await
+}

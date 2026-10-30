@@ -455,3 +455,65 @@ async fn notifications_feature_flag_blocks_delivery_refresh_and_writes() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn notifications_test_alert_permissions_localization_and_failures() {
+    let mut db = notification_db().await;
+    let receiver = Receiver::start().await;
+    setup(&db, &receiver.url).await;
+    let path = "/api/settings/notifications/test";
+    let body = serde_json::json!({"locale": "ru"});
+    assert_eq!(
+        request(&db, InstanceRole::Member, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Yaml;
+    for (locale, title) in [
+        ("ru", "Тестовое уведомление Soika"),
+        ("en", "Soika test notification"),
+    ] {
+        assert_eq!(
+            request(
+                &db,
+                InstanceRole::Manager,
+                "POST",
+                path,
+                serde_json::json!({"locale": locale})
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+        let alert = receiver.snapshot().last().unwrap().clone();
+        assert_eq!(alert.annotations["summary"], title);
+        assert_eq!(alert.labels["alertname"], "SoikaTestAlert");
+        assert_eq!((alert.ends_at - alert.starts_at).num_seconds(), 300);
+    }
+    assert!(db.notifications.active("", 10).await.unwrap().is_empty());
+    receiver.fail.store(true, Ordering::SeqCst);
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let mut config = db.notifications.get().await.unwrap();
+    config.alertmanager.enabled = false;
+    db.notifications.set(&config).await.unwrap();
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = false;
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "POST", path, body)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(receiver.snapshot().len(), 3);
+}
