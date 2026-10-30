@@ -67,3 +67,11 @@ tests:
       - equal:
           path: data.NOTIFICATIONS_ALERTMANAGER_ENABLED
           value: "false"
+  - it: manages notification settings through the UI by default
+    template: configmap.yaml
+    asserts:
+      - equal:
+          path: data.SERVICE_MANAGEMENT_SOURCE
+          value: "ui"
+      - notExists:
+          path: data.NOTIFICATION_MANAGEMENT_SOURCE

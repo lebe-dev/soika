@@ -187,12 +187,20 @@ claim, по умолчанию `groups`. Без OAuth новые пользов�
 в `envs` (по умолчанию `false`). При выключенном флаге UI коротко сообщает об
 отключении в конфигурации; отправка, продление и закрытие алертов заблокированы.
 Открытые алерты истекут по TTL; записи в БД сохранятся до включения флага.
-По умолчанию `NOTIFICATION_MANAGEMENT_SOURCE=ui`: URL Alertmanager и шаблоны
+По умолчанию `SERVICE_MANAGEMENT_SOURCE=ui`: URL Alertmanager и шаблоны
 labels/annotations сохраняются через UI в БД. `ALERTMANAGER_URL` в `envs` задаёт
 адрес по умолчанию: пустой URL в UI/YAML использует его, явно указанный URL
 имеет приоритет. Изменение переменной окружения применяется после rollout.
+В режиме `ui` после установки глобального флага включите канал кнопкой
+**Enable Alertmanager** и сохраните изменения: флаг разрешает интеграцию,
+но не меняет сохранённое состояние канала. При включённом канале доступна
+отправка тестового алерта с фиксированным текстом на языке интерфейса.
+В режиме `yml` настройки и тестовая отправка заблокированы в UI и API;
+форма помечена «Конфигурация через YAML». Старое имя
+`NOTIFICATION_MANAGEMENT_SOURCE` поддерживается, только если новая переменная
+не задана; `yaml` принимается как синоним `yml`.
 Для GitOps установите значение
-`yaml` в полном списке `envs` и заполните `configFile.content.notifications`:
+`yml` в полном списке `envs` и заполните `configFile.content.notifications`:
 
 ```yaml
 envs:
@@ -204,8 +212,8 @@ envs:
     value: "https://errors.example.com"
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "true"
-  - name: NOTIFICATION_MANAGEMENT_SOURCE
-    value: "yaml"
+  - name: SERVICE_MANAGEMENT_SOURCE
+    value: "yml"
 configFile:
   content:
     version: 1

@@ -20,7 +20,8 @@ envs:
     value: "ui"
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "false"
-  - name: NOTIFICATION_MANAGEMENT_SOURCE
+  # Notification settings source: ui (default) or yml (read-only in UI).
+  - name: SERVICE_MANAGEMENT_SOURCE
     value: "ui"
   # Default URL; an explicit URL in UI/YAML takes precedence.
   # Base URL only, e.g. https://somehost.com/ or https://somehost.com/alertmanager/.
@@ -162,7 +163,7 @@ configFile:
     projects: []
     teams: []
     # Alertmanager values support literal {{ variable }} placeholders.
-    # Set NOTIFICATION_MANAGEMENT_SOURCE=yaml to manage this section here.
+    # Set SERVICE_MANAGEMENT_SOURCE=yml to manage this section here.
     notifications:
       alertmanager:
         enabled: false
