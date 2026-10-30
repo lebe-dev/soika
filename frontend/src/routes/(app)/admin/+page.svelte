@@ -232,7 +232,7 @@
     {/snippet}
   </PageHeader>
 
-  <Tabs.Root value={activeTab}>
+  <Tabs.Root value={activeTab} class="gap-6">
     <Tabs.List>
       <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
