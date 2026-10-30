@@ -81,6 +81,11 @@ pub async fn test_alert(
     Json(request): Json<TestAlertRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_feature(&state)?;
+    if state.config.management.notification_source == ManagementSource::Yaml {
+        return Err(
+            Error::Forbidden("notifications are managed by the configuration file".into()).into(),
+        );
+    }
     crate::alertmanager::send_test(&state, request.locale).await?;
     tracing::info!(actor_id = %admin.0.id, channel = "alertmanager", "test notification delivered");
     Ok(Json(serde_json::json!({"ok": true})))

@@ -38,7 +38,7 @@ sends resolved payloads as described below. Configuration edits cannot enable
 the global feature flag.
 
 Owners and Managers can use **Send test alert** when the integration is enabled,
-including in YAML mode. Save pending UI changes first. The test uses the saved
+in UI mode. YAML mode disables the test action, including through the API. Save pending UI changes first. The test uses the saved
 endpoint (including the environment fallback) and fixed English or Russian text
 matching the interface language, independently of notification templates. It sends
 `alertname=SoikaTestAlert`, `severity=info`, `test=true` and the Soika base URL as
@@ -72,12 +72,16 @@ Alertmanager. A profile email opt-out does not suppress either project channel.
 
 ## UI or YAML configuration
 
-`NOTIFICATION_MANAGEMENT_SOURCE=ui` (default) allows edits in **Admin → Notifications**.
+`SERVICE_MANAGEMENT_SOURCE=ui` (default) allows edits in **Admin → Notifications**.
+`yaml` is also accepted as an alias for `yml`. The legacy
+`NOTIFICATION_MANAGEMENT_SOURCE` is used only when `SERVICE_MANAGEMENT_SOURCE`
+is unset. This switch controls notification settings; project and team sources
+remain independent.
 Settings and templates are persisted in the database and apply without restart.
 The YAML `notifications` section is ignored in this mode, including environment
 references within it. The preview renders sample data without sending an alert.
 
-Set `NOTIFICATION_MANAGEMENT_SOURCE=yaml` to manage the same configuration in
+Set `SERVICE_MANAGEMENT_SOURCE=yml` to manage the same configuration in
 `CONFIG_PATH`. The `notifications` section becomes required. Invalid URLs,
 unknown fields/variables, invalid label names and malformed templates prevent
 startup. The UI shows the configuration read-only and API writes return `403`.

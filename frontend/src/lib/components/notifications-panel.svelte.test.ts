@@ -47,7 +47,7 @@ function render(value = view) {
 }
 it('locks configuration in YAML mode while allowing a preview', () => {
   render({ ...view, source: 'yaml' });
-  expect(target.textContent).toContain('Restart Soika');
+  expect(target.textContent).toContain('Managed through YAML');
   expect(target.querySelector<HTMLInputElement>('#alertmanager-url')!.disabled).toBe(true);
   expect(target.querySelector<HTMLTextAreaElement>('#alertmanager-labels')!.disabled).toBe(true);
   expect(
@@ -99,24 +99,20 @@ it.each([
   }
 );
 
-it.each(['en', 'ru'] as const)(
-  'sends a test in %s using saved settings in YAML mode',
-  async (language) => {
-    setLocale(language);
-    vi.mocked(api.notifications.test).mockResolvedValue({ ok: true });
-    render({
-      ...view,
-      source: 'yaml',
-      config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
-    });
-    const button = [...target.querySelectorAll('button')].find((b) =>
-      b.textContent?.includes(language === 'ru' ? 'Отправить тестовый' : 'Send test alert')
-    )!;
-    expect(button.disabled).toBe(false);
-    button.click();
-    await vi.waitFor(() => expect(api.notifications.test).toHaveBeenCalledWith(language));
-  }
-);
+it.each(['en', 'ru'] as const)('sends a test in %s using saved settings', async (language) => {
+  setLocale(language);
+  vi.mocked(api.notifications.test).mockResolvedValue({ ok: true });
+  render({
+    ...view,
+    config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
+  });
+  const button = [...target.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes(language === 'ru' ? 'Отправить тестовый' : 'Send test alert')
+  )!;
+  expect(button.disabled).toBe(false);
+  button.click();
+  await vi.waitFor(() => expect(api.notifications.test).toHaveBeenCalledWith(language));
+});
 it('hides the test action when the channel is disabled', () => {
   render();
   expect(target.textContent).not.toContain('Send test alert');
@@ -138,7 +134,22 @@ it('disables testing with unsaved settings and displays delivery failures', asyn
   vi.mocked(api.notifications.test).mockRejectedValue(new Error('delivery failed'));
   button.click();
   await vi.waitFor(() =>
-    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Failed to send test alert')
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+      'Failed to send test alert'
+    )
   );
   await vi.waitFor(() => expect(button.disabled).toBe(false));
+});
+
+it('disables the test action in YAML mode', () => {
+  render({
+    ...view,
+    source: 'yaml',
+    config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
+  });
+  const button = [...target.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Send test alert')
+  )!;
+  expect(button.disabled).toBe(true);
+  expect(target.textContent).toContain('Managed through YAML');
 });

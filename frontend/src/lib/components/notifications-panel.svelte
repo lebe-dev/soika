@@ -206,7 +206,11 @@
           >{$t('notifications_preview')}</Button
         >
         {#if view.config.alertmanager.enabled}
-          <Button variant="outline" onclick={sendTest} disabled={saving || sendingTest || dirty}>
+          <Button
+            variant="outline"
+            onclick={sendTest}
+            disabled={readonly || saving || sendingTest || dirty}
+          >
             {sendingTest ? $t('notifications_test_sending') : $t('notifications_test')}
           </Button>
         {/if}

@@ -524,7 +524,7 @@
   "notifications_tab": "Уведомления",
   "notifications_alertmanager_description": "Отправка алертов в Prometheus Alertmanager для всех проектов.",
   "notifications_lifecycle": "Новая ошибка или регрессия открывает алерт. Открытые алерты обновляются каждую минуту; resolve, mute или удаление закрывает алерт в течение минуты. При включении канала старые ошибки не отправляются.",
-  "notifications_yaml_readonly": "Настраивается в секции notifications файла CONFIG_PATH. Для применения изменений YAML перезапустите Soika.",
+  "notifications_yaml_readonly": "Конфигурация через YAML",
   "notifications_alertmanager_enabled": "Включить Alertmanager",
   "notifications_base_url": "Базовый URL Alertmanager",
   "notifications_identity": "Labels issue_id и project_id добавляются автоматически. Labels определяют идентичность алерта: изменяющиеся значения указывайте в annotations.",

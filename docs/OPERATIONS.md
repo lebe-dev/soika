@@ -198,7 +198,7 @@ is disabled in configuration, and no Alertmanager requests are sent.
 
 **Admin → Notifications** also configures the Alertmanager channel and its label/
 annotation templates. Choose UI or YAML ownership with
-`NOTIFICATION_MANAGEMENT_SOURCE=ui|yaml` (default `ui`), independently of projects
+`SERVICE_MANAGEMENT_SOURCE=ui|yml` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
@@ -540,7 +540,7 @@ file status and the last synchronization report.
 | ui | yaml | Create projects in the UI within file-defined teams |
 | yaml | yaml | Projects, teams and memberships come from the file |
 
-`NOTIFICATION_MANAGEMENT_SOURCE` independently selects `ui` or `yaml` for notification settings; see [Notifications](NOTIFICATIONS.md).
+`SERVICE_MANAGEMENT_SOURCE` independently selects `ui` or `yml` for notification settings; see [Notifications](NOTIFICATIONS.md).
 
 `CONFIG_PATH` defaults to `/etc/soika/config.yaml`. A readable, valid file is
 required whenever either source is `yaml`. `version: 1` and the section for each

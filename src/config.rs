@@ -913,7 +913,19 @@ fn management_from_env() -> Result<crate::domain::config_file::ManagementSetting
         path: env_or("CONFIG_PATH", "/etc/soika/config.yaml"),
         project_source: source("PROJECT_MANAGEMENT_SOURCE")?,
         team_source: source("TEAM_MANAGEMENT_SOURCE")?,
-        notification_source: source("NOTIFICATION_MANAGEMENT_SOURCE")?,
+        notification_source: match std::env::var("SERVICE_MANAGEMENT_SOURCE") {
+            Ok(value) => match value.as_str() {
+                "ui" => ManagementSource::Ui,
+                "yml" | "yaml" => ManagementSource::Yaml,
+                _ => {
+                    return Err(Error::validation(
+                        "SERVICE_MANAGEMENT_SOURCE must be ui or yml",
+                    ));
+                }
+            },
+            Err(std::env::VarError::NotPresent) => source("NOTIFICATION_MANAGEMENT_SOURCE")?,
+            Err(_) => return Err(Error::validation("invalid SERVICE_MANAGEMENT_SOURCE")),
+        },
         project_orphan_policy: policy("PROJECT_ORPHAN_POLICY")?,
         team_orphan_policy: policy("TEAM_ORPHAN_POLICY")?,
     })
@@ -1219,6 +1231,54 @@ mod tests {
         ] {
             unsafe {
                 match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn service_management_source_defaults_aliases_and_precedence() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let keys = [
+            "SERVICE_MANAGEMENT_SOURCE",
+            "NOTIFICATION_MANAGEMENT_SOURCE",
+        ];
+        let previous = keys.map(std::env::var_os);
+        unsafe {
+            for key in keys {
+                std::env::remove_var(key);
+            }
+        }
+        assert_eq!(
+            management_from_env().unwrap().notification_source,
+            crate::domain::config_file::ManagementSource::Ui
+        );
+        unsafe {
+            std::env::set_var("NOTIFICATION_MANAGEMENT_SOURCE", "yaml");
+        }
+        assert_eq!(
+            management_from_env().unwrap().notification_source,
+            crate::domain::config_file::ManagementSource::Yaml
+        );
+        for (value, expected) in [
+            ("ui", crate::domain::config_file::ManagementSource::Ui),
+            ("yml", crate::domain::config_file::ManagementSource::Yaml),
+            ("yaml", crate::domain::config_file::ManagementSource::Yaml),
+        ] {
+            unsafe {
+                std::env::set_var("SERVICE_MANAGEMENT_SOURCE", value);
+            }
+            assert_eq!(management_from_env().unwrap().notification_source, expected);
+        }
+        unsafe {
+            std::env::set_var("SERVICE_MANAGEMENT_SOURCE", "invalid");
+        }
+        assert!(management_from_env().is_err());
+        for (key, value) in keys.into_iter().zip(previous) {
+            unsafe {
+                match value {
                     Some(value) => std::env::set_var(key, value),
                     None => std::env::remove_var(key),
                 }

@@ -524,7 +524,7 @@
   "notifications_tab": "Notifications",
   "notifications_alertmanager_description": "Send issue alerts to Prometheus Alertmanager. Applies to every project.",
   "notifications_lifecycle": "New issues and regressions fire an alert. Open alerts refresh every minute; resolving, muting or deleting an issue closes its alert within a minute. Existing issues are not sent when enabling the channel.",
-  "notifications_yaml_readonly": "Managed through the notifications section in CONFIG_PATH. Restart Soika to apply YAML changes.",
+  "notifications_yaml_readonly": "Managed through YAML",
   "notifications_alertmanager_enabled": "Enable Alertmanager",
   "notifications_base_url": "Alertmanager base URL",
   "notifications_identity": "issue_id and project_id labels are added automatically. Labels define alert identity: keep changing values in annotations.",

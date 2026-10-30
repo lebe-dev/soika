@@ -470,6 +470,14 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
         StatusCode::FORBIDDEN
     );
     Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Yaml;
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert!(receiver.snapshot().is_empty());
+    Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Ui;
     for (locale, title) in [
         ("ru", "Тестовое уведомление Soika"),
         ("en", "Soika test notification"),
