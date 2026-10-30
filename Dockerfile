@@ -37,6 +37,7 @@ RUN set -e; \
 
 # Build the SPA. adapter-static writes to ../web/dist (see svelte.config.js),
 # so the output lands at /build/web/dist for the Rust stage to embed.
+ARG GIT_COMMIT=""
 RUN yarn build
 
 # ---------------------------------------------------------------------------

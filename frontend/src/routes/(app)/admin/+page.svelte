@@ -507,7 +507,9 @@
   </Tabs.Root>
 
   <div class="flex items-center justify-center gap-2 border-t pt-4 select-none">
-    <span class="text-muted-foreground/75 text-xs">v{version}</span>
+    <span class="text-muted-foreground/75 text-xs"
+      >v{version}{__GIT_COMMIT__ ? ` (${__GIT_COMMIT__})` : ''}</span
+    >
     <span class="text-muted-foreground/50 text-xs">|</span>
     <a
       href="https://github.com/lebe-dev/soika"

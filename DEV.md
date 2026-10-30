@@ -20,6 +20,11 @@ just build           # build the Rust workspace
 just dist            # build frontend assets embedded in the binary
 ```
 
+The frontend embeds the current short Git commit alongside the version in the
+admin page. The image build recipes pass it as the `GIT_COMMIT` Docker build
+argument; direct Docker builds can supply the same argument. Builds without Git
+metadata or this argument omit the hash.
+
 The backend defaults to `sqlite://soika.db`. On first run, open `/setup` to
 create the initial Owner account. For the frontend-only dev server, configure
 its API proxy in `frontend/vite.config.ts` as needed for your local backend.

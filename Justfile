@@ -161,7 +161,7 @@ clean:
     cargo clean
 
 build-image: test && lint
-    docker build --progress=plain --platform linux/amd64 -t {{ imageName }}:{{ version }} .
+    docker build --progress=plain --platform linux/amd64 --build-arg GIT_COMMIT={{ gitHash }} -t {{ imageName }}:{{ version }} .
 
 push-image:
     docker push {{ imageName }}:{{ version }}
@@ -169,7 +169,7 @@ push-image:
 release: build-image && push-image
 
 build-image-dev: test && lint
-    docker build --progress=plain --platform linux/amd64 -t {{ imageName }}:{{ version }}-{{ gitHash }} .
+    docker build --progress=plain --platform linux/amd64 --build-arg GIT_COMMIT={{ gitHash }} -t {{ imageName }}:{{ version }}-{{ gitHash }} .
 
 push-image-dev:
     docker push {{ imageName }}:{{ version }}-{{ gitHash }}
