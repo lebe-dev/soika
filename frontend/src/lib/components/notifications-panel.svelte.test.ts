@@ -23,7 +23,7 @@ const view: NotificationView = {
   config: {
     alertmanager: {
       enabled: false,
-      url: '',
+      url: 'http://alertmanager:9093',
       labels: { alertname: 'SoikaIssue' },
       annotations: { summary: '{{ title }}' }
     }
@@ -76,7 +76,11 @@ it('rejects invalid JSON before making an API call', async () => {
 });
 
 it('shows the environment default without persisting an override', () => {
-  render({ ...view, default_url: 'http://alertmanager:9093' });
+  render({
+    ...view,
+    default_url: 'http://alertmanager:9093',
+    config: { ...view.config, alertmanager: { ...view.config.alertmanager, url: '' } }
+  });
   const input = target.querySelector<HTMLInputElement>('#alertmanager-url')!;
   expect(input.value).toBe('');
   expect(input.placeholder).toBe('http://alertmanager:9093');
@@ -113,11 +117,14 @@ it.each(['en', 'ru'] as const)('sends a test in %s using saved settings', async 
   button.click();
   await vi.waitFor(() => expect(api.notifications.test).toHaveBeenCalledWith(language));
 });
-it('hides the test action when the channel is disabled', () => {
+it('allows a test when the channel is disabled', () => {
   render();
-  expect(target.textContent).not.toContain('Send test alert');
+  expect(
+    [...target.querySelectorAll('button')].find((b) => b.textContent?.includes('Send test alert'))
+      ?.disabled
+  ).toBe(false);
 });
-it('disables testing with unsaved settings and displays delivery failures', async () => {
+it('allows testing with unsaved settings and displays delivery failures', async () => {
   render({
     ...view,
     config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
@@ -125,12 +132,10 @@ it('disables testing with unsaved settings and displays delivery failures', asyn
   const button = [...target.querySelectorAll('button')].find((b) =>
     b.textContent?.includes('Send test alert')
   )!;
-  const input = target.querySelector<HTMLInputElement>('#alertmanager-url')!;
-  input.value = 'http://changed:9093';
+  const input = target.querySelector<HTMLTextAreaElement>('#alertmanager-labels')!;
+  input.value = '{"alertname":"Changed"}';
   flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
-  expect(button.disabled).toBe(true);
-  const reset = [...target.querySelectorAll('button')].find((b) => b.textContent === 'Reset')!;
-  flushSync(() => reset.click());
+  expect(button.disabled).toBe(false);
   vi.mocked(api.notifications.test).mockRejectedValue(new Error('delivery failed'));
   button.click();
   await vi.waitFor(() =>
@@ -141,7 +146,23 @@ it('disables testing with unsaved settings and displays delivery failures', asyn
   await vi.waitFor(() => expect(button.disabled).toBe(false));
 });
 
-it('disables the test action in YAML mode', () => {
+it('requires a saved URL in UI mode even when an environment fallback exists', () => {
+  render({
+    ...view,
+    default_url: 'http://fallback:9093',
+    config: { ...view.config, alertmanager: { ...view.config.alertmanager, url: '' } }
+  });
+  const button = [...target.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Send test alert')
+  )!;
+  expect(button.disabled).toBe(true);
+  const input = target.querySelector<HTMLInputElement>('#alertmanager-url')!;
+  input.value = 'http://new:9093';
+  flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
+  expect(button.disabled).toBe(true);
+});
+
+it('allows the test action in YAML mode', () => {
   render({
     ...view,
     source: 'yaml',
@@ -150,11 +171,11 @@ it('disables the test action in YAML mode', () => {
   const button = [...target.querySelectorAll('button')].find((b) =>
     b.textContent?.includes('Send test alert')
   )!;
-  expect(button.disabled).toBe(true);
+  expect(button.disabled).toBe(false);
   expect(target.textContent).toContain('Managed through YAML');
 });
 
-it('locks notification settings and testing in env mode with a concise explanation', () => {
+it('locks notification settings while allowing testing in env mode', () => {
   render({
     ...view,
     source: 'env',
@@ -165,6 +186,6 @@ it('locks notification settings and testing in env mode with a concise explanati
   expect(
     [...target.querySelectorAll('button')].find((b) => b.textContent?.includes('Send test alert'))!
       .disabled
-  ).toBe(true);
+  ).toBe(false);
   expect(target.textContent).not.toContain('Save changes');
 });

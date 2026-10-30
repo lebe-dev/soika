@@ -37,14 +37,16 @@ Disabling the channel through UI/YAML while the feature remains enabled still
 sends resolved payloads as described below. Configuration edits cannot enable
 the global feature flag.
 
-Owners and Managers can use **Send test alert** when the integration is enabled,
-in UI mode. YAML mode disables the test action, including through the API. Save pending UI changes first. The test uses the saved
-endpoint (including the environment fallback) and fixed English or Russian text
+Owners and Managers can use **Send test alert** whenever the global feature flag
+is enabled, regardless of the management source or channel enabled state. The test uses the saved
+endpoint and fixed English or Russian text
 matching the interface language, independently of notification templates. It sends
 `alertname=SoikaTestAlert`, `severity=info`, `test=true` and the Soika base URL as
 `instance`. It creates no issue or refresh record and expires after five minutes.
 Success means Alertmanager accepted the request; downstream delivery follows its
 routing, grouping and silence rules. Transport failures are shown in the UI.
+In UI mode, enter and save an explicit Alertmanager URL before testing. In env
+and YAML modes the configured URL or environment fallback is used.
 
 The channel is also disabled by default. Its configuration applies to every project,
 independently of Email and Webhooks. Enabling it does not send old issues.
@@ -105,13 +107,13 @@ restart to apply changes. A missing configuration file leaves project labels emp
 when projects and teams are managed in the UI. The `notifications` section's other
 fields are ignored in env mode.
 The UI shows “Configured through environment variables”; notification editing,
-test sends and organization-name changes are blocked in the UI and API, including
+and organization-name changes are blocked in the UI and API, including
 for Owners. Restart Soika to apply environment changes. `yaml` and `yml` are not
 valid values for this variable. Project and team management remain independent.
 
 Legacy `NOTIFICATION_MANAGEMENT_SOURCE=yaml` remains supported only when
 `SERVICE_MANAGEMENT_SOURCE` is unset. It loads the following configuration from
-`CONFIG_PATH` at startup; notification editing and test sends are blocked.
+`CONFIG_PATH` at startup; notification editing is blocked.
 
 ```yaml
 version: 1

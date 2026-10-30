@@ -205,19 +205,16 @@
         <Button variant="outline" onclick={showPreview} disabled={saving || previewing}
           >{$t('notifications_preview')}</Button
         >
-        {#if view.config.alertmanager.enabled}
-          <Button
-            variant="outline"
-            onclick={sendTest}
-            disabled={readonly || saving || sendingTest || dirty}
-          >
-            {sendingTest ? $t('notifications_test_sending') : $t('notifications_test')}
-          </Button>
-        {/if}
+        <Button
+          variant="outline"
+          onclick={sendTest}
+          disabled={sendingTest ||
+            (!readonly && (!url.trim() || url.trim() !== view.config.alertmanager.url.trim()))}
+        >
+          {sendingTest ? $t('notifications_test_sending') : $t('notifications_test')}
+        </Button>
       </div>
-      {#if view.config.alertmanager.enabled && !readonly}
-        <p class="text-muted-foreground text-sm">{$t('notifications_test_help')}</p>
-      {/if}
+      <p class="text-muted-foreground text-sm">{$t('notifications_test_help')}</p>
       {#if preview}<pre
           class="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs">{preview}</pre>{/if}
     {/if}

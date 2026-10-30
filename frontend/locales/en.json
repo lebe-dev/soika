@@ -546,5 +546,5 @@
   "notifications_test_sending": "Sending…",
   "notifications_test_sent": "Alertmanager accepted the test alert",
   "notifications_test_failed": "Failed to send test alert",
-  "notifications_test_help": "Uses saved settings and fixed test text in your interface language. Save changes before testing. The alert expires after five minutes."
+  "notifications_test_help": "Uses the saved endpoint and fixed test text in your interface language. In UI mode, enter and save the URL before testing. The alert expires after five minutes."
 }

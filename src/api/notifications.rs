@@ -87,11 +87,19 @@ pub async fn test_alert(
     Json(request): Json<TestAlertRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_feature(&state)?;
-    if state.config.management.service_source == ManagementSource::Env
-        || state.config.management.notification_source != ManagementSource::Ui
+    if state.config.management.service_source == ManagementSource::Ui
+        && state.config.management.notification_source == ManagementSource::Ui
+        && state
+            .notifications
+            .get()
+            .await?
+            .alertmanager
+            .url
+            .trim()
+            .is_empty()
     {
         return Err(
-            Error::Forbidden("notifications are managed by external configuration".into()).into(),
+            Error::validation("save the Alertmanager URL before sending a test alert").into(),
         );
     }
     crate::alertmanager::send_test(&state, request.locale).await?;

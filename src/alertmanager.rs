@@ -256,17 +256,11 @@ pub async fn send_test(state: &AppState, locale: crate::domain::Locale) -> Resul
     if !state.config.notifications_alertmanager_enabled {
         return Err(Error::Forbidden("Alertmanager feature is disabled".into()));
     }
-    let config = state
-        .notifications
-        .get()
-        .await?
+    let mut settings = state.notifications.get().await?;
+    settings.alertmanager.enabled = true;
+    let config = settings
         .effective(state.config.alertmanager_url.as_deref())?
         .alertmanager;
-    if !config.enabled {
-        return Err(Error::Forbidden(
-            "Alertmanager integration is disabled".into(),
-        ));
-    }
     let (summary, description) = match locale {
         crate::domain::Locale::En => (
             "Soika test notification",

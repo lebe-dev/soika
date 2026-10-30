@@ -33,7 +33,7 @@ backup. Record any values you may want to restore before switching.
 
 These settings become read-only in the UI and API, including for Owners and
 Managers. The UI displays “Configured through environment variables”. The
-Alertmanager test-send action is also blocked. Every subsequent startup in
+Alertmanager test sends remain available when the feature flag is enabled. Every subsequent startup in
 `env` mode reapplies the environment values.
 
 ### Switching from `env` to `ui`

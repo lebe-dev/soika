@@ -502,15 +502,39 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
             .0,
         StatusCode::FORBIDDEN
     );
+    let mut config = db.notifications.get().await.unwrap();
+    config.alertmanager.url.clear();
+    db.notifications.set(&config).await.unwrap();
+    Arc::make_mut(&mut db.config).alertmanager_url = Some(receiver.url.clone());
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
     Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Yaml;
     assert_eq!(
         request(&db, InstanceRole::Manager, "POST", path, body.clone())
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::OK
     );
-    assert!(receiver.snapshot().is_empty());
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    let mut config = db.notifications.get().await.unwrap();
+    config.alertmanager.enabled = false;
+    db.notifications.set(&config).await.unwrap();
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", path, body.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    config.alertmanager.enabled = true;
+    db.notifications.set(&config).await.unwrap();
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Ui;
     Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Ui;
+    config.alertmanager.url = receiver.url.clone();
+    db.notifications.set(&config).await.unwrap();
     for (locale, title) in [
         ("ru", "Тестовое уведомление Soika"),
         ("en", "Soika test notification"),
@@ -543,11 +567,12 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
     let mut config = db.notifications.get().await.unwrap();
     config.alertmanager.enabled = false;
     db.notifications.set(&config).await.unwrap();
+    receiver.fail.store(false, Ordering::SeqCst);
     assert_eq!(
         request(&db, InstanceRole::Owner, "POST", path, body.clone())
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::OK
     );
     Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = false;
     assert_eq!(
@@ -556,7 +581,7 @@ async fn notifications_test_alert_permissions_localization_and_failures() {
             .0,
         StatusCode::FORBIDDEN
     );
-    assert_eq!(receiver.snapshot().len(), 3);
+    assert_eq!(receiver.snapshot().len(), 6);
 }
 
 #[tokio::test]
