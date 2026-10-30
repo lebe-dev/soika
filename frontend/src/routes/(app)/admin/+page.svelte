@@ -33,6 +33,7 @@
   import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
   import type { PageData } from './$types';
+  import { page } from '$app/state';
 
   // Admin — service settings, users, and teams overview.
   // Visible to instance managers (Owner | Manager); guarded in +page.ts.
@@ -227,22 +228,24 @@
     {/snippet}
   </PageHeader>
 
-  <Tabs.Root value="settings">
+  {@const routeTab = page.url.pathname.split('/')[2]}
+  {@const activeTab = routeTab === 'auth' ? 'authentication' : routeTab ?? 'settings'}
+  <Tabs.Root value={activeTab}>
     <Tabs.List>
-      <Tabs.Trigger value="settings">{$t('service_settings')}</Tabs.Trigger>
+      <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="notifications">{$t('notifications_tab')}</Tabs.Trigger>
+      <Tabs.Trigger value="notifications"><a href="/admin/notifications">{$t('notifications_tab')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="authentication">{$t('authentication')}</Tabs.Trigger>
+      <Tabs.Trigger value="authentication"><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="users">
+      <Tabs.Trigger value="users"><a href="/admin/users">
         {$t('users')}{data.users.length})
         {#if pendingCount > 0}
           <Badge variant="default" class="ml-1.5">{pendingCount} {$t('pending')}</Badge>
         {/if}
-      </Tabs.Trigger>
+      </a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="teams">{$t('teams_b2ba35')}{data.teams.length})</Tabs.Trigger>
+      <Tabs.Trigger value="teams"><a href="/admin/teams">{$t('teams_b2ba35')}{data.teams.length})</a></Tabs.Trigger>
     </Tabs.List>
 
     <Tabs.Content value="authentication">
