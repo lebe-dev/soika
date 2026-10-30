@@ -23,6 +23,8 @@ envs:
   - name: NOTIFICATION_MANAGEMENT_SOURCE
     value: "ui"
   # Default URL; an explicit URL in UI/YAML takes precedence.
+  # Base URL only, e.g. https://somehost.com/ or https://somehost.com/alertmanager/.
+  # Soika appends /api/v2/alerts automatically; do not include that endpoint.
   - name: ALERTMANAGER_URL
     value: ""
   - name: CONFIG_PATH
@@ -164,6 +166,8 @@ configFile:
     notifications:
       alertmanager:
         enabled: false
+        # Base URL only; Soika appends /api/v2/alerts automatically.
+        # Empty uses ALERTMANAGER_URL from the environment.
         url: ""
         labels:
           alertname: SoikaIssue
