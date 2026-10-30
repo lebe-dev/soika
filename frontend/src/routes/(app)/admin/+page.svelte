@@ -236,18 +236,26 @@
     <Tabs.List>
       <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="notifications"><a href="/admin/notifications">{$t('notifications_tab')}</a></Tabs.Trigger>
+      <Tabs.Trigger value="notifications"
+        ><a href="/admin/notifications">{$t('notifications_tab')}</a></Tabs.Trigger
+      >
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="authentication"><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger>
+      <Tabs.Trigger value="authentication"
+        ><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger
+      >
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="users"><a href="/admin/users">
-        {$t('users')}{data.users.length})
-        {#if pendingCount > 0}
-          <Badge variant="default" class="ml-1.5">{pendingCount} {$t('pending')}</Badge>
-        {/if}
-      </a></Tabs.Trigger>
+      <Tabs.Trigger value="users"
+        ><a href="/admin/users">
+          {$t('users')}{data.users.length})
+          {#if pendingCount > 0}
+            <Badge variant="default" class="ml-1.5">{pendingCount} {$t('pending')}</Badge>
+          {/if}
+        </a></Tabs.Trigger
+      >
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="teams"><a href="/admin/teams">{$t('teams_b2ba35')}{data.teams.length})</a></Tabs.Trigger>
+      <Tabs.Trigger value="teams"
+        ><a href="/admin/teams">{$t('teams_b2ba35')}{data.teams.length})</a></Tabs.Trigger
+      >
     </Tabs.List>
 
     <Tabs.Content value="authentication">
