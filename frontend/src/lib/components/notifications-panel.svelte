@@ -105,87 +105,94 @@
 <Card.Root>
   <Card.Header>
     <Card.Title>Alertmanager</Card.Title>
-    <Card.Description>{$t('notifications_alertmanager_description')}</Card.Description>
+    {#if view.feature_enabled}<Card.Description
+        >{$t('notifications_alertmanager_description')}</Card.Description
+      >{/if}
   </Card.Header>
   <Card.Content class="space-y-4">
-    <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
-    {#if readonly}<p class="rounded-md border p-3 text-sm">
-        {$t('notifications_yaml_readonly')}
-      </p>{/if}
-    <div class="flex items-center justify-between gap-4">
-      <span class="text-sm font-medium">{$t('notifications_alertmanager_enabled')}</span>
-      <Button
-        variant={enabled ? 'default' : 'outline'}
-        size="sm"
-        aria-pressed={enabled}
-        disabled={readonly || saving}
-        onclick={() => (enabled = !enabled)}>{enabled ? $t('enabled') : $t('disabled')}</Button
-      >
-    </div>
-    <div class="grid gap-2">
-      <label for="alertmanager-url" class="text-sm font-medium"
-        >{$t('notifications_base_url')}</label
-      >
-      <Input
-        id="alertmanager-url"
-        type="url"
-        placeholder={view.default_url || 'http://alertmanager:9093'}
-        bind:value={url}
-        disabled={readonly || saving}
-      />
-    </div>
-    {#if view.default_url}<p class="text-muted-foreground text-sm">
-        {$t('notifications_default_url', { values: { url: view.default_url } })}
-      </p>{/if}
-    <p class="text-muted-foreground text-sm">{$t('notifications_identity')}</p>
-    <div class="grid gap-4 lg:grid-cols-2">
-      <div class="grid gap-2">
-        <label for="alertmanager-labels" class="text-sm font-medium"
-          >{$t('notifications_labels')}</label
-        >
-        <textarea
-          id="alertmanager-labels"
-          class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
-          spellcheck="false"
-          bind:value={labels}
+    {#if !view.feature_enabled}
+      <p class="text-muted-foreground text-sm">{$t('notifications_feature_disabled')}</p>
+    {:else}
+      <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
+      {#if readonly}<p class="rounded-md border p-3 text-sm">
+          {$t('notifications_yaml_readonly')}
+        </p>{/if}
+      <div class="flex items-center justify-between gap-4">
+        <span class="text-sm font-medium">{$t('notifications_alertmanager_enabled')}</span>
+        <Button
+          variant={enabled ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={enabled}
           disabled={readonly || saving}
-        ></textarea>
+          onclick={() => (enabled = !enabled)}>{enabled ? $t('enabled') : $t('disabled')}</Button
+        >
       </div>
       <div class="grid gap-2">
-        <label for="alertmanager-annotations" class="text-sm font-medium"
-          >{$t('notifications_annotations')}</label
+        <label for="alertmanager-url" class="text-sm font-medium"
+          >{$t('notifications_base_url')}</label
         >
-        <textarea
-          id="alertmanager-annotations"
-          class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
-          spellcheck="false"
-          bind:value={annotations}
+        <Input
+          id="alertmanager-url"
+          type="url"
+          placeholder={view.default_url || 'http://alertmanager:9093'}
+          bind:value={url}
           disabled={readonly || saving}
-        ></textarea>
+        />
       </div>
-    </div>
-    <details class="rounded-md border p-3">
-      <summary class="cursor-pointer text-sm font-medium">{$t('notifications_variables')}</summary>
-      <p class="text-muted-foreground mt-2 text-sm">{$t('notifications_template_help')}</p>
-      <div class="mt-2 flex flex-wrap gap-2">
-        {#each view.variables as variable}<code class="bg-muted rounded px-2 py-1 text-xs"
-            >{'{{ ' + variable + ' }}'}</code
-          >{/each}
+      {#if view.default_url}<p class="text-muted-foreground text-sm">
+          {$t('notifications_default_url', { values: { url: view.default_url } })}
+        </p>{/if}
+      <p class="text-muted-foreground text-sm">{$t('notifications_identity')}</p>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <div class="grid gap-2">
+          <label for="alertmanager-labels" class="text-sm font-medium"
+            >{$t('notifications_labels')}</label
+          >
+          <textarea
+            id="alertmanager-labels"
+            class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
+            spellcheck="false"
+            bind:value={labels}
+            disabled={readonly || saving}
+          ></textarea>
+        </div>
+        <div class="grid gap-2">
+          <label for="alertmanager-annotations" class="text-sm font-medium"
+            >{$t('notifications_annotations')}</label
+          >
+          <textarea
+            id="alertmanager-annotations"
+            class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
+            spellcheck="false"
+            bind:value={annotations}
+            disabled={readonly || saving}
+          ></textarea>
+        </div>
       </div>
-    </details>
-    {#if formError}<p role="alert" class="text-destructive text-sm">{formError}</p>{/if}
-    <div class="flex flex-wrap gap-2">
-      {#if !readonly}
-        <Button onclick={save} disabled={saving || !dirty}
-          >{saving ? $t('saving') : $t('save_changes')}</Button
+      <details class="rounded-md border p-3">
+        <summary class="cursor-pointer text-sm font-medium">{$t('notifications_variables')}</summary
         >
-        <Button variant="ghost" onclick={reset} disabled={saving || !dirty}>{$t('reset')}</Button>
-      {/if}
-      <Button variant="outline" onclick={showPreview} disabled={saving || previewing}
-        >{$t('notifications_preview')}</Button
-      >
-    </div>
-    {#if preview}<pre
-        class="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs">{preview}</pre>{/if}
+        <p class="text-muted-foreground mt-2 text-sm">{$t('notifications_template_help')}</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {#each view.variables as variable}<code class="bg-muted rounded px-2 py-1 text-xs"
+              >{'{{ ' + variable + ' }}'}</code
+            >{/each}
+        </div>
+      </details>
+      {#if formError}<p role="alert" class="text-destructive text-sm">{formError}</p>{/if}
+      <div class="flex flex-wrap gap-2">
+        {#if !readonly}
+          <Button onclick={save} disabled={saving || !dirty}
+            >{saving ? $t('saving') : $t('save_changes')}</Button
+          >
+          <Button variant="ghost" onclick={reset} disabled={saving || !dirty}>{$t('reset')}</Button>
+        {/if}
+        <Button variant="outline" onclick={showPreview} disabled={saving || previewing}
+          >{$t('notifications_preview')}</Button
+        >
+      </div>
+      {#if preview}<pre
+          class="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs">{preview}</pre>{/if}
+    {/if}
   </Card.Content>
 </Card.Root>

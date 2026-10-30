@@ -723,6 +723,7 @@ mod tests {
             retention_cron: "0 */15 * * * *".into(),
             // No SMTP: the mailer is disabled, proving the webhook fires
             // independently of SMTP configuration.
+            notifications_alertmanager_enabled: false,
             alertmanager_url: None,
             webhooks_enabled: true,
             smtp_enabled: false,

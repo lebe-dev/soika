@@ -25,7 +25,19 @@ Soika appends `/api/v2/alerts`. HTTP and HTTPS are supported, with normal certif
 verification. URL credentials, query strings and fragments are rejected; this
 version supports endpoints without HTTP authentication. Redirects are not followed.
 
-Alertmanager is disabled by default. Its configuration applies to every project,
+The feature is disabled by default: set
+`NOTIFICATIONS_ALERTMANAGER_ENABLED=true` and restart Soika before enabling the
+channel in UI/YAML. This environment feature flag takes precedence over
+`alertmanager.enabled`. When false, **Admin → Notifications** displays a compact
+“Disabled in configuration” message; editing and preview API calls return `403`.
+Soika sends no Alertmanager requests, including refreshes and resolutions, while
+the flag is off. Previously sent alerts expire after their five-minute TTL;
+saved records are retained and reconciled when the feature is enabled again.
+Disabling the channel through UI/YAML while the feature remains enabled still
+sends resolved payloads as described below. Configuration edits cannot enable
+the global feature flag.
+
+The channel is also disabled by default. Its configuration applies to every project,
 independently of Email and Webhooks. Enabling it does not send old issues.
 
 - A new issue or regression sends a firing alert, unless the project or issue is muted.

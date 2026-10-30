@@ -97,7 +97,9 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         Some(config) => config.clone(),
         None => state.notifications.get().await?,
     };
-    notifications.effective(state.config.alertmanager_url.as_deref())?;
+    if state.config.notifications_alertmanager_enabled {
+        notifications.effective(state.config.alertmanager_url.as_deref())?;
+    }
     let mut report = state
         .config_sync
         .apply(&desired, settings, state.config.default_events_retention)

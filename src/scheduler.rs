@@ -344,6 +344,7 @@ mod tests {
             default_events_retention,
             default_retention_days,
             retention_cron: "0 */15 * * * *".into(),
+            notifications_alertmanager_enabled: false,
             alertmanager_url: None,
             webhooks_enabled: false,
             smtp_enabled: false,

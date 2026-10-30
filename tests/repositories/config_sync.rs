@@ -545,6 +545,7 @@ async fn notification_yaml_sync_is_independent_atomic_and_preserved_when_returni
 async fn notification_yaml_startup_uses_environment_default_and_rejects_missing_effective_url() {
     let file = ConfigFixture::new("version: 1\nnotifications: {alertmanager: {enabled: true}}\n");
     let mut state = test_db().await;
+    std::sync::Arc::make_mut(&mut state.config).notifications_alertmanager_enabled = true;
     file.configure(
         &mut state,
         ManagementSettings {
@@ -580,4 +581,29 @@ async fn notification_yaml_startup_uses_environment_default_and_rejects_missing_
             .url,
         "http://alertmanager:9093"
     );
+}
+
+#[tokio::test]
+async fn notification_feature_disabled_allows_startup_without_effective_url() {
+    let file = ConfigFixture::new("version: 1\nnotifications: {alertmanager: {enabled: true}}\n");
+    let mut state = test_db().await;
+    file.configure(
+        &mut state,
+        ManagementSettings {
+            notification_source: ManagementSource::Yaml,
+            ..Default::default()
+        },
+    );
+    assert!(!state.config.notifications_alertmanager_enabled);
+    let state = soika::config_sync::synchronize(state).await.unwrap();
+    assert!(
+        state
+            .notifications
+            .get()
+            .await
+            .unwrap()
+            .alertmanager
+            .enabled
+    );
+    soika::alertmanager::refresh(&state).await.unwrap();
 }

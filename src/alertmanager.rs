@@ -109,6 +109,9 @@ pub async fn notify(
     issue: &Issue,
     trigger: &str,
 ) -> Result<()> {
+    if !state.config.notifications_alertmanager_enabled {
+        return Ok(());
+    }
     let _guard = state.alertmanager.lock.lock().await;
     let config = state
         .notifications
@@ -155,6 +158,9 @@ async fn resolve(state: &AppState, active: &ActiveAlert) -> Result<()> {
 
 /// Reconcile only tracked alerts, so enabling the channel does not page on old issues.
 pub async fn refresh(state: &AppState) -> Result<()> {
+    if !state.config.notifications_alertmanager_enabled {
+        return Ok(());
+    }
     let config = state
         .notifications
         .get()

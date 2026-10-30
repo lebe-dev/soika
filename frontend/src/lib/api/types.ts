@@ -554,6 +554,7 @@ export interface NotificationConfig {
   alertmanager: AlertmanagerConfig;
 }
 export interface NotificationView {
+  feature_enabled: boolean;
   default_url?: string | null;
   source: 'ui' | 'yaml';
   config: NotificationConfig;

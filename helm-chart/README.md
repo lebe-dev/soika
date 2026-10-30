@@ -4,7 +4,7 @@ This chart deploys the single-binary Soika image with SQLite or PostgreSQL 15+.
 It uses one replica and a `Recreate` deployment strategy: the retention scheduler,
 ingestion rate limiter, and login lockout are per process. The application runs
 the selected database's migrations at startup; no migration Job is needed.
-Chart version: `0.3.0`. Default application image: `tinyops/soika:0.10.0`.
+Chart version: `0.3.1`. Default application image: `tinyops/soika:0.10.0`.
 
 ## Publishing
 
@@ -183,6 +183,10 @@ claim, по умолчанию `groups`. Без OAuth новые пользов�
 ## Notifications
 
 В **Admin → Notifications** находятся Email/SMTP, Webhooks проектов и Alertmanager.
+Для доступности Alertmanager установите `NOTIFICATIONS_ALERTMANAGER_ENABLED=true`
+в `envs` (по умолчанию `false`). При выключенном флаге UI коротко сообщает об
+отключении в конфигурации; отправка, продление и закрытие алертов заблокированы.
+Открытые алерты истекут по TTL; записи в БД сохранятся до включения флага.
 По умолчанию `NOTIFICATION_MANAGEMENT_SOURCE=ui`: URL Alertmanager и шаблоны
 labels/annotations сохраняются через UI в БД. `ALERTMANAGER_URL` в `envs` задаёт
 адрес по умолчанию: пустой URL в UI/YAML использует его, явно указанный URL
@@ -198,6 +202,8 @@ envs:
     value: "sqlite:///app/data/soika.db?mode=rwc"
   - name: BASE_URL
     value: "https://errors.example.com"
+  - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
+    value: "true"
   - name: NOTIFICATION_MANAGEMENT_SOURCE
     value: "yaml"
 configFile:

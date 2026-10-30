@@ -539,5 +539,6 @@
   "notifications_webhooks": "Webhooks проектов",
   "notifications_webhooks_help": "Включаются через WEBHOOKS_ENABLED. Адрес получателя задаётся в настройках проекта. Webhook отправляет формат уведомлений Alertmanager; канал Alertmanager выше обращается к его API.",
   "notifications_email": "Электронная почта / SMTP",
-  "notifications_default_url": "Оставьте URL пустым, чтобы использовать ALERTMANAGER_URL: {url}"
+  "notifications_default_url": "Оставьте URL пустым, чтобы использовать ALERTMANAGER_URL: {url}",
+  "notifications_feature_disabled": "Отключено в конфигурации (NOTIFICATIONS_ALERTMANAGER_ENABLED=false)."
 }

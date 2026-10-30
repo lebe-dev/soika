@@ -13,6 +13,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct NotificationView {
     pub source: ManagementSource,
+    pub feature_enabled: bool,
     pub default_url: Option<String>,
     pub config: NotificationConfig,
     pub variables: &'static [&'static str],
@@ -23,6 +24,7 @@ pub async fn get(
 ) -> Result<Json<NotificationView>, ApiError> {
     Ok(Json(NotificationView {
         source: state.config.management.notification_source,
+        feature_enabled: state.config.notifications_alertmanager_enabled,
         default_url: state.config.alertmanager_url.clone(),
         config: state.notifications.get().await?,
         variables: VARIABLES,
@@ -33,6 +35,7 @@ pub async fn update(
     State(state): State<AppState>,
     Json(config): Json<NotificationConfig>,
 ) -> Result<Json<NotificationView>, ApiError> {
+    require_feature(&state)?;
     if state.config.management.notification_source == ManagementSource::Yaml {
         return Err(
             Error::Forbidden("notifications are managed by the configuration file".into()).into(),
@@ -48,10 +51,21 @@ pub async fn preview(
     State(state): State<AppState>,
     Json(config): Json<NotificationConfig>,
 ) -> Result<Json<crate::domain::notifications::AlertmanagerAlert>, ApiError> {
+    require_feature(&state)?;
     let config = config.effective(state.config.alertmanager_url.as_deref())?;
     Ok(Json(crate::alertmanager::render_alert(
         &config.alertmanager,
         &sample_variables(),
         chrono::Utc::now(),
     )?))
+}
+
+fn require_feature(state: &AppState) -> Result<(), ApiError> {
+    if !state.config.notifications_alertmanager_enabled {
+        return Err(Error::Forbidden(
+            "Alertmanager is disabled by NOTIFICATIONS_ALERTMANAGER_ENABLED".into(),
+        )
+        .into());
+    }
+    Ok(())
 }

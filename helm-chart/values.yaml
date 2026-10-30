@@ -18,6 +18,8 @@ envs:
     value: "ui"
   - name: TEAM_MANAGEMENT_SOURCE
     value: "ui"
+  - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
+    value: "false"
   - name: NOTIFICATION_MANAGEMENT_SOURCE
     value: "ui"
   # Default URL; an explicit URL in UI/YAML takes precedence.

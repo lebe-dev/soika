@@ -192,6 +192,10 @@ team.
 
 ## Notifications
 
+Set `NOTIFICATIONS_ALERTMANAGER_ENABLED=true` to make the Alertmanager feature
+available (default `false`). When off, the Notifications tab shows that the feature
+is disabled in configuration, and no Alertmanager requests are sent.
+
 **Admin → Notifications** also configures the Alertmanager channel and its label/
 annotation templates. Choose UI or YAML ownership with
 `NOTIFICATION_MANAGEMENT_SOURCE=ui|yaml` (default `ui`), independently of projects

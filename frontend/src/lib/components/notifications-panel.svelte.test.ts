@@ -17,6 +17,7 @@ vi.mock('$lib/components/ui/sonner', () => ({ toast: { success: vi.fn(), error: 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const view: NotificationView = {
+  feature_enabled: true,
   source: 'ui',
   variables: ['title'],
   config: {
@@ -81,3 +82,19 @@ it('shows the environment default without persisting an override', () => {
   expect(input.placeholder).toBe('http://alertmanager:9093');
   expect(target.textContent).toContain('Leave the URL empty to use ALERTMANAGER_URL');
 });
+
+it.each([
+  ['en', 'Disabled in configuration'],
+  ['ru', 'Отключено в конфигурации']
+] as const)(
+  'shows a concise disabled state in %s when the feature flag is off',
+  (language, message) => {
+    setLocale(language);
+    render({ ...view, feature_enabled: false });
+    expect(target.textContent).toContain(message);
+    expect(target.textContent).toContain('NOTIFICATIONS_ALERTMANAGER_ENABLED=false');
+    expect(target.querySelector('input, textarea, button')).toBeNull();
+    expect(api.notifications.update).not.toHaveBeenCalled();
+    expect(api.notifications.preview).not.toHaveBeenCalled();
+  }
+);

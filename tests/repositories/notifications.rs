@@ -87,7 +87,7 @@ async fn setup(db: &AppState, url: &str) -> (Project, Issue) {
 }
 #[tokio::test]
 async fn notifications_lifecycle_refresh_resolve_and_regression() {
-    let db = test_db().await;
+    let db = notification_db().await;
     let receiver = Receiver::start().await;
     let (project, issue) = setup(&db, &receiver.url).await;
     alertmanager::refresh(&db).await.unwrap();
@@ -124,7 +124,7 @@ async fn notifications_lifecycle_refresh_resolve_and_regression() {
 }
 #[tokio::test]
 async fn notifications_retry_failed_delivery_and_close_snapshot_after_template_change() {
-    let db = test_db().await;
+    let db = notification_db().await;
     let receiver = Receiver::start().await;
     let (project, issue) = setup(&db, &receiver.url).await;
     receiver.fail.store(true, Ordering::SeqCst);
@@ -151,7 +151,7 @@ async fn notifications_retry_failed_delivery_and_close_snapshot_after_template_c
 }
 #[tokio::test]
 async fn notifications_respect_project_and_issue_mute_independently_of_smtp() {
-    let db = test_db().await;
+    let db = notification_db().await;
     let receiver = Receiver::start().await;
     let (mut project, mut issue) = setup(&db, &receiver.url).await;
     project.muted = true;
@@ -225,7 +225,7 @@ async fn request(
 }
 #[tokio::test]
 async fn notifications_api_authorization_yaml_guard_validation_and_preview() {
-    let mut db = test_db().await;
+    let mut db = notification_db().await;
     let path = "/api/settings/notifications";
     let config = serde_json::to_value(NotificationConfig::default()).unwrap();
     assert_eq!(
@@ -289,7 +289,7 @@ async fn notifications_api_authorization_yaml_guard_validation_and_preview() {
 
 #[tokio::test]
 async fn notifications_environment_default_ui_override_and_clear() {
-    let mut db = test_db().await;
+    let mut db = notification_db().await;
     let receiver = Receiver::start().await;
     Arc::make_mut(&mut db.config).alertmanager_url = Some(receiver.url.clone());
     let (project, issue) = setup(&db, "http://explicit:9093").await;
@@ -327,7 +327,7 @@ async fn notifications_environment_default_ui_override_and_clear() {
 
 #[tokio::test]
 async fn notifications_resume_saved_alerts_after_rebuilding_application_state() {
-    let config = (*test_db().await.config).clone();
+    let config = (*notification_db().await.config).clone();
     let pool = crate::common::test_db().await;
     let db = soika::build_state(pool.clone(), config.clone()).unwrap();
     let receiver = Receiver::start().await;
@@ -363,6 +363,92 @@ async fn notifications_resume_saved_alerts_after_rebuilding_application_state() 
     assert!(
         restarted
             .notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+async fn notification_db() -> AppState {
+    let mut db = test_db().await;
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = true;
+    db
+}
+
+#[tokio::test]
+async fn notifications_feature_flag_blocks_delivery_refresh_and_writes() {
+    let mut db = test_db().await;
+    assert!(
+        !db.config.notifications_alertmanager_enabled,
+        "feature is off by default"
+    );
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    soika::notify::notify_new_issue(&db, &project, &issue)
+        .await
+        .unwrap();
+    assert!(receiver.snapshot().is_empty());
+    assert!(
+        db.notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let path = "/api/settings/notifications";
+    let (status, view) = request(
+        &db,
+        InstanceRole::Manager,
+        "GET",
+        path,
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["feature_enabled"], false);
+    let config = serde_json::to_value(db.notifications.get().await.unwrap()).unwrap();
+    for (method, uri) in [
+        ("PUT", path.to_string()),
+        ("POST", format!("{path}/preview")),
+    ] {
+        let (status, error) = request(&db, InstanceRole::Owner, method, &uri, config.clone()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(
+            error["error"]
+                .as_str()
+                .unwrap()
+                .contains("NOTIFICATIONS_ALERTMANAGER_ENABLED")
+        );
+    }
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = true;
+    soika::notify::notify_new_issue(&db, &project, &issue)
+        .await
+        .unwrap();
+    assert_eq!(receiver.snapshot().len(), 1);
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = false;
+    db.issues
+        .set_status(issue.id, IssueStatus::Resolved)
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().len(),
+        1,
+        "flag also blocks existing refresh/resolution requests"
+    );
+    assert!(
+        db.notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = true;
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot().len(), 2);
+    assert!(
+        db.notifications
             .find_alert(issue.id)
             .await
             .unwrap()

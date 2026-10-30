@@ -397,6 +397,8 @@ pub struct Config {
     pub webhooks_enabled: bool,
     /// Default Alertmanager base URL; UI/YAML can override it.
     pub alertmanager_url: Option<String>,
+    /// Global Alertmanager feature gate (`NOTIFICATIONS_ALERTMANAGER_ENABLED`, default false).
+    pub notifications_alertmanager_enabled: bool,
     /// Optional SMTP settings (`SMTP_*`).
     pub smtp: Option<SmtpConfig>,
     /// Optional OAuth / OIDC settings (`OAUTH_*`); `None` when disabled.
@@ -437,6 +439,10 @@ impl std::fmt::Debug for Config {
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
             .field("alertmanager_url", &self.alertmanager_url)
+            .field(
+                "notifications_alertmanager_enabled",
+                &self.notifications_alertmanager_enabled,
+            )
             .field("smtp", &self.smtp)
             .field("oidc", &self.oidc)
             .field("passkey", &self.passkey)
@@ -480,6 +486,8 @@ impl Config {
 
         let smtp_enabled = parse_bool(&env_or("SMTP_ENABLED", "false"));
         let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
+        let notifications_alertmanager_enabled =
+            parse_bool(&env_or("NOTIFICATIONS_ALERTMANAGER_ENABLED", "false"));
         let alertmanager_url = std::env::var("ALERTMANAGER_URL")
             .ok()
             .map(|v| v.trim().to_string())
@@ -525,6 +533,7 @@ impl Config {
             smtp_enabled,
             webhooks_enabled,
             alertmanager_url,
+            notifications_alertmanager_enabled,
             smtp,
             oidc,
             passkey,
@@ -1167,6 +1176,49 @@ mod tests {
         for (key, value) in previous {
             unsafe {
                 match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn alertmanager_feature_flag_defaults_off_and_can_be_enabled() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_flag = std::env::var_os("NOTIFICATIONS_ALERTMANAGER_ENABLED");
+        let previous_secret = std::env::var_os("SECRET_KEY");
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var("NOTIFICATIONS_ALERTMANAGER_ENABLED");
+        }
+        assert!(
+            !Config::from_env()
+                .unwrap()
+                .notifications_alertmanager_enabled
+        );
+        unsafe {
+            std::env::set_var("NOTIFICATIONS_ALERTMANAGER_ENABLED", "true");
+        }
+        assert!(
+            Config::from_env()
+                .unwrap()
+                .notifications_alertmanager_enabled
+        );
+        unsafe {
+            std::env::set_var("NOTIFICATIONS_ALERTMANAGER_ENABLED", "false");
+        }
+        assert!(
+            !Config::from_env()
+                .unwrap()
+                .notifications_alertmanager_enabled
+        );
+        for (key, previous) in [
+            ("NOTIFICATIONS_ALERTMANAGER_ENABLED", previous_flag),
+            ("SECRET_KEY", previous_secret),
+        ] {
+            unsafe {
+                match previous {
                     Some(value) => std::env::set_var(key, value),
                     None => std::env::remove_var(key),
                 }
