@@ -20,6 +20,11 @@ an explicit URL or `ALERTMANAGER_URL` is required. The default URL is displayed
 as a hint in the UI; editing or clearing the override is available in UI mode.
 In YAML mode the UI remains read-only, including the URL.
 
+`ALERTMANAGER_SKIP_TLS=true` disables TLS certificate verification for all
+Alertmanager HTTPS requests, including test alerts and reconciliation. The default
+is `false` (certificates are verified). This environment setting applies in every
+management mode and requires a restart.
+
 A reverse-proxy prefix is supported (`https://monitoring.example.com/alertmanager`).
 Soika appends `/api/v2/alerts`. HTTP and HTTPS are supported, with normal certificate
 verification. URL credentials, query strings and fragments are rejected; this

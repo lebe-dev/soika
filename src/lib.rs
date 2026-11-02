@@ -78,6 +78,9 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
         DbPool::Postgres(pool) => postgres_repositories(pool, write_policy, default_teams),
     };
 
+    let alertmanager_client =
+        adapters::alertmanager::HttpAlertmanager::new(config.alertmanager_skip_tls)?;
+
     Ok(AppState {
         config: Arc::new(config),
         config_sync: repos.config_sync,
@@ -96,7 +99,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
         notifications: repos.notifications,
         settings: repos.settings,
         alertmanager: Arc::new(alertmanager::Alertmanager::new(Arc::new(
-            adapters::alertmanager::HttpAlertmanager::new()?,
+            alertmanager_client,
         ))),
         mailer,
         templates,

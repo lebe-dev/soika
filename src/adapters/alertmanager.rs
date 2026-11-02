@@ -69,9 +69,10 @@ pub struct HttpAlertmanager {
     client: reqwest::Client,
 }
 impl HttpAlertmanager {
-    pub fn new() -> Result<Self> {
+    pub fn new(skip_tls: bool) -> Result<Self> {
         Ok(Self {
             client: reqwest::Client::builder()
+                .danger_accept_invalid_certs(skip_tls)
                 .timeout(Duration::from_secs(5))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
@@ -134,7 +135,7 @@ mod tests {
             chrono::Utc::now(),
         )
         .unwrap();
-        let error = HttpAlertmanager::new()
+        let error = HttpAlertmanager::new(false)
             .unwrap()
             .send(&format!("http://{address}/secret-token"), &alert)
             .await

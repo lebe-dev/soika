@@ -397,6 +397,8 @@ pub struct Config {
     pub webhooks_enabled: bool,
     /// Default Alertmanager base URL; UI/YAML can override it.
     pub alertmanager_url: Option<String>,
+    /// Disable TLS certificate verification for Alertmanager (default false).
+    pub alertmanager_skip_tls: bool,
     /// Global Alertmanager feature gate (`NOTIFICATIONS_ALERTMANAGER_ENABLED`, default false).
     pub notifications_alertmanager_enabled: bool,
     /// Optional SMTP settings (`SMTP_*`).
@@ -439,6 +441,7 @@ impl std::fmt::Debug for Config {
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
             .field("alertmanager_url", &self.alertmanager_url)
+            .field("alertmanager_skip_tls", &self.alertmanager_skip_tls)
             .field(
                 "notifications_alertmanager_enabled",
                 &self.notifications_alertmanager_enabled,
@@ -488,6 +491,7 @@ impl Config {
         let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
         let notifications_alertmanager_enabled =
             parse_bool(&env_or("NOTIFICATIONS_ALERTMANAGER_ENABLED", "false"));
+        let alertmanager_skip_tls = parse_bool(&env_or("ALERTMANAGER_SKIP_TLS", "false"));
         let alertmanager_url = std::env::var("ALERTMANAGER_URL")
             .ok()
             .map(|v| v.trim().to_string())
@@ -533,6 +537,7 @@ impl Config {
             smtp_enabled,
             webhooks_enabled,
             alertmanager_url,
+            alertmanager_skip_tls,
             notifications_alertmanager_enabled,
             smtp,
             oidc,
@@ -1203,6 +1208,37 @@ mod tests {
         for (key, value) in previous {
             unsafe {
                 match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn alertmanager_skip_tls_defaults_off_and_can_be_enabled() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_flag = std::env::var_os("ALERTMANAGER_SKIP_TLS");
+        let previous_secret = std::env::var_os("SECRET_KEY");
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var("ALERTMANAGER_SKIP_TLS");
+        }
+        assert!(!Config::from_env().unwrap().alertmanager_skip_tls);
+        unsafe {
+            std::env::set_var("ALERTMANAGER_SKIP_TLS", "true");
+        }
+        assert!(Config::from_env().unwrap().alertmanager_skip_tls);
+        unsafe {
+            std::env::set_var("ALERTMANAGER_SKIP_TLS", "false");
+        }
+        assert!(!Config::from_env().unwrap().alertmanager_skip_tls);
+        for (key, previous) in [
+            ("ALERTMANAGER_SKIP_TLS", previous_flag),
+            ("SECRET_KEY", previous_secret),
+        ] {
+            unsafe {
+                match previous {
                     Some(value) => std::env::set_var(key, value),
                     None => std::env::remove_var(key),
                 }

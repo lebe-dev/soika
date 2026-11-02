@@ -17,6 +17,7 @@ from the environment:
 | Public registration | `ALLOW_SIGNUP` | `false` |
 | Default teams for new users | `DEFAULT_TEAM_IDS` | Empty list |
 | Alertmanager channel enabled | `NOTIFICATIONS_ALERTMANAGER_ENABLED` | `false` |
+| Skip Alertmanager TLS certificate verification | `ALERTMANAGER_SKIP_TLS` | `false` |
 | Alertmanager URL | `ALERTMANAGER_URL` | Empty |
 | Additional default Alertmanager labels | `ALERTMANAGER_DEFAULT_LABELS` | Empty |
 

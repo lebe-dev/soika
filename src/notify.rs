@@ -725,6 +725,7 @@ mod tests {
             // independently of SMTP configuration.
             notifications_alertmanager_enabled: false,
             alertmanager_url: None,
+            alertmanager_skip_tls: false,
             webhooks_enabled: true,
             smtp_enabled: false,
             smtp: None,

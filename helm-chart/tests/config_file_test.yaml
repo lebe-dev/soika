@@ -75,3 +75,30 @@ tests:
           value: "ui"
       - notExists:
           path: data.NOTIFICATION_MANAGEMENT_SOURCE
+  - it: verifies Alertmanager TLS certificates by default
+    template: configmap.yaml
+    asserts:
+      - equal:
+          path: data.ALERTMANAGER_SKIP_TLS
+          value: "false"
+  - it: omits host aliases by default
+    template: deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.hostAliases
+  - it: renders configured host aliases
+    template: deployment.yaml
+    set:
+      hostAliases:
+        - ip: "192.0.2.10"
+          hostnames:
+            - alertmanager.internal
+            - monitoring.internal
+    asserts:
+      - equal:
+          path: spec.template.spec.hostAliases
+          value:
+            - ip: "192.0.2.10"
+              hostnames:
+                - alertmanager.internal
+                - monitoring.internal

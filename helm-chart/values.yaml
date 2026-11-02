@@ -31,6 +31,9 @@ envs:
   # Soika appends /api/v2/alerts automatically; do not include that endpoint.
   - name: ALERTMANAGER_URL
     value: ""
+  # Disable certificate verification only for Alertmanager HTTPS requests.
+  - name: ALERTMANAGER_SKIP_TLS
+    value: "false"
   - name: CONFIG_PATH
     value: "/etc/soika/config.yaml"
   # delete permanently removes missing projects and their events.
@@ -81,6 +84,8 @@ serviceAccount:
 
 podAnnotations: {}
 podLabels: {}
+# Optional static hostname mappings for the Pod.
+hostAliases: []
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001
