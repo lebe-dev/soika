@@ -2,6 +2,14 @@
 
 ## 0.10.0
 
+- **Breaking:** project webhooks now send the Alertmanager webhook v4 JSON format
+  instead of the previous flat payload. Update receivers before upgrading. See
+  `docs/WEBHOOKS.md`.
+- Added an Alertmanager notification channel that posts alerts to the Alertmanager
+  API. It is gated by `NOTIFICATIONS_ALERTMANAGER_ENABLED`, configured with
+  `ALERTMANAGER_URL`, supports default and per-project labels, optional TLS
+  verification skipping, and test alerts from the admin UI.
+- Service-wide notification settings can be managed through environment variables.
 - **Breaking:** team invites are now controlled by `ALLOW_INVITES` and are off by
   default. Set `ALLOW_INVITES=true` to keep creating and accepting invite links.
 - Invites stay off while teams are managed by the YAML file, whatever `ALLOW_INVITES`
