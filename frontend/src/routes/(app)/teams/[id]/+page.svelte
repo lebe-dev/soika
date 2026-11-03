@@ -547,20 +547,6 @@
   </Card.Root>
 </div>
 
-{#if teamsManaged && team.grants}
-  <Card.Root>
-    <Card.Header><Card.Title>{$t('configuration_file')}</Card.Title></Card.Header>
-    <Card.Content class="space-y-2 text-sm">
-      {#each team.grants.members.filter((grant) => !grant.user_id) as grant}
-        <p>{grant.email} · {$t(grant.role)} · {$t('not_signed_in_yet')}</p>
-      {/each}
-      {#each team.grants.groups as grant}
-        <p>{grant.group} · {$t(grant.role)}</p>
-      {/each}
-    </Card.Content>
-  </Card.Root>
-{/if}
-
 <!-- Rename dialog (admin) -->
 <Dialog.Root bind:open={renameOpen}>
   <Dialog.Content>
