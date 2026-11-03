@@ -376,6 +376,8 @@ pub struct Config {
     pub secret_key: String,
     /// Whether public self-registration is enabled (`ALLOW_SIGNUP`).
     pub allow_signup: bool,
+    /// Whether team invites can be created and accepted (`ALLOW_INVITES`).
+    pub allow_invites: bool,
     /// Temporary Owner grants by full email (`ADMIN_USERS`), independent of DB roles.
     pub admin_users: AdminUsers,
     /// Whether first-run admin setup is available (`ADMIN_ENABLED`, default `true`).
@@ -432,6 +434,7 @@ impl std::fmt::Debug for Config {
             .field("base_url", &self.base_url)
             .field("secret_key", &"***")
             .field("allow_signup", &self.allow_signup)
+            .field("allow_invites", &self.allow_invites)
             .field("admin_users", &self.admin_users)
             .field("admin_enabled", &self.admin_enabled)
             .field("email_login_enabled", &self.email_login_enabled)
@@ -481,6 +484,7 @@ impl Config {
         let db = Self::db_from_env()?;
 
         let allow_signup = parse_bool(&env_or("ALLOW_SIGNUP", "false"));
+        let allow_invites = parse_bool(&env_or("ALLOW_INVITES", "false"));
 
         let default_events_retention = env_or("DEFAULT_EVENTS_RETENTION", "1000")
             .parse::<i64>()
@@ -530,6 +534,7 @@ impl Config {
             base_url,
             secret_key,
             allow_signup,
+            allow_invites,
             admin_users: AdminUsers::parse(&env_or("ADMIN_USERS", ""))?,
             admin_enabled: parse_bool(&env_or("ADMIN_ENABLED", "true")),
             email_login_enabled: parse_bool(&env_or("EMAIL_LOGIN_ENABLED", "true")),

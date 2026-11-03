@@ -15,6 +15,7 @@ from the environment:
 | --- | --- | --- |
 | Organization name | `ORGANIZATION_NAME` | `soika` |
 | Public registration | `ALLOW_SIGNUP` | `false` |
+| Team invites | `ALLOW_INVITES` | `false` |
 | Default teams for new users | `DEFAULT_TEAM_IDS` | Empty list |
 | Alertmanager channel enabled | `NOTIFICATIONS_ALERTMANAGER_ENABLED` | `false` |
 | Skip Alertmanager TLS certificate verification | `ALERTMANAGER_SKIP_TLS` | `false` |

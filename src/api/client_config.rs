@@ -33,6 +33,8 @@ pub struct ClientConfigView {
     pub timezone: String,
     /// Whether outgoing webhooks are enabled (`WEBHOOKS_ENABLED`).
     pub webhooks_enabled: bool,
+    /// Whether team invites are enabled (`ALLOW_INVITES`).
+    pub invites_enabled: bool,
 }
 
 impl ClientConfigView {
@@ -55,6 +57,7 @@ impl ClientConfigView {
             release: concat!("soika@", env!("CARGO_PKG_VERSION")).to_string(),
             timezone: state.config.timezone.clone(),
             webhooks_enabled: state.config.webhooks_enabled,
+            invites_enabled: state.config.allow_invites,
         }
     }
 }

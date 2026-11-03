@@ -47,6 +47,7 @@ pub struct AuthenticationStatus {
     pub passkeys: Option<PasskeyStatus>,
     pub public_signup: bool,
     pub yaml_teams: bool,
+    pub invites_enabled: bool,
     pub admin_setup_enabled: bool,
     pub login_protection_enabled: bool,
 }
@@ -93,6 +94,7 @@ fn authentication_status(state: &AppState, allow_signup: bool) -> Authentication
                 max_per_user: config.max_per_user,
             }),
         yaml_teams,
+        invites_enabled: state.config.allow_invites,
         admin_setup_enabled: state.config.admin_enabled && state.config.admin_users.is_empty(),
         login_protection_enabled: state.config.lockout.enabled,
     }
@@ -519,6 +521,7 @@ mod tests {
                 passkeys: None,
                 public_signup: true,
                 yaml_teams: false,
+                invites_enabled: false,
                 admin_setup_enabled: true,
                 login_protection_enabled: true,
             },

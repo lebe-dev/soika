@@ -128,6 +128,8 @@ export interface ClientConfig {
   /** IANA timezone name for displaying timestamps (e.g. `Europe/Moscow`). */
   timezone: string;
   webhooks_enabled: boolean;
+  /** Whether team invites are enabled (`ALLOW_INVITES`). */
+  invites_enabled: boolean;
 }
 
 /** `ProfileView` (GET/PATCH /profile). Identical shape to `User`. */
@@ -491,6 +493,7 @@ export interface AuthenticationStatus {
   passkeys: { rp_id: string; rp_origin: string; max_per_user: number } | null;
   public_signup: boolean;
   yaml_teams: boolean;
+  invites_enabled: boolean;
   admin_setup_enabled: boolean;
   login_protection_enabled: boolean;
 }

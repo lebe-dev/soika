@@ -61,7 +61,11 @@
     {#if teams.length === 0}
       <p class="text-muted-foreground text-sm">{$t('default_teams_empty')}</p>
     {:else}
-      <fieldset disabled={readonly || saving} class="grid gap-2 sm:grid-cols-2">
+      <fieldset
+        disabled={readonly || saving}
+        data-managed-readonly={readonly || undefined}
+        class="grid gap-2 sm:grid-cols-2"
+      >
         <legend class="sr-only">{$t('default_teams_title')}</legend>
         {#each teams as team (team.id)}
           <label class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">

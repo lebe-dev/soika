@@ -84,6 +84,12 @@
               >{$t(auth.public_signup ? 'enabled' : 'disabled')}</Badge
             >
           </dd>
+          {@render term($t('auth_invites'), 'tip_auth_invites')}
+          <dd>
+            <Badge variant={auth.invites_enabled ? 'enabled' : 'disabled'}
+              >{$t(auth.invites_enabled ? 'enabled' : 'disabled')}</Badge
+            >
+          </dd>
           {@render term($t('auth_setup'), 'tip_auth_setup')}
           <dd>
             <Badge variant={auth.admin_setup_enabled ? 'enabled' : 'disabled'}

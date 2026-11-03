@@ -60,6 +60,11 @@
   // invites: an instance manager OR a Team Admin of this team.
   const canManageMembers = $derived((canManageInstance || myRole === 'admin') && !teamsManaged);
 
+  // Invites follow ALLOW_INVITES and work for YAML-managed teams too: an invited
+  // member is kept alongside the members granted by the configuration file.
+  const canManageTeam = $derived(authStore.canManageInstance || myRole === 'admin');
+  const canInvite = $derived(canManageTeam && data.telemetry?.invites_enabled === true);
+
   // Count of Team Admins — used for last-Team-Admin protection: the only
   // remaining Admin cannot be demoted or removed.
   const adminCount = $derived(team.members.filter((m) => m.role === 'admin').length);
@@ -211,7 +216,7 @@
   // Load invites lazily once, only for callers who can manage the team. A
   // forbidden response just yields no invites (the section stays empty).
   $effect(() => {
-    if (!canManageMembers || invitesLoaded) return;
+    if (!canManageTeam || invitesLoaded) return;
     invitesLoaded = true;
     teamsApi
       .invites(team.id)
@@ -324,27 +329,31 @@
         </div>
         <Card.Description>{$t('who_s_in_this_team_and_what_role_they_have')}</Card.Description>
       </div>
-      {#if canManageMembers}
+      {#if canManageMembers || canInvite}
         <Card.Action class="flex items-center gap-2">
-          <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
-            <Link2 class="size-4" />
-            {$t('invite_by_link')}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            class="gap-1.5"
-            onclick={openAdd}
-            disabled={candidates.length === 0}
-          >
-            <UserPlus class="size-4" />
-            {$t('add_member')}
-          </Button>
+          {#if canInvite}
+            <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
+              <Link2 class="size-4" />
+              {$t('invite_by_link')}
+            </Button>
+          {/if}
+          {#if canManageMembers}
+            <Button
+              variant="default"
+              size="sm"
+              class="gap-1.5"
+              onclick={openAdd}
+              disabled={candidates.length === 0}
+            >
+              <UserPlus class="size-4" />
+              {$t('add_member')}
+            </Button>
+          {/if}
         </Card.Action>
       {/if}
     </Card.Header>
     <Card.Content class="space-y-4">
-      {#if canManageMembers && pendingInvites.length > 0}
+      {#if canManageTeam && pendingInvites.length > 0}
         <div class="bg-muted/30 space-y-2 rounded-lg border p-3">
           <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             {$t('pending_invites')}
@@ -393,21 +402,25 @@
           <p class="text-muted-foreground max-w-xs text-sm">
             {$t('add_a_teammate_or_share_an_invite_link_to_give_access_to_this_team_s_projects')}
           </p>
-          {#if canManageMembers}
+          {#if canManageMembers || canInvite}
             <div class="mt-3 flex items-center gap-2">
-              <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
-                <Link2 class="size-4" />
-                {$t('invite_by_link')}
-              </Button>
-              <Button
-                size="sm"
-                class="gap-1.5"
-                onclick={openAdd}
-                disabled={candidates.length === 0}
-              >
-                <UserPlus class="size-4" />
-                {$t('add_member')}
-              </Button>
+              {#if canInvite}
+                <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
+                  <Link2 class="size-4" />
+                  {$t('invite_by_link')}
+                </Button>
+              {/if}
+              {#if canManageMembers}
+                <Button
+                  size="sm"
+                  class="gap-1.5"
+                  onclick={openAdd}
+                  disabled={candidates.length === 0}
+                >
+                  <UserPlus class="size-4" />
+                  {$t('add_member')}
+                </Button>
+              {/if}
             </div>
           {/if}
         </div>

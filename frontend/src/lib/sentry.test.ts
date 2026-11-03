@@ -44,7 +44,8 @@ describe('initSentry', () => {
       sentry_environment: null,
       release: 'soika@0.3.0',
       timezone: 'UTC',
-      webhooks_enabled: false
+      webhooks_enabled: false,
+      invites_enabled: false
     };
     initSentry(config);
     expect(init).not.toHaveBeenCalled();
@@ -57,7 +58,8 @@ describe('initSentry', () => {
       sentry_environment: 'production',
       release: 'soika@0.3.0',
       timezone: 'UTC',
-      webhooks_enabled: false
+      webhooks_enabled: false,
+      invites_enabled: false
     };
     initSentry(config);
     expect(init).not.toHaveBeenCalled();
@@ -70,7 +72,8 @@ describe('initSentry', () => {
       sentry_environment: 'production',
       release: 'soika@0.3.0',
       timezone: 'UTC',
-      webhooks_enabled: false
+      webhooks_enabled: false,
+      invites_enabled: false
     };
     initSentry(config);
     expect(init).toHaveBeenCalledTimes(1);
@@ -89,7 +92,8 @@ describe('initSentry', () => {
       sentry_environment: null,
       release: 'soika@0.3.0',
       timezone: 'UTC',
-      webhooks_enabled: false
+      webhooks_enabled: false,
+      invites_enabled: false
     };
     initSentry(config);
     expect(init).toHaveBeenCalledTimes(1);
@@ -108,7 +112,8 @@ describe('initSentry', () => {
       sentry_environment: 'production',
       release: 'soika@0.3.0',
       timezone: 'UTC',
-      webhooks_enabled: false
+      webhooks_enabled: false,
+      invites_enabled: false
     };
     initSentry(config);
     initSentry(config);

@@ -17,6 +17,7 @@ const base: AuthenticationStatus = {
   passkeys: null,
   public_signup: true,
   yaml_teams: false,
+  invites_enabled: false,
   admin_setup_enabled: true,
   login_protection_enabled: true
 };
@@ -38,6 +39,7 @@ it('shows SSO, domain restrictions, passkeys and YAML policy', () => {
     ...base,
     password_login: 'owners',
     yaml_teams: true,
+    invites_enabled: false,
     public_signup: false,
     sso: {
       provider_name: 'GitLab',

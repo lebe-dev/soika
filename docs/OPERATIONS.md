@@ -190,6 +190,12 @@ invite makes the user a member of that team. Issuing or revoking a team's
 invites is allowed for an instance `Owner`/`Manager` or a team `Admin` of that
 team.
 
+Invites are off by default. Set `ALLOW_INVITES=true` (restart required) to let
+team admins create invite links and invitees accept them. With the flag off, the
+**Invite by link** button is hidden, creating and accepting invites returns `403`,
+and existing pending invites can still be revoked. The flag applies in every
+team management mode.
+
 ## Notifications
 
 Set `NOTIFICATIONS_ALERTMANAGER_ENABLED=true` to make the Alertmanager feature
@@ -548,7 +554,7 @@ file status and the last synchronization report.
 | Projects | Teams | Management |
 |---|---|---|
 | ui | ui | Existing UI management; no file needed |
-| yaml | ui | Projects reference teams created in the UI; invites work |
+| yaml | ui | Projects reference teams created in the UI; invites work with `ALLOW_INVITES=true` |
 | ui | yaml | Create projects in the UI within file-defined teams |
 | yaml | yaml | Projects, teams and memberships come from the file |
 
@@ -623,8 +629,12 @@ warns when using the exact default file, and the settings page marks it.
 
 ### Team grants and SSO
 
-With YAML-managed teams, registration, invites and default-team management are
-disabled. `/setup` still creates the initial Owner. File entries do not create
+With YAML-managed teams, registration and default-team management are
+disabled. Invites stay available when `ALLOW_INVITES=true`: the **Invite by link**
+button appears on team pages, and an invited member is stored as an invite
+membership that configuration reconciliation never removes (it only removes
+memberships it granted itself). Invited members cannot be removed from the team
+page while teams are managed by the file. `/setup` still creates the initial Owner. File entries do not create
 users: verified SSO login creates their accounts, applies memberships and
 automatically approves users with matching grants even when
 `OAUTH_REQUIRE_APPROVAL=true`. Email grants also apply to local accounts already

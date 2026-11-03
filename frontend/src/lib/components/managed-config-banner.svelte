@@ -34,6 +34,7 @@
 {#if areas.length > 0}
   <div
     role="note"
+    data-managed-config-banner
     class="border-primary/30 bg-primary/5 space-y-0.5 rounded-lg border px-4 py-3 text-sm"
   >
     <p class="font-medium">

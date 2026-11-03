@@ -23,6 +23,7 @@ envs:
   # General service settings source: ui (default) or env (read-only in UI).
   - name: SERVICE_MANAGEMENT_SOURCE
     value: "ui"
+  # ALLOW_INVITES=true enables team invite links (default false) in every mode.
   # In env mode: ORGANIZATION_NAME, ALLOW_SIGNUP, DEFAULT_TEAM_IDS and
   # Alertmanager envs control settings; admin edits and test alerts are blocked.
   # DEFAULT_TEAM_IDS is a comma-separated list of existing team UUIDs (default empty).

@@ -233,6 +233,7 @@ mod tests {
             base_url: "http://localhost:8080".into(),
             secret_key: "secret".into(),
             allow_signup: false,
+            allow_invites: false,
             admin_enabled: true,
             email_login_enabled: true,
             sso_allow_display_name_change: false,

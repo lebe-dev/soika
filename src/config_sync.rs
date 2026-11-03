@@ -206,6 +206,14 @@ pub fn require_ui_management(state: &AppState, team: bool) -> Result<()> {
     Ok(())
 }
 
+/// Invites are an opt-in feature (`ALLOW_INVITES`), independent of how teams are managed.
+pub fn require_invites_enabled(state: &AppState) -> Result<()> {
+    if !state.config.allow_invites {
+        return Err(Error::Forbidden("invites are disabled".into()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod alertmanager_label_tests {
     use super::*;

@@ -133,6 +133,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        allow_invites: false,
         admin_enabled: true,
         email_login_enabled: true,
         sso_allow_display_name_change: false,

@@ -141,8 +141,8 @@ impl InviteRepository for PgInviteRepository {
                     ));
                 }
                 sqlx::query(
-                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
-                 VALUES ($1, $2, $3, $4) \
+                    "INSERT INTO team_members (team_id, user_id, role, created_at, source) \
+                 VALUES ($1, $2, $3, $4, 'invite') \
                  ON CONFLICT(team_id, user_id) DO UPDATE SET role = CASE \
                  WHEN team_members.role = 'admin' THEN 'admin' ELSE excluded.role END",
                 )

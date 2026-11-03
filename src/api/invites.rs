@@ -147,7 +147,7 @@ pub async fn create(
     Path(team_id): Path<String>,
     body: Option<Json<CreateInviteRequest>>,
 ) -> Response {
-    if let Err(err) = crate::config_sync::require_ui_management(&state, true) {
+    if let Err(err) = crate::config_sync::require_invites_enabled(&state) {
         return error_response(err);
     }
     let team_id = match parse_team_id(&team_id) {
@@ -240,9 +240,6 @@ pub async fn revoke(
     CurrentUser(user): CurrentUser,
     Path((team_id, token)): Path<(String, String)>,
 ) -> Response {
-    if let Err(err) = crate::config_sync::require_ui_management(&state, true) {
-        return error_response(err);
-    }
     let team_id = match parse_team_id(&team_id) {
         Ok(id) => id,
         Err(resp) => return resp,

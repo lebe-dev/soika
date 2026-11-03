@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- **Breaking:** team invites are now controlled by `ALLOW_INVITES` and are off by
+  default. Set `ALLOW_INVITES=true` to keep creating and accepting invite links.
+- Invites can be used with teams managed in the YAML file. Invited members are kept
+  alongside the members granted by the file.
+- Admin settings pages explain options with info tooltips, and read-only default
+  teams no longer show Save and Reset.
+
 ## 0.9.0
 
 - Manage projects, teams and team membership declaratively from a YAML file,

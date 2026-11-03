@@ -3,7 +3,10 @@
   import * as Card from '$lib/components/ui/card';
   import InfoTip from '$lib/components/info-tip.svelte';
   import type { ManagementStatus } from '$lib/api';
-  let { management }: { management: ManagementStatus } = $props();
+  let {
+    management,
+    invitesEnabled = false
+  }: { management: ManagementStatus; invitesEnabled?: boolean } = $props();
 </script>
 
 {#snippet term(label: string, tip: string)}
@@ -74,7 +77,7 @@
         {$t('delete_orphans_warning')}
       </p>{/if}
     {#if management.settings.team_source === 'yaml'}
-      <p>{$t('signup_invites_disabled')}</p>
+      <p>{$t(invitesEnabled ? 'signup_disabled_invites_enabled' : 'signup_invites_disabled')}</p>
       {#if !management.oauth_enabled}<p class="text-destructive">
           {$t('teams_without_sso_warning')}
         </p>{/if}

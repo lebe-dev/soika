@@ -466,7 +466,7 @@ pub async fn accept_invite(
     PeerAddr(peer): PeerAddr,
     body: Option<Json<AcceptInviteRequest>>,
 ) -> Result<Response, AuthError> {
-    crate::config_sync::require_ui_management(&state, true)?;
+    crate::config_sync::require_invites_enabled(&state)?;
     let invite = load_usable_invite(&state, &token).await?;
     let req = body.map(|Json(b)| b).unwrap_or_default();
     if let Some(target) = &invite.email {

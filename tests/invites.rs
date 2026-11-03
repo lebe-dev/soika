@@ -58,8 +58,13 @@ impl Fixture {
     /// Like [`spawn`], but lets a test enable SSO by passing a provider, which
     /// flips `accept_invite` onto its OIDC-only branch.
     async fn spawn_with_oidc(oidc: Option<Arc<dyn OidcProvider>>) -> Fixture {
+        Self::spawn_with(test_config(), oidc).await
+    }
+
+    /// Build the app from an explicit configuration.
+    async fn spawn_with(config: Config, oidc: Option<Arc<dyn OidcProvider>>) -> Fixture {
         let pool = common::test_db().await;
-        let state = build_state(pool, test_config()).unwrap().with_oidc(oidc);
+        let state = build_state(pool, config).unwrap().with_oidc(oidc);
         Fixture {
             router: router::build(state.clone()),
             state,
@@ -198,6 +203,7 @@ fn test_config() -> Config {
         base_url: "http://localhost".into(),
         secret_key: "test-secret-key".into(),
         allow_signup: false,
+        allow_invites: true,
         admin_enabled: true,
         email_login_enabled: true,
         sso_allow_display_name_change: false,
@@ -824,4 +830,102 @@ async fn targeted_invite_cannot_be_accepted_by_a_different_email() {
             .accepted_at
             .is_none()
     );
+}
+
+// --- ALLOW_INVITES and YAML-managed teams ------------------------------------
+
+fn yaml_teams_config(allow_invites: bool) -> Config {
+    let mut config = test_config();
+    config.allow_invites = allow_invites;
+    config.management.team_source = soika::domain::config_file::ManagementSource::Yaml;
+    config
+}
+
+#[tokio::test]
+async fn disabled_invites_reject_acceptance() {
+    let mut config = test_config();
+    config.allow_invites = false;
+    let app = Fixture::spawn_with(config, None).await;
+    let team_id = app.seed_team().await;
+    let token = app
+        .mint_invite(team_id, Role::Member, None, Duration::days(7))
+        .await;
+
+    let (status, _) = app
+        .accept(
+            &token,
+            Some(json!({
+                "email": "invitee@example.com",
+                "password": PASSWORD,
+                "display_name": "Invitee",
+            })),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let user = app
+        .state
+        .users
+        .find_by_email("invitee@example.com")
+        .await
+        .unwrap();
+    assert!(
+        user.is_none(),
+        "no account is created while invites are off"
+    );
+}
+
+#[tokio::test]
+async fn yaml_teams_keep_invited_membership_after_grant_reconciliation() {
+    let app = Fixture::spawn_with(yaml_teams_config(true), None).await;
+    let team_id = app.seed_team().await;
+    let user_id = app.create_user("invited@example.com").await;
+    let token = app
+        .mint_invite(team_id, Role::Member, None, Duration::days(7))
+        .await;
+
+    let (status, _) = app
+        .accept(
+            &token,
+            Some(json!({ "email": "invited@example.com", "password": PASSWORD })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        app.membership_role(team_id, user_id).await,
+        Some(Role::Member)
+    );
+
+    // A sign-in or restart recomputes memberships from the configuration file.
+    app.state
+        .config_sync
+        .reconcile_user(user_id, &[])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        app.membership_role(team_id, user_id).await,
+        Some(Role::Member),
+        "an invited member is not a configuration grant and must survive"
+    );
+}
+
+#[tokio::test]
+async fn yaml_teams_still_remove_memberships_that_are_not_granted() {
+    let app = Fixture::spawn_with(yaml_teams_config(true), None).await;
+    let team_id = app.seed_team().await;
+    let user_id = app.create_user("stale@example.com").await;
+    app.state
+        .teams
+        .add_member(team_id, user_id, TeamRole::Contributor)
+        .await
+        .unwrap();
+
+    app.state
+        .config_sync
+        .reconcile_user(user_id, &[])
+        .await
+        .unwrap();
+
+    assert_eq!(app.membership_role(team_id, user_id).await, None);
 }

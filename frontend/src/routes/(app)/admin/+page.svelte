@@ -234,342 +234,356 @@
     {/snippet}
   </PageHeader>
 
-  <Tabs.Root value={activeTab} class="gap-6">
-    <Tabs.List>
-      <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
-      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="notifications"
-        ><a href="/admin/notifications">{$t('notifications_tab')}</a></Tabs.Trigger
-      >
-      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="authentication"
-        ><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger
-      >
-      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="users"><a href="/admin/users">{$t('users')}</a></Tabs.Trigger>
-      <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="teams"><a href="/admin/teams">{$t('teams_b2ba35')}</a></Tabs.Trigger>
-    </Tabs.List>
+  <div class="admin-tabs">
+    <Tabs.Root value={activeTab} class="gap-6">
+      <Tabs.List>
+        <Tabs.Trigger value="settings"><a href="/admin">{$t('service_settings')}</a></Tabs.Trigger>
+        <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+        <Tabs.Trigger value="notifications"
+          ><a href="/admin/notifications">{$t('notifications_tab')}</a></Tabs.Trigger
+        >
+        <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+        <Tabs.Trigger value="authentication"
+          ><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger
+        >
+        <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+        <Tabs.Trigger value="users"><a href="/admin/users">{$t('users')}</a></Tabs.Trigger>
+        <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
+        <Tabs.Trigger value="teams"><a href="/admin/teams">{$t('teams_b2ba35')}</a></Tabs.Trigger>
+      </Tabs.List>
 
-    <ManagedConfigBanner
-      projectSource={data.settings.management?.settings.project_source}
-      teamSource={data.settings.management?.settings.team_source}
-      serviceSource={data.settings.management?.settings.service_source}
-      notificationSource={data.notifications?.source}
-      deployUrl={data.settings.deploy_url}
-    />
+      <ManagedConfigBanner
+        projectSource={data.settings.management?.settings.project_source}
+        teamSource={data.settings.management?.settings.team_source}
+        serviceSource={data.settings.management?.settings.service_source}
+        notificationSource={data.notifications?.source}
+        deployUrl={data.settings.deploy_url}
+      />
 
-    <Tabs.Content value="authentication">
-      <AuthenticationPanel authentication={data.settings.authentication} />
-    </Tabs.Content>
+      <Tabs.Content value="authentication">
+        <AuthenticationPanel authentication={data.settings.authentication} />
+      </Tabs.Content>
 
-    <Tabs.Content value="notifications" class="space-y-6">
-      {#if data.notifications}<NotificationsPanel view={data.notifications} />{/if}
-      <Card.Root>
-        <Card.Header><Card.Title>{$t('notifications_webhooks')}</Card.Title></Card.Header>
-        <Card.Content class="space-y-2">
-          <Badge variant={data.telemetry?.webhooks_enabled ? 'enabled' : 'disabled'}
-            >{data.telemetry?.webhooks_enabled ? $t('enabled') : $t('disabled')}</Badge
-          >
-          <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
-        </Card.Content>
-      </Card.Root>
-      <Card.Root class={!smtp.enabled ? 'opacity-50 grayscale' : undefined}>
-        <Card.Header>
-          <Card.Title>{$t('notifications_email')}</Card.Title>
-          <Card.Description>
-            {$t('email_delivery_is_configured_via_environment_variables_and_shown_here_read_only')}
-          </Card.Description>
-        </Card.Header>
-        <Card.Content class="space-y-3">
-          <div class="flex items-center gap-2">
-            {#if smtp.enabled && smtp.configured}
-              <Badge variant="enabled">
-                <Mail class="size-3" />
-                {$t('configured')}
-              </Badge>
-            {:else if !smtp.enabled}
-              <Badge variant="disabled">{$t('disabled')}</Badge>
-            {:else}
-              <Badge variant="outline">
-                <MailX class="size-3" />
-                {$t('not_configured')}
-              </Badge>
-            {/if}
-          </div>
-          {#if smtp.enabled && smtp.configured}
-            <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-              <dt class="text-muted-foreground">{$t('host')}</dt>
-              <dd class="font-mono">{smtp.host ?? '—'}</dd>
-              <dt class="text-muted-foreground">{$t('port')}</dt>
-              <dd class="font-mono">{smtp.port ?? '—'}</dd>
-              <dt class="text-muted-foreground">{$t('from')}</dt>
-              <dd class="font-mono">{smtp.from ?? '—'}</dd>
-            </dl>
-            <div class="space-y-2 border-t pt-3">
-              <p class="text-sm font-medium">{$t('send_a_test_email')}</p>
-              <p class="text-muted-foreground text-sm">
-                {$t('verify_delivery_end_to_end_leave_the_field_blank_to_send_to_your_own_address')}
-              </p>
-              <div class="flex flex-wrap items-center gap-2">
-                <Input
-                  type="email"
-                  placeholder={$t('email_recipient_optional')}
-                  bind:value={testRecipient}
-                  class="max-w-xs"
-                  disabled={sendingTest}
-                />
-                <Button variant="outline" size="sm" onclick={sendTestEmail} disabled={sendingTest}>
-                  <Mail class="size-4" />
-                  {sendingTest ? $t('sending') : $t('send_test_email')}
-                </Button>
-              </div>
-            </div>
-          {:else if smtp.enabled}
-            <p class="text-muted-foreground text-sm">
-              {$t('set')} <code class="font-mono">SMTP_HOST</code>
-              {$t(
-                'and_related_variables_to_enable_email_notifications_and_invite_delivery_invite_l'
-              )}
-            </p>
-          {:else}
-            <p class="text-muted-foreground text-sm">
-              {$t('email_delivery_disabled_by_smtp_enabled')}
-            </p>
-          {/if}
-        </Card.Content>
-      </Card.Root>
-    </Tabs.Content>
-
-    <!-- Service settings -->
-    <Tabs.Content value="settings" class="space-y-6">
-      {#if data.settings.management}<ManagementCard management={data.settings.management} />{/if}
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>{$t('organization')}</Card.Title>
-          <Card.Description>{$t('the_display_name_shown_across_the_instance')}</Card.Description>
-        </Card.Header>
-        <Card.Content class="space-y-4">
-          <div class="grid gap-2">
-            <div class="flex items-center gap-1.5">
-              <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
-              <InfoTip text={$t('tip_org_name')} />
-            </div>
-            <Input
-              id="org-name"
-              bind:value={orgName}
-              class="max-w-sm"
-              disabled={saving || serviceEnv}
-            />
-          </div>
-        </Card.Content>
-      </Card.Root>
-
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>{$t('registration')}</Card.Title>
-          <Card.Description>
-            {$t('control_whether_new_users_can_register_without_an_invite')}
-          </Card.Description>
-        </Card.Header>
-        <Card.Content>
-          <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div class="space-y-0.5">
-              <p class="flex items-center gap-1.5 text-sm font-medium">
-                {$t('allow_public_sign_up')}<InfoTip text={$t('tip_allow_signup')} />
-              </p>
-              <p class="text-muted-foreground text-sm">
-                {$t('when_off_accounts_are_created_only_via_invite')}
-              </p>
-            </div>
-            <Button
-              variant={allowSignup ? 'default' : 'outline'}
-              size="sm"
-              disabled={saving || serviceEnv || data.telemetry?.team_management_source === 'yaml'}
-              aria-pressed={allowSignup}
-              onclick={() => (allowSignup = !allowSignup)}
-            >
-              {#if allowSignup}
-                <Check class="size-4" />
-                {$t('enabled')}
-              {:else}
-                {$t('disabled')}
-              {/if}
-            </Button>
-          </div>
-        </Card.Content>
-      </Card.Root>
-
-      {#if data.settings.deploy_url}
+      <Tabs.Content value="notifications" class="space-y-6">
+        {#if data.notifications}<NotificationsPanel view={data.notifications} />{/if}
         <Card.Root>
-          <Card.Header>
-            <Card.Title>{$t('deploy_config_title')}</Card.Title>
-            <Card.Description>{$t('deploy_config_help')}</Card.Description>
-          </Card.Header>
-          <Card.Content>
-            <a
-              href={data.settings.deploy_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-primary inline-flex items-center gap-1.5 font-mono text-sm break-all underline-offset-4 hover:underline"
+          <Card.Header><Card.Title>{$t('notifications_webhooks')}</Card.Title></Card.Header>
+          <Card.Content class="space-y-2">
+            <Badge variant={data.telemetry?.webhooks_enabled ? 'enabled' : 'disabled'}
+              >{data.telemetry?.webhooks_enabled ? $t('enabled') : $t('disabled')}</Badge
             >
-              {data.settings.deploy_url}
-              <SquareArrowOutUpRight class="size-4 shrink-0" />
-            </a>
+            <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
           </Card.Content>
         </Card.Root>
-      {/if}
+        <Card.Root class={!smtp.enabled ? 'opacity-50 grayscale' : undefined}>
+          <Card.Header>
+            <Card.Title>{$t('notifications_email')}</Card.Title>
+            <Card.Description>
+              {$t(
+                'email_delivery_is_configured_via_environment_variables_and_shown_here_read_only'
+              )}
+            </Card.Description>
+          </Card.Header>
+          <Card.Content class="space-y-3">
+            <div class="flex items-center gap-2">
+              {#if smtp.enabled && smtp.configured}
+                <Badge variant="enabled">
+                  <Mail class="size-3" />
+                  {$t('configured')}
+                </Badge>
+              {:else if !smtp.enabled}
+                <Badge variant="disabled">{$t('disabled')}</Badge>
+              {:else}
+                <Badge variant="outline">
+                  <MailX class="size-3" />
+                  {$t('not_configured')}
+                </Badge>
+              {/if}
+            </div>
+            {#if smtp.enabled && smtp.configured}
+              <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+                <dt class="text-muted-foreground">{$t('host')}</dt>
+                <dd class="font-mono">{smtp.host ?? '—'}</dd>
+                <dt class="text-muted-foreground">{$t('port')}</dt>
+                <dd class="font-mono">{smtp.port ?? '—'}</dd>
+                <dt class="text-muted-foreground">{$t('from')}</dt>
+                <dd class="font-mono">{smtp.from ?? '—'}</dd>
+              </dl>
+              <div class="space-y-2 border-t pt-3">
+                <p class="text-sm font-medium">{$t('send_a_test_email')}</p>
+                <p class="text-muted-foreground text-sm">
+                  {$t(
+                    'verify_delivery_end_to_end_leave_the_field_blank_to_send_to_your_own_address'
+                  )}
+                </p>
+                <div class="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="email"
+                    placeholder={$t('email_recipient_optional')}
+                    bind:value={testRecipient}
+                    class="max-w-xs"
+                    disabled={sendingTest}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={sendTestEmail}
+                    disabled={sendingTest}
+                  >
+                    <Mail class="size-4" />
+                    {sendingTest ? $t('sending') : $t('send_test_email')}
+                  </Button>
+                </div>
+              </div>
+            {:else if smtp.enabled}
+              <p class="text-muted-foreground text-sm">
+                {$t('set')} <code class="font-mono">SMTP_HOST</code>
+                {$t(
+                  'and_related_variables_to_enable_email_notifications_and_invite_delivery_invite_l'
+                )}
+              </p>
+            {:else}
+              <p class="text-muted-foreground text-sm">
+                {$t('email_delivery_disabled_by_smtp_enabled')}
+              </p>
+            {/if}
+          </Card.Content>
+        </Card.Root>
+      </Tabs.Content>
 
-      <div class="flex items-center gap-2">
-        <Button onclick={save} disabled={serviceEnv || !dirty || saving}>
-          {saving ? $t('saving') : $t('save_changes')}
-        </Button>
-        <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>{$t('reset')}</Button>
-      </div>
-    </Tabs.Content>
+      <!-- Service settings -->
+      <Tabs.Content value="settings" class="space-y-6">
+        {#if data.settings.management}<ManagementCard
+            management={data.settings.management}
+            invitesEnabled={data.telemetry?.invites_enabled}
+          />{/if}
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>{$t('organization')}</Card.Title>
+            <Card.Description>{$t('the_display_name_shown_across_the_instance')}</Card.Description>
+          </Card.Header>
+          <Card.Content class="space-y-4">
+            <div class="grid gap-2">
+              <div class="flex items-center gap-1.5">
+                <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
+                <InfoTip text={$t('tip_org_name')} />
+              </div>
+              <Input
+                id="org-name"
+                bind:value={orgName}
+                class="max-w-sm"
+                disabled={saving || serviceEnv}
+              />
+            </div>
+          </Card.Content>
+        </Card.Root>
 
-    <!-- Users overview: same roster layout as team members. -->
-    <Tabs.Content value="users" class="space-y-6">
-      {#if data.telemetry?.team_management_source !== 'yaml'}
-        <DefaultTeams
-          teams={data.teams}
-          defaultTeamIds={data.settings.default_team_ids}
-          readonly={serviceEnv}
-        />
-      {/if}
-      <Card.Root class="shadow-sm">
-        <Card.Header>
-          <div class="flex items-center gap-1.5">
-            <Card.Title>{$t('users_57f2b1')}</Card.Title>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
-                <button
-                  type="button"
-                  class="text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={$t('what_can_each_role_do')}
-                >
-                  <Info class="size-4" />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content align="start" class="w-80 p-3">
-                <RoleHint scope="instance" />
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
-          </div>
-          <Card.Description>{$t('all_accounts_on_this_instance')}</Card.Description>
-        </Card.Header>
-        <Card.Content>
-          {#if data.users.length === 0}
-            <p class="text-muted-foreground text-sm">{$t('no_users_yet')}</p>
-          {:else}
-            <div class="divide-border/60 divide-y">
-              {#each data.users as u (u.id)}
-                {@const isSelf = authStore.user != null && u.id === authStore.user.id}
-                <div class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <Avatar name={u.display_name} id={u.id} />
-                  <div class="min-w-0 flex-1">
-                    <p class="flex items-center gap-2 font-medium">
-                      <span class="truncate">{u.display_name}</span>
-                      {#if isSelf}
-                        <span class="text-muted-foreground text-xs font-normal">{$t('you')}</span>
-                      {/if}
-                      {#if u.status === 'pending'}
-                        <Badge variant="secondary">
-                          <Clock class="size-3" />
-                          {$t('pending_96f608')}
-                        </Badge>
-                      {/if}
-                    </p>
-                    <p class="text-muted-foreground truncate text-sm">
-                      {u.email}
-                      {$t('joined')}
-                      {formatDate(u.created_at, $locale)}
-                      {#if !u.notifications_enabled}
-                        {$t('notifications_off')}
-                      {/if}
-                    </p>
-                  </div>
-                  {#if canEditRole(u)}
-                    <NativeSelect
-                      aria-label={$t('instance_role_for', { values: { name: u.display_name } })}
-                      value={u.instance_role}
-                      disabled={busyUserId === u.id}
-                      onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
-                      class="shrink-0"
-                    >
-                      <option value="owner" disabled={roleOptionDisabled(u, 'owner')}
-                        >{$t('owner')}</option
-                      >
-                      <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
-                        >{$t('manager')}</option
-                      >
-                      <option value="member" disabled={roleOptionDisabled(u, 'member')}
-                        >{$t('member')}</option
-                      >
-                    </NativeSelect>
-                  {:else}
-                    <Badge
-                      variant="outline"
-                      class={u.instance_role === 'owner'
-                        ? 'text-primary shrink-0 capitalize'
-                        : 'shrink-0 capitalize'}
-                    >
-                      {$t(u.instance_role)}
-                    </Badge>
-                  {/if}
-                  {#if u.status === 'pending'}
-                    <div class="flex shrink-0 items-center gap-2">
-                      <Button
-                        variant="default"
-                        size="sm"
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>{$t('registration')}</Card.Title>
+            <Card.Description>
+              {$t('control_whether_new_users_can_register_without_an_invite')}
+            </Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
+              <div class="space-y-0.5">
+                <p class="flex items-center gap-1.5 text-sm font-medium">
+                  {$t('allow_public_sign_up')}<InfoTip text={$t('tip_allow_signup')} />
+                </p>
+                <p class="text-muted-foreground text-sm">
+                  {$t('when_off_accounts_are_created_only_via_invite')}
+                </p>
+              </div>
+              <Button
+                variant={allowSignup ? 'default' : 'outline'}
+                size="sm"
+                disabled={saving || serviceEnv || data.telemetry?.team_management_source === 'yaml'}
+                aria-pressed={allowSignup}
+                onclick={() => (allowSignup = !allowSignup)}
+              >
+                {#if allowSignup}
+                  <Check class="size-4" />
+                  {$t('enabled')}
+                {:else}
+                  {$t('disabled')}
+                {/if}
+              </Button>
+            </div>
+          </Card.Content>
+        </Card.Root>
+
+        {#if data.settings.deploy_url}
+          <Card.Root>
+            <Card.Header>
+              <Card.Title>{$t('deploy_config_title')}</Card.Title>
+              <Card.Description>{$t('deploy_config_help')}</Card.Description>
+            </Card.Header>
+            <Card.Content>
+              <a
+                href={data.settings.deploy_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-primary inline-flex items-center gap-1.5 font-mono text-sm break-all underline-offset-4 hover:underline"
+              >
+                {data.settings.deploy_url}
+                <SquareArrowOutUpRight class="size-4 shrink-0" />
+              </a>
+            </Card.Content>
+          </Card.Root>
+        {/if}
+
+        <div class="flex items-center gap-2">
+          <Button onclick={save} disabled={serviceEnv || !dirty || saving}>
+            {saving ? $t('saving') : $t('save_changes')}
+          </Button>
+          <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>{$t('reset')}</Button>
+        </div>
+      </Tabs.Content>
+
+      <!-- Users overview: same roster layout as team members. -->
+      <Tabs.Content value="users" class="space-y-6">
+        {#if data.telemetry?.team_management_source !== 'yaml'}
+          <DefaultTeams
+            teams={data.teams}
+            defaultTeamIds={data.settings.default_team_ids}
+            readonly={serviceEnv}
+          />
+        {/if}
+        <Card.Root class="shadow-sm">
+          <Card.Header>
+            <div class="flex items-center gap-1.5">
+              <Card.Title>{$t('users_57f2b1')}</Card.Title>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <button
+                    type="button"
+                    class="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={$t('what_can_each_role_do')}
+                  >
+                    <Info class="size-4" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="start" class="w-80 p-3">
+                  <RoleHint scope="instance" />
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </div>
+            <Card.Description>{$t('all_accounts_on_this_instance')}</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            {#if data.users.length === 0}
+              <p class="text-muted-foreground text-sm">{$t('no_users_yet')}</p>
+            {:else}
+              <div class="divide-border/60 divide-y">
+                {#each data.users as u (u.id)}
+                  {@const isSelf = authStore.user != null && u.id === authStore.user.id}
+                  <div class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                    <Avatar name={u.display_name} id={u.id} />
+                    <div class="min-w-0 flex-1">
+                      <p class="flex items-center gap-2 font-medium">
+                        <span class="truncate">{u.display_name}</span>
+                        {#if isSelf}
+                          <span class="text-muted-foreground text-xs font-normal">{$t('you')}</span>
+                        {/if}
+                        {#if u.status === 'pending'}
+                          <Badge variant="secondary">
+                            <Clock class="size-3" />
+                            {$t('pending_96f608')}
+                          </Badge>
+                        {/if}
+                      </p>
+                      <p class="text-muted-foreground truncate text-sm">
+                        {u.email}
+                        {$t('joined')}
+                        {formatDate(u.created_at, $locale)}
+                        {#if !u.notifications_enabled}
+                          {$t('notifications_off')}
+                        {/if}
+                      </p>
+                    </div>
+                    {#if canEditRole(u)}
+                      <NativeSelect
+                        aria-label={$t('instance_role_for', { values: { name: u.display_name } })}
+                        value={u.instance_role}
                         disabled={busyUserId === u.id}
-                        onclick={() => approveUser(u.id)}
+                        onchange={(e) => changeRole(u.id, e.currentTarget.value as InstanceRole)}
+                        class="shrink-0"
                       >
-                        <UserCheck class="size-4" />
-                        {$t('approve')}
-                      </Button>
-                      <Button
+                        <option value="owner" disabled={roleOptionDisabled(u, 'owner')}
+                          >{$t('owner')}</option
+                        >
+                        <option value="manager" disabled={roleOptionDisabled(u, 'manager')}
+                          >{$t('manager')}</option
+                        >
+                        <option value="member" disabled={roleOptionDisabled(u, 'member')}
+                          >{$t('member')}</option
+                        >
+                      </NativeSelect>
+                    {:else}
+                      <Badge
                         variant="outline"
-                        size="sm"
-                        disabled={busyUserId === u.id || isSelf}
-                        onclick={() => rejectUser(u.id, u.email)}
+                        class={u.instance_role === 'owner'
+                          ? 'text-primary shrink-0 capitalize'
+                          : 'shrink-0 capitalize'}
+                      >
+                        {$t(u.instance_role)}
+                      </Badge>
+                    {/if}
+                    {#if u.status === 'pending'}
+                      <div class="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          disabled={busyUserId === u.id}
+                          onclick={() => approveUser(u.id)}
+                        >
+                          <UserCheck class="size-4" />
+                          {$t('approve')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busyUserId === u.id || isSelf}
+                          onclick={() => rejectUser(u.id, u.email)}
+                        >
+                          <Trash2 class="size-4" />
+                          {$t('reject')}
+                        </Button>
+                      </div>
+                    {:else if canDelete(u, isSelf)}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="text-destructive hover:text-destructive size-8 shrink-0"
+                        title={$t('delete_account')}
+                        aria-label={`Delete account ${u.email}`}
+                        disabled={busyUserId === u.id}
+                        onclick={() => deleteUser(u.id, u.email)}
                       >
                         <Trash2 class="size-4" />
-                        {$t('reject')}
                       </Button>
-                    </div>
-                  {:else if canDelete(u, isSelf)}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="text-destructive hover:text-destructive size-8 shrink-0"
-                      title={$t('delete_account')}
-                      aria-label={`Delete account ${u.email}`}
-                      disabled={busyUserId === u.id}
-                      onclick={() => deleteUser(u.id, u.email)}
-                    >
-                      <Trash2 class="size-4" />
-                    </Button>
-                  {:else}
-                    <span class="size-8 shrink-0" aria-hidden="true"></span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </Card.Content>
-      </Card.Root>
-    </Tabs.Content>
+                    {:else}
+                      <span class="size-8 shrink-0" aria-hidden="true"></span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </Card.Content>
+        </Card.Root>
+      </Tabs.Content>
 
-    <!-- Teams overview -->
-    <Tabs.Content value="teams">
-      {#if data.teams.length === 0}
-        <p class="text-muted-foreground text-sm">{$t('no_teams_yet')}</p>
-      {:else}
-        <TeamList teams={data.teams} />
-      {/if}
-    </Tabs.Content>
-  </Tabs.Root>
+      <!-- Teams overview -->
+      <Tabs.Content value="teams">
+        {#if data.teams.length === 0}
+          <p class="text-muted-foreground text-sm">{$t('no_teams_yet')}</p>
+        {:else}
+          <TeamList teams={data.teams} />
+        {/if}
+      </Tabs.Content>
+    </Tabs.Root>
+  </div>
 
   <div class="flex items-center justify-center gap-2 border-t pt-4 select-none">
     <span class="text-muted-foreground/75 text-xs"
@@ -587,3 +601,25 @@
     </a>
   </div>
 </div>
+
+<style>
+  .admin-tabs :global([data-managed-config-banner]) {
+    transition:
+      border-color 250ms ease,
+      box-shadow 250ms ease;
+  }
+
+  .admin-tabs:has(:global([data-managed-readonly] label:hover)),
+  .admin-tabs:has(:global([data-slot='badge'][data-variant='disabled']:hover)) {
+    & :global([data-managed-config-banner]) {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 25%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .admin-tabs :global([data-managed-config-banner]) {
+      transition: none;
+    }
+  }
+</style>

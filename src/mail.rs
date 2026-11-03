@@ -365,6 +365,7 @@ mod tests {
             base_url: "https://errors.example.com/".to_string(),
             secret_key: "secret".to_string(),
             allow_signup: false,
+            allow_invites: false,
             admin_enabled: true,
             email_login_enabled: true,
             sso_allow_display_name_change: false,
