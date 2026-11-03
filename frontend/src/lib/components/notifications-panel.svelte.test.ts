@@ -18,6 +18,7 @@ let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const view: NotificationView = {
   feature_enabled: true,
+  alertmanager_skip_tls: false,
   source: 'ui',
   variables: ['title'],
   config: {
@@ -190,4 +191,16 @@ it('locks notification settings while allowing testing in env mode', () => {
       .disabled
   ).toBe(false);
   expect(target.textContent).not.toContain('Save changes');
+});
+
+it.each(['en', 'ru'] as const)('warns about disabled TLS verification in %s', (language) => {
+  setLocale(language);
+  render({ ...view, alertmanager_skip_tls: true });
+  expect(target.querySelector('[role="status"]')?.textContent).toContain(
+    'ALERTMANAGER_SKIP_TLS=true'
+  );
+});
+it('hides the TLS warning when verification is enabled', () => {
+  render();
+  expect(target.textContent).not.toContain('ALERTMANAGER_SKIP_TLS=true');
 });

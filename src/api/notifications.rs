@@ -14,6 +14,7 @@ use serde::Serialize;
 pub struct NotificationView {
     pub source: ManagementSource,
     pub feature_enabled: bool,
+    pub alertmanager_skip_tls: bool,
     pub default_url: Option<String>,
     pub config: NotificationConfig,
     pub variables: &'static [&'static str],
@@ -29,6 +30,7 @@ pub async fn get(
             state.config.management.notification_source
         },
         feature_enabled: state.config.notifications_alertmanager_enabled,
+        alertmanager_skip_tls: state.config.alertmanager_skip_tls,
         default_url: state.config.alertmanager_url.clone(),
         config: state.notifications.get().await?,
         variables: VARIABLES,

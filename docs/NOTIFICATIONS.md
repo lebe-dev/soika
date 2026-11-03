@@ -20,6 +20,8 @@ an explicit URL or `ALERTMANAGER_URL` is required. The default URL is displayed
 as a hint in the UI; editing or clearing the override is available in UI mode.
 In YAML mode the UI remains read-only, including the URL.
 
+When `ALERTMANAGER_SKIP_TLS=true`, the admin Notifications tab displays a short warning.
+
 `ALERTMANAGER_SKIP_TLS=true` disables TLS certificate verification for all
 Alertmanager HTTPS requests, including test alerts and reconciliation. The default
 is `false` (certificates are verified). This environment setting applies in every

@@ -125,6 +125,11 @@
       >{/if}
   </Card.Header>
   <Card.Content class="space-y-4">
+    {#if view.alertmanager_skip_tls}
+      <p role="status" class="text-sm text-amber-700 dark:text-amber-400">
+        {$t('notifications_skip_tls_warning')}
+      </p>
+    {/if}
     {#if !view.feature_enabled}
       <p class="text-muted-foreground text-sm">{$t('notifications_feature_disabled')}</p>
     {:else}

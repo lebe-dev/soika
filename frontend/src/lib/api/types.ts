@@ -555,6 +555,7 @@ export interface NotificationConfig {
   alertmanager: AlertmanagerConfig;
 }
 export interface NotificationView {
+  alertmanager_skip_tls: boolean;
   feature_enabled: boolean;
   default_url?: string | null;
   source: 'ui' | 'env' | 'yaml';

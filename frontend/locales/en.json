@@ -523,6 +523,7 @@
   "auth_yaml_access": "Teams are managed through YAML. Public sign-up and invites are disabled; SSO access follows the configured team grants.",
   "notifications_tab": "Notifications",
   "notifications_alertmanager_description": "Send issue alerts to Prometheus Alertmanager. Applies to every project.",
+  "notifications_skip_tls_warning": "Warning: Alertmanager TLS certificate verification is disabled (ALERTMANAGER_SKIP_TLS=true).",
   "notifications_lifecycle": "New issues and regressions fire an alert. Open alerts refresh every minute; resolving, muting or deleting an issue closes its alert within a minute. Existing issues are not sent when enabling the channel.",
   "service_env_readonly": "Configured through environment variables",
   "notifications_yaml_readonly": "Managed through YAML",

@@ -523,6 +523,7 @@
   "auth_yaml_access": "Команды управляются через YAML. Публичная регистрация и приглашения отключены; доступ через SSO определяется настроенными правами команд.",
   "notifications_tab": "Уведомления",
   "notifications_alertmanager_description": "Отправка алертов в Prometheus Alertmanager для всех проектов.",
+  "notifications_skip_tls_warning": "Внимание: проверка TLS-сертификата Alertmanager отключена (ALERTMANAGER_SKIP_TLS=true).",
   "notifications_lifecycle": "Новая ошибка или регрессия открывает алерт. Открытые алерты обновляются каждую минуту; resolve, mute или удаление закрывает алерт в течение минуты. При включении канала старые ошибки не отправляются.",
   "service_env_readonly": "Настраивается через переменные окружения",
   "notifications_yaml_readonly": "Конфигурация через YAML",

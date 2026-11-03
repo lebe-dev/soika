@@ -676,3 +676,21 @@ async fn notifications_environment_service_settings_override_database_and_block_
         "Environment organization"
     );
 }
+
+#[tokio::test]
+async fn notifications_view_reports_tls_verification_setting() {
+    let mut db = test_db().await;
+    for skip_tls in [false, true] {
+        Arc::make_mut(&mut db.config).alertmanager_skip_tls = skip_tls;
+        let (status, view) = request(
+            &db,
+            InstanceRole::Manager,
+            "GET",
+            "/api/settings/notifications",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["alertmanager_skip_tls"], skip_tls);
+    }
+}
