@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.1
+
+- Event ingestion responds faster: email, webhook and Alertmanager notifications
+  are now delivered in the background after the event is stored, at most eight at
+  a time, so a slow mail server or webhook no longer delays SDK requests.
+- Repeat events of a known issue no longer look up tag-mute rules or reserve a new
+  short id, and the stored event is not read back after it is written.
+- Issue lists use database indexes for the default "newest first" view and for
+  status, level, environment and release filters, so large projects load faster.
+- Compressed ingest bodies that inflate past 20 MiB are rejected with `413`
+  instead of being unpacked into memory.
+- Webhook deliveries reuse one HTTP client instead of creating a new one each
+  time.
+
 ## 0.10.0
 
 - **Breaking:** project webhooks now send the Alertmanager webhook v4 JSON format

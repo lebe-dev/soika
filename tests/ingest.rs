@@ -311,12 +311,28 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
     encoder.finish().expect("gzip finish")
 }
 
+/// Wait (bounded) until `count` reaches `expected`, returning the last value
+/// seen. Background notification delivery settles within milliseconds; the
+/// deadline only guards against a hang.
+async fn wait_for_count(count: &std::sync::atomic::AtomicUsize, expected: usize) -> usize {
+    use std::sync::atomic::Ordering;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let seen = count.load(Ordering::SeqCst);
+        if seen >= expected || tokio::time::Instant::now() >= deadline {
+            return seen;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
 /// Spawn a webhook capture server that counts every POST it receives and always
 /// replies `200`. Returns its base URL and the shared request counter.
 ///
-/// Notification delivery is awaited inside the ingest handler (the webhook POST
-/// completes before the envelope response returns), so the counter is settled by
-/// the time a `post(...)` call resolves — no sleeps needed.
+/// Notification delivery runs in the background after the ingest response is
+/// sent, so positive assertions wait for the counter with [`wait_for_count`].
+/// The suppression decision (project and tag mute) is still made before the
+/// response returns, so "no webhook" assertions need no wait.
 async fn spawn_counting_webhook() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -855,7 +871,7 @@ async fn tag_mute_rule_suppresses_notification_for_matching_event() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        count.load(std::sync::atomic::Ordering::SeqCst),
+        wait_for_count(&count, 1).await,
         1,
         "non-matching event fires exactly one webhook"
     );

@@ -89,27 +89,35 @@ impl EventRepository for PgEventRepository {
     async fn insert(&self, new: NewEvent) -> Result<Event> {
         let id = Id::new_v4();
         let payload_text = serde_json::to_string(&new.payload)?;
-        let sql = format!(
-            "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING {EVENT_COLS}"
-        );
         let received_at = ts(new.received_at);
         // One statement, so re-running it after a transient conflict is safe:
-        // either the row was written (Ok) or nothing was.
-        let row = retry_write(&self.write, "insert event", || async {
-            let row = sqlx::query_as::<_, EventRow>(AssertSqlSafe(&*sql))
-                .bind(id)
-                .bind(&new.event_id)
-                .bind(new.issue_id)
-                .bind(new.project_id)
-                .bind(&payload_text)
-                .bind(received_at)
-                .fetch_one(&self.db)
-                .await?;
-            Ok(row)
+        // either the row was written (Ok) or nothing was. Nothing is read back:
+        // the stored row is exactly the inputs, and echoing the payload would
+        // ship it back over the wire and re-parse it on every ingested event.
+        retry_write(&self.write, "insert event", || async {
+            sqlx::query(
+                "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(id)
+            .bind(&new.event_id)
+            .bind(new.issue_id)
+            .bind(new.project_id)
+            .bind(&payload_text)
+            .bind(received_at)
+            .execute(&self.db)
+            .await?;
+            Ok(())
         })
         .await?;
-        row.into_domain()
+        Ok(Event {
+            id,
+            event_id: new.event_id,
+            issue_id: new.issue_id,
+            project_id: new.project_id,
+            payload: new.payload,
+            received_at,
+        })
     }
 
     async fn find_by_id(&self, id: Id) -> Result<Option<Event>> {

@@ -39,6 +39,9 @@ pub struct AppState {
     pub notifications: Arc<dyn crate::ports::NotificationRepository>,
     pub settings: Arc<dyn SettingsRepository>,
     pub alertmanager: Arc<crate::alertmanager::Alertmanager>,
+    /// Shared HTTP client for project webhooks. Built once so every delivery
+    /// reuses its TLS configuration and connection pool.
+    pub webhook_client: reqwest::Client,
     pub mailer: Arc<dyn Mailer>,
     /// Tera templates for outbound email (loaded once at startup).
     pub templates: Arc<Templates>,

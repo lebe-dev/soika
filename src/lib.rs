@@ -80,6 +80,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
 
     let alertmanager_client =
         adapters::alertmanager::HttpAlertmanager::new(config.alertmanager_skip_tls)?;
+    let webhook_client = notify::build_webhook_client()?;
 
     Ok(AppState {
         config: Arc::new(config),
@@ -101,6 +102,7 @@ pub fn build_state(pool: impl Into<DbPool>, config: Config) -> Result<AppState> 
         alertmanager: Arc::new(alertmanager::Alertmanager::new(Arc::new(
             alertmanager_client,
         ))),
+        webhook_client,
         mailer,
         templates,
         clock: Arc::new(SystemClock),

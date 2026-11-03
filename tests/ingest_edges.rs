@@ -239,9 +239,10 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
 /// Spawn a webhook capture server that counts every POST it receives and always
 /// replies `200`. Returns its base URL and the shared request counter.
 ///
-/// Notification delivery is awaited inside the ingest handler (the webhook POST
-/// completes before the envelope response returns), so the counter is settled by
-/// the time a `post(...)` call resolves — no sleeps needed. (Copied from
+/// Notification delivery runs in the background after the ingest response is
+/// sent, so positive assertions wait for the counter with [`wait_for_count`].
+/// The suppression decision (project and tag mute) is still made before the
+/// response returns, so "no webhook" assertions need no wait. (Copied from
 /// `tests/ingest.rs` so this file is self-contained.)
 async fn spawn_counting_webhook() -> (String, Arc<AtomicUsize>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -267,6 +268,20 @@ async fn spawn_counting_webhook() -> (String, Arc<AtomicUsize>) {
     });
 
     (format!("http://{addr}"), count)
+}
+
+/// Wait (bounded) until `count` reaches `expected`, returning the last value
+/// seen. Background notification delivery settles within milliseconds; the
+/// deadline only guards against a hang.
+async fn wait_for_count(count: &AtomicUsize, expected: usize) -> usize {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let seen = count.load(Ordering::SeqCst);
+        if seen >= expected || tokio::time::Instant::now() >= deadline {
+            return seen;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }
 
 /// A [`TagMuteRuleRepository`] whose `list_for_project` always errors, and that
@@ -400,7 +415,7 @@ async fn tag_mute_lookup_error_fails_open_and_still_notifies() {
     );
     // ...and because it failed open, the new-issue notification still fired.
     assert_eq!(
-        webhook_count.load(Ordering::SeqCst),
+        wait_for_count(&webhook_count, 1).await,
         1,
         "a failed mute lookup must not suppress the notification"
     );
@@ -439,8 +454,76 @@ async fn tagless_event_skips_mute_lookup_and_notifies() {
     );
     // Processed normally → new-issue notification fires.
     assert_eq!(
-        webhook_count.load(Ordering::SeqCst),
+        wait_for_count(&webhook_count, 1).await,
         1,
         "a tagless new-issue event notifies normally"
     );
+}
+
+// --- tag_muted: recurring events skip the lookup -------------------------
+
+#[tokio::test]
+async fn recurring_event_skips_mute_lookup() {
+    // Tag-mute only gates notifications, and a repeat event on a live issue
+    // notifies nobody, so it must not cost a mute-rule query. Only the first
+    // (new-issue) event consults the repository.
+    let (webhook_url, webhook_count) = spawn_counting_webhook().await;
+    let (mute_rules, list_calls) = FailingMuteRules::new();
+    let app = TestApp::spawn_with_webhook_and_mute_rules(webhook_url, mute_rules).await;
+
+    let event = tagged_event("RecurringError", &[("environment", "production")]);
+    for header_event_id in [
+        "cccccccccccc4ccccccccccccccccccc",
+        "dddddddddddd4ddddddddddddddddddd",
+        "eeeeeeeeeeee4eeeeeeeeeeeeeeeeeee",
+    ] {
+        let (status, _json) = app
+            .post(
+                &app.envelope_uri(),
+                &[("x-sentry-auth", &sentry_auth(DSN_KEY))],
+                envelope_body(header_event_id, &event),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    assert_eq!(app.event_count().await, 3, "every event persisted");
+    assert_eq!(
+        list_calls.load(Ordering::SeqCst),
+        1,
+        "only the new-issue event consults the mute-rule repository"
+    );
+    assert_eq!(
+        wait_for_count(&webhook_count, 1).await,
+        1,
+        "only the new-issue event notifies"
+    );
+}
+
+// --- decode_body: decompression bomb -------------------------------------
+
+#[tokio::test]
+async fn oversized_decompressed_body_is_rejected() {
+    // A small gzip body that inflates far past the decompressed-size cap must be
+    // refused instead of being buffered whole in memory.
+    let (webhook_url, _count) = spawn_counting_webhook().await;
+    let app = TestApp::spawn_with_webhook(webhook_url).await;
+
+    let bomb = gzip(&vec![b' '; 64 * 1024 * 1024]);
+    assert!(bomb.len() < 1024 * 1024, "the compressed bomb stays small");
+
+    let (status, json) = app
+        .post(
+            &app.envelope_uri(),
+            &[
+                ("x-sentry-auth", &sentry_auth(DSN_KEY)),
+                ("content-encoding", "gzip"),
+            ],
+            bomb,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(json["detail"], "decompressed body too large");
+    assert_eq!(app.event_count().await, 0, "no event persisted");
 }

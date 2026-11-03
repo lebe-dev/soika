@@ -45,12 +45,6 @@ impl SqliteIssueRepository {
     /// read-then-write in a single `BEGIN IMMEDIATE` transaction, so
     /// [`retry_write`] can simply re-run it on a lock conflict.
     async fn upsert_once(&self, upsert: &IssueUpsert) -> Result<UpsertOutcome> {
-        // Allocate the short id up front, before opening the transaction: the
-        // uniqueness pre-check borrows a pooled connection, and the test pool is
-        // pinned to a single connection — doing it while the tx holds that
-        // connection would deadlock. Only the new-issue branch consumes it.
-        let short_id = super::unique_short_id(&self.db, "issues").await?;
-
         // The read-then-write must be consistent under concurrent ingestion of
         // the same fingerprint, and it must announce itself as a writer: a
         // deferred `BEGIN` would start as a reader and fail outright (SQLITE_BUSY,
@@ -111,6 +105,10 @@ impl SqliteIssueRepository {
         // environment/release are set here on first sight only; the UPDATE branch
         // above intentionally leaves them (and culprit/level) untouched so an
         // issue keeps the values from when it was first observed.
+        // The short id is allocated only here, on the rare new-issue path, and on
+        // the transaction's own connection (no second pooled connection, which
+        // the single-connection test pool could not provide).
+        let short_id = super::unique_short_id_on(&mut tx, "issues").await?;
         let id = Id::new_v4();
         let insert_sql = format!(
             "INSERT INTO issues \
@@ -420,56 +418,47 @@ impl IssueRepository for SqliteIssueRepository {
     }
 
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>> {
-        // Optional status + first-class field + text-search filters. We bind a
-        // sentinel (NULL → match all) for each optional piece so the SQL text
-        // stays static and ANSI-friendly (mirrors the status pattern):
-        //   * status / level / environment / release: NULL → match all;
-        //     otherwise exact-match equality.
-        //   * query: NULL → match all; otherwise LIKE on title/culprit.
-        let like = filter.query.as_ref().map(|q| format!("%{q}%"));
-        let level = filter.level.clone();
-        let environment = filter.environment.clone();
-        let release = filter.release.clone();
+        // Each optional filter adds its predicate only when it is set. A static
+        // `(? IS NULL OR status = ?)` form would hide the column from the
+        // planner, so the `(project_id, status, last_seen)` index could not
+        // serve the common "unresolved, newest first" page. Predicates are fixed
+        // literals; every value is bound.
         let limit = filter.limit.unwrap_or(50).clamp(1, 500);
         let offset = filter.offset.unwrap_or(0).max(0);
 
+        let mut sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = ?");
+        let mut binds = vec![project_id.to_string()];
+        let exact = [
+            ("status", filter.status.map(|s| s.as_str().to_string())),
+            ("level", filter.level),
+            ("environment", filter.environment),
+            ("release", filter.release),
+        ];
+        for (column, value) in exact {
+            let Some(value) = value else { continue };
+            sql.push_str(&format!(" AND {column} = ?"));
+            binds.push(value);
+        }
+        if let Some(query) = filter.query {
+            let like = format!("%{query}%");
+            sql.push_str(" AND (title LIKE ? OR culprit LIKE ?)");
+            binds.push(like.clone());
+            binds.push(like);
+        }
+
         // ORDER BY is selected from fixed literals via an exhaustive enum match
-        // (never from raw user input), so it stays injection-safe and
-        // ANSI-friendly.
+        // (never from raw user input), so it stays injection-safe.
         let order_by = match filter.sort {
             IssueSort::LastSeen => "last_seen DESC",
             IssueSort::EventCount => "event_count DESC, last_seen DESC",
         };
+        sql.push_str(&format!(" ORDER BY {order_by} LIMIT ? OFFSET ?"));
 
-        let sql = format!(
-            "SELECT {ISSUE_COLS} FROM issues \
-             WHERE project_id = ? \
-               AND (? IS NULL OR status = ?) \
-               AND (? IS NULL OR level = ?) \
-               AND (? IS NULL OR environment = ?) \
-               AND (? IS NULL OR release = ?) \
-               AND (? IS NULL OR title LIKE ? OR culprit LIKE ?) \
-             ORDER BY {order_by} \
-             LIMIT ? OFFSET ?"
-        );
-        let status_str = filter.status.map(|s| s.as_str().to_string());
-        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id.to_string())
-            .bind(&status_str)
-            .bind(&status_str)
-            .bind(&level)
-            .bind(&level)
-            .bind(&environment)
-            .bind(&environment)
-            .bind(&release)
-            .bind(&release)
-            .bind(&like)
-            .bind(&like)
-            .bind(&like)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&self.db)
-            .await?;
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(&*sql));
+        for value in binds {
+            query = query.bind(value);
+        }
+        let rows = query.bind(limit).bind(offset).fetch_all(&self.db).await?;
         rows.iter().map(row_to_issue).collect()
     }
 

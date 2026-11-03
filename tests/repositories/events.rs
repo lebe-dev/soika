@@ -268,3 +268,43 @@ async fn count_in_window_counts_from_since_inclusive() {
     let other = Id::new_v4();
     assert_eq!(repo.count_in_window(other, base).await.unwrap(), 0);
 }
+
+/// The event `insert` hands back is exactly what a later read yields — payload
+/// and `received_at` at the backend's stored precision — so the ingest path can
+/// use it without a second round trip.
+#[tokio::test]
+async fn returned_event_matches_a_fresh_read() {
+    use chrono::TimeZone;
+
+    let db = test_db().await;
+    let (project_id, issue_id) = seed(&db).await;
+    let at = chrono::Utc
+        .timestamp_opt(1_700_000_000, 123_456_789)
+        .single()
+        .unwrap();
+    let payload = serde_json::json!({
+        "message": "boom",
+        "tags": { "env": "prod" },
+        "extra": { "nested": [1, 2, 3] }
+    });
+
+    let inserted = db
+        .events
+        .insert(NewEvent {
+            event_id: "e1".to_string(),
+            issue_id,
+            project_id,
+            payload: payload.clone(),
+            received_at: at,
+        })
+        .await
+        .unwrap();
+    let read = db.events.find_by_id(inserted.id).await.unwrap().unwrap();
+
+    assert_eq!(inserted.payload, payload);
+    assert_eq!(read.payload, inserted.payload);
+    assert_eq!(read.received_at, inserted.received_at);
+    assert_eq!(read.event_id, inserted.event_id);
+    assert_eq!(read.issue_id, inserted.issue_id);
+    assert_eq!(read.project_id, inserted.project_id);
+}

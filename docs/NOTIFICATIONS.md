@@ -7,6 +7,12 @@ Email delivery, invite mail and the SMTP test action retain their existing
 `SMTP_*` configuration. Webhooks retain `WEBHOOKS_ENABLED` and each project's URL;
 see [webhook delivery](WEBHOOKS.md).
 
+Notifications are delivered in the background after the event is stored, so a
+slow SMTP server or webhook never delays the SDK's ingest response. At most eight
+notifications are delivered at a time; the rest wait their turn. Mute rules are
+still checked before the response. Deliveries that are still running when the
+process stops are not retried.
+
 ## Alertmanager
 
 This channel sends an array of alerts to the Prometheus Alertmanager

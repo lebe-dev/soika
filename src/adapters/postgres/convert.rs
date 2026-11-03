@@ -35,12 +35,22 @@ pub(crate) fn now() -> Timestamp {
 /// distinguishing it from the slug/DSN constraints on the same INSERT). The loop
 /// is bounded; with a 2.1-billion keyspace it effectively never iterates twice.
 pub(crate) async fn unique_short_id(db: &Db, table: &str) -> Result<String, Error> {
+    let mut conn = db.acquire().await?;
+    unique_short_id_on(&mut conn, table).await
+}
+
+/// [`unique_short_id`] on a given connection — use it inside a transaction
+/// (pass `&mut *tx`) so the check does not borrow a second pooled connection.
+pub(crate) async fn unique_short_id_on(
+    conn: &mut sqlx::PgConnection,
+    table: &str,
+) -> Result<String, Error> {
     let sql = format!("SELECT 1 FROM {table} WHERE short_id = $1 LIMIT 1");
     for _ in 0..16 {
         let candidate = generate_short_id();
         let taken = sqlx::query(sqlx::AssertSqlSafe(&*sql))
             .bind(&candidate)
-            .fetch_optional(db)
+            .fetch_optional(&mut *conn)
             .await?
             .is_some();
         if !taken {

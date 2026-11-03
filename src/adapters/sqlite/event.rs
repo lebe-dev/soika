@@ -98,27 +98,35 @@ impl EventRepository for SqliteEventRepository {
     async fn insert(&self, new: NewEvent) -> Result<Event> {
         let id = Id::new_v4();
         let payload_text = serde_json::to_string(&new.payload)?;
-        let sql = format!(
-            "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
-             VALUES (?, ?, ?, ?, ?, ?) RETURNING {EVENT_COLS}"
-        );
         let received_at = new.received_at.to_rfc3339();
         // One statement, so re-running it after a lock conflict is safe: either
-        // the row was written (Ok) or nothing was.
-        let row = retry_write(&self.write, "insert event", || async {
-            let row = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-                .bind(id.to_string())
-                .bind(&new.event_id)
-                .bind(new.issue_id.to_string())
-                .bind(new.project_id.to_string())
-                .bind(&payload_text)
-                .bind(&received_at)
-                .fetch_one(&self.db)
-                .await?;
-            Ok(row)
+        // the row was written (Ok) or nothing was. Nothing is read back: the
+        // stored row is exactly the inputs, and echoing the payload would copy
+        // it back and re-parse it on every ingested event.
+        retry_write(&self.write, "insert event", || async {
+            sqlx::query(
+                "INSERT INTO events (id, event_id, issue_id, project_id, payload, received_at) \
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(id.to_string())
+            .bind(&new.event_id)
+            .bind(new.issue_id.to_string())
+            .bind(new.project_id.to_string())
+            .bind(&payload_text)
+            .bind(&received_at)
+            .execute(&self.db)
+            .await?;
+            Ok(())
         })
         .await?;
-        row_to_event(&row)
+        Ok(Event {
+            id,
+            event_id: new.event_id,
+            issue_id: new.issue_id,
+            project_id: new.project_id,
+            payload: new.payload,
+            received_at: new.received_at,
+        })
     }
 
     async fn find_by_id(&self, id: Id) -> Result<Option<Event>> {

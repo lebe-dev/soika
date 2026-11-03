@@ -301,6 +301,16 @@ async fn dispatch(
     Ok(())
 }
 
+/// Build the HTTP client shared by every webhook delivery (held in
+/// [`AppState::webhook_client`]). Building a client loads the TLS root store and
+/// sets up a connection pool, so it is done once at startup, not per delivery.
+pub fn build_webhook_client() -> crate::error::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(WEBHOOK_TIMEOUT)
+        .build()
+        .map_err(|e| crate::error::Error::internal(format!("building webhook client failed: {e}")))
+}
+
 /// POST the webhook payload, swallowing every error.
 ///
 /// Build/connect failures and non-2xx responses are logged via `tracing::warn!`
@@ -315,8 +325,8 @@ async fn send_webhook(
     url: &str,
 ) {
     let payload = build_webhook_payload(&state.config.base_url, project, issue, trigger);
-    let client = reqwest::Client::new();
-    let result = client
+    let result = state
+        .webhook_client
         .post(url)
         .timeout(WEBHOOK_TIMEOUT)
         .json(&payload)

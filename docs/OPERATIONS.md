@@ -17,6 +17,9 @@ high throughput.
 - Ships as a **single binary** with the frontend embedded, plus a minimal
   Alpine container image — no Redis, no broker, no separate worker.
 
+Ingest request bodies are limited to 2 MiB as sent and to 20 MiB after gzip or
+zlib decompression. A body that inflates past that limit is rejected with `413`.
+
 ## Application logs
 
 Logs use `tracing` and are written to stdout. `RUST_LOG` defaults to `info`;

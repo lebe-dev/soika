@@ -1061,3 +1061,79 @@ async fn returned_issue_matches_a_fresh_read() {
     assert_eq!(read.muted_until, muted.muted_until);
     assert_eq!(read.muted_at, muted.muted_at);
 }
+
+/// A repeat event never re-allocates the public short id of its issue.
+#[tokio::test]
+async fn repeat_upsert_keeps_short_id() {
+    let db = test_db().await;
+    let project_id = seed_project(&db).await;
+    let repo = db.issues.clone();
+
+    let first = repo
+        .upsert_by_fingerprint(upsert(project_id, "fp-keep", chrono::Utc::now()))
+        .await
+        .unwrap();
+    let second = repo
+        .upsert_by_fingerprint(upsert(project_id, "fp-keep", chrono::Utc::now()))
+        .await
+        .unwrap();
+
+    assert!(first.is_new);
+    assert!(!second.is_new);
+    assert_eq!(second.issue.id, first.issue.id);
+    assert_eq!(second.issue.short_id, first.issue.short_id);
+    assert_eq!(second.issue.event_count, 2);
+}
+
+/// Status-filtered and unfiltered listings both order by `last_seen` (newest
+/// first) and honour `limit`/`offset`.
+#[tokio::test]
+async fn list_pages_by_last_seen_with_and_without_status() {
+    let db = test_db().await;
+    let project_id = seed_project(&db).await;
+    let repo = db.issues.clone();
+    let base = chrono::Utc::now();
+
+    // fp0 is the oldest, fp4 the newest; fp3 is resolved.
+    let mut ids = Vec::new();
+    for i in 0..5 {
+        let at = base + chrono::Duration::seconds(i);
+        let outcome = repo
+            .upsert_by_fingerprint(upsert(project_id, &format!("fp{i}"), at))
+            .await
+            .unwrap();
+        ids.push(outcome.issue.id);
+    }
+    repo.set_status(ids[3], IssueStatus::Resolved)
+        .await
+        .unwrap();
+
+    let fingerprints =
+        |issues: Vec<Issue>| -> Vec<String> { issues.into_iter().map(|i| i.fingerprint).collect() };
+
+    let unresolved = repo
+        .list(
+            project_id,
+            IssueFilter {
+                status: Some(IssueStatus::Unresolved),
+                limit: Some(2),
+                offset: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fingerprints(unresolved), ["fp2", "fp1"]);
+
+    let all = repo
+        .list(
+            project_id,
+            IssueFilter {
+                limit: Some(3),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fingerprints(all), ["fp4", "fp3", "fp2"]);
+}

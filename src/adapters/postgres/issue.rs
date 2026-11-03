@@ -8,19 +8,20 @@
 //! with the unique `(project_id, fingerprint)` index and row locks rather than
 //! SQLite's database-wide write lock:
 //!
-//!   * upsert — `INSERT … ON CONFLICT DO NOTHING` decides "new issue" atomically;
-//!     otherwise the existing row is locked (`FOR UPDATE`) before it is bumped.
+//!   * upsert — the existing row is locked (`FOR UPDATE`) and bumped; an unseen
+//!     fingerprint is inserted with `INSERT … ON CONFLICT DO NOTHING`, so a race
+//!     with a concurrent insert is settled atomically.
 //!   * fingerprint override — target and collision rows are locked; a rename
 //!     that loses a race to a concurrent insert is re-run as a merge.
 
-use super::{Db, is_unique_violation, now, ts, unique_short_id};
+use super::{Db, is_unique_violation, now, ts, unique_short_id_on};
 use crate::adapters::retry::retry_write;
 use crate::config::WritePolicy;
 use crate::domain::{Id, Issue, IssueStatus, MuteSpec, Timestamp};
 use crate::error::{Error, Result};
 use crate::ports::{IssueFilter, IssueRepository, IssueSort, IssueUpsert, UpsertOutcome};
 use async_trait::async_trait;
-use sqlx::{AssertSqlSafe, FromRow};
+use sqlx::{AssertSqlSafe, FromRow, Postgres, Transaction};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -52,15 +53,25 @@ impl PgIssueRepository {
 
     /// One transactional attempt at [`IssueRepository::upsert_by_fingerprint`].
     ///
-    /// Returns `None` when the issue vanished between the conflicting insert and
-    /// the row lock (deleted concurrently); the caller simply runs it again.
+    /// The common case — a repeat event — is one locking read plus one update.
+    /// Only an unseen fingerprint allocates a short id and inserts. Returns
+    /// `None` when the issue vanished between a conflicting insert and the row
+    /// lock (deleted concurrently); the caller simply runs it again.
     async fn upsert_once(&self, upsert: &IssueUpsert) -> Result<Option<UpsertOutcome>> {
-        let short_id = unique_short_id(&self.db, "issues").await?;
         let seen = ts(upsert.seen_at);
         let mut tx = self.db.begin().await?;
 
+        if let Some(current) = lock_by_fingerprint(&mut tx, upsert).await? {
+            let outcome = bump_existing(&mut tx, current, upsert, seen).await?;
+            tx.commit().await?;
+            return Ok(Some(outcome));
+        }
+
         // New fingerprint → brand-new unresolved issue (new-issue notice).
         // environment/release (like culprit/level) are set on first sight only.
+        // `ON CONFLICT DO NOTHING` settles a race with a concurrent insert of the
+        // same fingerprint atomically.
+        let short_id = unique_short_id_on(&mut tx, "issues").await?;
         let inserted = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
             "INSERT INTO issues \
                 (id, short_id, project_id, fingerprint, title, culprit, level, \
@@ -93,55 +104,14 @@ impl PgIssueRepository {
             }));
         }
 
-        // The fingerprint exists: lock the row so the regression check and the
-        // bump see the same state as concurrent ingestion of this fingerprint.
-        let existing = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
-            "SELECT {ISSUE_COLS} FROM issues \
-             WHERE project_id = $1 AND fingerprint = $2 FOR UPDATE"
-        )))
-        .bind(upsert.project_id)
-        .bind(&upsert.fingerprint)
-        .fetch_optional(&mut *tx)
-        .await?;
-        let Some(row) = existing else {
+        // Lost the race: a concurrent writer committed this fingerprint first.
+        // Under READ COMMITTED the next statement sees that row, so bump it.
+        let Some(current) = lock_by_fingerprint(&mut tx, upsert).await? else {
             return Ok(None);
         };
-        let current = row.into_domain()?;
-
-        let is_regression = current.status == IssueStatus::Resolved;
-        // A regression flips resolved → unresolved; muted stays muted so it
-        // keeps suppressing notifications. last_seen always advances.
-        let new_status = if is_regression {
-            IssueStatus::Unresolved
-        } else {
-            current.status
-        };
-        // Refresh the title on every event (a stable, parameterized form, so
-        // this is idempotent within a group and self-heals titles frozen from an
-        // early raw sample). culprit/level/environment/release keep the
-        // first-observed values by design.
-        let updated = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
-            "UPDATE issues SET \
-                status = $1, \
-                title = $2, \
-                last_seen = $3, \
-                event_count = event_count + 1, \
-                updated_at = $3 \
-             WHERE id = $4 RETURNING {ISSUE_COLS}"
-        )))
-        .bind(new_status.as_str())
-        .bind(&upsert.title)
-        .bind(seen)
-        .bind(current.id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let issue = updated.into_domain()?;
+        let outcome = bump_existing(&mut tx, current, upsert, seen).await?;
         tx.commit().await?;
-        Ok(Some(UpsertOutcome {
-            issue,
-            is_new: false,
-            is_regression,
-        }))
+        Ok(Some(outcome))
     }
 
     /// One transactional attempt at [`IssueRepository::override_fingerprint`].
@@ -310,6 +280,66 @@ impl IssueRow {
     }
 }
 
+/// Lock the issue of `upsert`'s `(project_id, fingerprint)`, if it exists, so
+/// the regression check and the bump see the same state as concurrent ingestion
+/// of this fingerprint.
+async fn lock_by_fingerprint(
+    tx: &mut Transaction<'_, Postgres>,
+    upsert: &IssueUpsert,
+) -> Result<Option<Issue>> {
+    sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
+        "SELECT {ISSUE_COLS} FROM issues \
+         WHERE project_id = $1 AND fingerprint = $2 FOR UPDATE"
+    )))
+    .bind(upsert.project_id)
+    .bind(&upsert.fingerprint)
+    .fetch_optional(&mut **tx)
+    .await?
+    .map(IssueRow::into_domain)
+    .transpose()
+}
+
+/// Record one more event on a locked, existing issue.
+async fn bump_existing(
+    tx: &mut Transaction<'_, Postgres>,
+    current: Issue,
+    upsert: &IssueUpsert,
+    seen: Timestamp,
+) -> Result<UpsertOutcome> {
+    let is_regression = current.status == IssueStatus::Resolved;
+    // A regression flips resolved → unresolved; muted stays muted so it keeps
+    // suppressing notifications. last_seen always advances.
+    let new_status = if is_regression {
+        IssueStatus::Unresolved
+    } else {
+        current.status
+    };
+    // Refresh the title on every event (a stable, parameterized form, so this is
+    // idempotent within a group and self-heals titles frozen from an early raw
+    // sample). culprit/level/environment/release keep the first-observed values
+    // by design.
+    let updated = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
+        "UPDATE issues SET \
+            status = $1, \
+            title = $2, \
+            last_seen = $3, \
+            event_count = event_count + 1, \
+            updated_at = $3 \
+         WHERE id = $4 RETURNING {ISSUE_COLS}"
+    )))
+    .bind(new_status.as_str())
+    .bind(&upsert.title)
+    .bind(seen)
+    .bind(current.id)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(UpsertOutcome {
+        issue: updated.into_domain()?,
+        is_new: false,
+        is_regression,
+    })
+}
+
 impl PgIssueRepository {
     /// Fetch at most one issue matching `WHERE {predicate}` with `$1` bound.
     async fn find_one<T>(&self, predicate: &str, value: T) -> Result<Option<Issue>>
@@ -434,12 +464,34 @@ impl IssueRepository for PgIssueRepository {
     }
 
     async fn list(&self, project_id: Id, filter: IssueFilter) -> Result<Vec<Issue>> {
-        // Each optional filter binds NULL to match all, so the SQL text stays
-        // static. `query` is a case-insensitive substring match on title/culprit
-        // (ILIKE, matching SQLite's ASCII-case-insensitive LIKE).
-        let like = filter.query.as_ref().map(|q| format!("%{q}%"));
+        // Each optional filter adds its predicate only when it is set. A static
+        // `($2::text IS NULL OR status = $2)` form plans badly once Postgres
+        // switches to a generic plan, so the `(project_id, status, last_seen)`
+        // index could not serve the common "unresolved, newest first" page.
+        // Predicates are fixed literals; every value is bound. `query` is a
+        // case-insensitive substring match on title/culprit (ILIKE, matching
+        // SQLite's ASCII-case-insensitive LIKE).
         let limit = filter.limit.unwrap_or(50).clamp(1, 500);
         let offset = filter.offset.unwrap_or(0).max(0);
+
+        let mut sql = format!("SELECT {ISSUE_COLS} FROM issues WHERE project_id = $1");
+        let mut binds: Vec<String> = Vec::new();
+        let exact = [
+            ("status", filter.status.map(|s| s.as_str().to_string())),
+            ("level", filter.level),
+            ("environment", filter.environment),
+            ("release", filter.release),
+        ];
+        for (column, value) in exact {
+            let Some(value) = value else { continue };
+            binds.push(value);
+            sql.push_str(&format!(" AND {column} = ${}", binds.len() + 1));
+        }
+        if let Some(query) = filter.query {
+            binds.push(format!("%{query}%"));
+            let n = binds.len() + 1;
+            sql.push_str(&format!(" AND (title ILIKE ${n} OR culprit ILIKE ${n})"));
+        }
 
         // ORDER BY is selected from fixed literals via an exhaustive enum match
         // (never from raw user input), so it stays injection-safe.
@@ -447,28 +499,17 @@ impl IssueRepository for PgIssueRepository {
             IssueSort::LastSeen => "last_seen DESC",
             IssueSort::EventCount => "event_count DESC, last_seen DESC",
         };
+        let n = binds.len() + 2;
+        sql.push_str(&format!(
+            " ORDER BY {order_by} LIMIT ${n} OFFSET ${}",
+            n + 1
+        ));
 
-        let rows = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
-            "SELECT {ISSUE_COLS} FROM issues \
-             WHERE project_id = $1 \
-               AND ($2::text IS NULL OR status = $2) \
-               AND ($3::text IS NULL OR level = $3) \
-               AND ($4::text IS NULL OR environment = $4) \
-               AND ($5::text IS NULL OR release = $5) \
-               AND ($6::text IS NULL OR title ILIKE $6 OR culprit ILIKE $6) \
-             ORDER BY {order_by} \
-             LIMIT $7 OFFSET $8"
-        )))
-        .bind(project_id)
-        .bind(filter.status.map(|s| s.as_str()))
-        .bind(&filter.level)
-        .bind(&filter.environment)
-        .bind(&filter.release)
-        .bind(&like)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.db)
-        .await?;
+        let mut query = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(sql)).bind(project_id);
+        for value in binds {
+            query = query.bind(value);
+        }
+        let rows = query.bind(limit).bind(offset).fetch_all(&self.db).await?;
         rows.into_iter().map(IssueRow::into_domain).collect()
     }
 
