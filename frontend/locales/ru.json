@@ -476,6 +476,8 @@
   "orphaned_project": "Удалён из конфигурации: новые события не принимаются",
   "orphaned_team": "Удалена из конфигурации; состав сохранён",
   "management": "Управление",
+  "managed_in_ui": "Интерфейс",
+  "managed_by_deployment": "Настройки развёртывания, только чтение",
   "configuration_file": "Файл конфигурации",
   "default_configuration_file": "Файл по умолчанию из образа",
   "loaded": "Загружен",

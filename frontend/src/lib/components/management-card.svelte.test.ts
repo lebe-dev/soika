@@ -47,7 +47,7 @@ describe('management status', () => {
         flushSync(() => {
           component = mount(ManagementCard, { target, props: { management } });
         });
-        expect(target.textContent).toContain('PROJECT_MANAGEMENT_SOURCE');
+        expect(target.textContent).not.toContain('MANAGEMENT_SOURCE');
         expect(target.textContent).toContain('/etc/soika/config.yaml');
         expect(target.textContent?.includes('new users cannot join')).toBe(team === 'yaml');
         expect(target.textContent).toContain(

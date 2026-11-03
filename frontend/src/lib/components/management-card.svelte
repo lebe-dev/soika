@@ -17,12 +17,20 @@
       )}
     </p>
     <dl class="grid grid-cols-2 gap-2">
-      <dt>{$t('projects')} <code>PROJECT_MANAGEMENT_SOURCE</code></dt>
-      <dd>{management.settings.project_source === 'ui' ? 'UI' : $t('configuration_file')}</dd>
-      <dt>{$t('teams')} <code>TEAM_MANAGEMENT_SOURCE</code></dt>
-      <dd>{management.settings.team_source === 'ui' ? 'UI' : $t('configuration_file')}</dd>
-      <dt>{$t('service_settings')} <code>SERVICE_MANAGEMENT_SOURCE</code></dt>
-      <dd>{management.settings.service_source === 'env' ? $t('service_env_readonly') : 'UI'}</dd>
+      <dt>{$t('projects')}</dt>
+      <dd>
+        {$t(management.settings.project_source === 'ui' ? 'managed_in_ui' : 'configuration_file')}
+      </dd>
+      <dt>{$t('teams')}</dt>
+      <dd>
+        {$t(management.settings.team_source === 'ui' ? 'managed_in_ui' : 'configuration_file')}
+      </dd>
+      <dt>{$t('service_settings')}</dt>
+      <dd>
+        {$t(
+          management.settings.service_source === 'env' ? 'managed_by_deployment' : 'managed_in_ui'
+        )}
+      </dd>
       <dt>{$t('configuration_file')}</dt>
       <dd>{management.settings.path}</dd>
       <dt>{$t('status')}</dt>

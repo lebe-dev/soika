@@ -476,6 +476,8 @@
   "orphaned_project": "Removed from configuration, events are not accepted",
   "orphaned_team": "Removed from configuration; membership is frozen",
   "management": "Management",
+  "managed_in_ui": "Interface",
+  "managed_by_deployment": "Deployment settings, read-only",
   "configuration_file": "Configuration file",
   "default_configuration_file": "Default file from the image",
   "loaded": "Loaded",
