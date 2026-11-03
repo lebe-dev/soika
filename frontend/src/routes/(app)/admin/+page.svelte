@@ -275,7 +275,7 @@
             <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
           </Card.Content>
         </Card.Root>
-        <Card.Root class={!smtp.enabled ? 'opacity-50 grayscale' : undefined}>
+        <Card.Root>
           <Card.Header>
             <Card.Title>{$t('notifications_email')}</Card.Title>
             <Card.Description>

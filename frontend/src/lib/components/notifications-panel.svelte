@@ -6,6 +6,7 @@
   import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
+  import { Badge } from '$lib/components/ui/badge';
   import { Input } from '$lib/components/ui/input';
   import InfoTip from '$lib/components/info-tip.svelte';
   import { toast } from '$lib/components/ui/sonner';
@@ -132,7 +133,7 @@
       </p>
     {/if}
     {#if !view.feature_enabled}
-      <p class="text-muted-foreground text-sm">{$t('notifications_feature_disabled')}</p>
+      <Badge variant="disabled">{$t('disabled')}</Badge>
     {:else}
       <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
       <div class="flex items-center justify-between gap-4">
