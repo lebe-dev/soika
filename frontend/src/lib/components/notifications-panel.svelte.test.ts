@@ -89,8 +89,8 @@ it('shows the environment default without persisting an override', () => {
 });
 
 it.each([
-  ['en', 'Disabled in configuration'],
-  ['ru', 'Отключено в конфигурации']
+  ['en', 'Disabled'],
+  ['ru', 'Отключено']
 ] as const)(
   'shows a concise disabled state in %s when the feature flag is off',
   (language, message) => {

@@ -50,11 +50,11 @@ describe('management status', () => {
         expect(target.textContent).not.toContain('MANAGEMENT_SOURCE');
         expect(target.textContent).toContain('/etc/soika/config.yaml');
         expect(target.textContent?.includes('new users cannot join')).toBe(team === 'yaml');
-        expect(target.textContent).toContain(
-          project === 'ui' && team === 'ui'
-            ? 'Projects and teams are managed in the UI.'
-            : 'configuration file'
+        const [projects, teams] = [...target.querySelectorAll('dd')].map((dd) =>
+          dd.textContent?.trim()
         );
+        expect(projects).toBe(project === 'ui' ? 'Interface' : 'Configuration file');
+        expect(teams).toBe(team === 'ui' ? 'Interface' : 'Configuration file');
       });
     }
 });
