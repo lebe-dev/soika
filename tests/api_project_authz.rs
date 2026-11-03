@@ -16,7 +16,9 @@
 //!   success the creator becomes a project admin;
 //! - `PATCH /api/projects/{id}` rejects a malformed `webhook_url` (`400`) and
 //!   clears it when given an empty string;
-//! - `POST /api/projects/{id}/regenerate-dsn` requires admin (member → `403`).
+//! - `POST /api/projects/{id}/regenerate-dsn` requires project admin: team
+//!   contributor → `403`, outsider → no access, anonymous → `401`; instance
+//!   Owner/Manager may rotate without team membership.
 
 mod common;
 
@@ -62,6 +64,10 @@ impl Fixture {
         } else {
             InstanceRole::Member
         };
+        self.create_user_with_role(email, instance_role).await
+    }
+
+    async fn create_user_with_role(&self, email: &str, instance_role: InstanceRole) -> Id {
         self.state
             .users
             .create(NewUser {
@@ -492,6 +498,65 @@ async fn regenerate_dsn_requires_admin() {
     assert_eq!(status, StatusCode::OK, "admin may rotate the DSN key");
     let rotated = body["public_key"].as_str().expect("public_key in response");
     assert_ne!(rotated, "dsn-alpha", "the DSN public key was rotated");
+}
+
+#[tokio::test]
+async fn regenerate_dsn_rejects_outsiders_and_anonymous_callers() {
+    let app = Fixture::spawn().await;
+    app.create_user("outsider@example.com", false).await;
+    let team = app.create_team("team-a").await;
+    let project = app.create_project(team, "alpha", "dsn-alpha").await;
+    let uri = format!("/api/projects/{}/regenerate-dsn", project.short_id);
+
+    // A user outside the owning team has no access at all.
+    let cookie = app.login("outsider@example.com").await;
+    let (status, _) = app.post_empty(&uri, &cookie).await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "an outsider cannot rotate the DSN key, got {status}"
+    );
+
+    // No session at all.
+    let (status, _) = app.post_empty(&uri, "").await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "anonymous callers are rejected"
+    );
+
+    let unchanged = app
+        .state
+        .projects
+        .find_by_short_id(&project.short_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        unchanged.dsn_public_key, "dsn-alpha",
+        "the key was not rotated"
+    );
+}
+
+#[tokio::test]
+async fn instance_owner_and_manager_may_regenerate_dsn_without_team_membership() {
+    let app = Fixture::spawn().await;
+    app.create_user_with_role("owner@example.com", InstanceRole::Owner)
+        .await;
+    app.create_user_with_role("manager@example.com", InstanceRole::Manager)
+        .await;
+    let team = app.create_team("team-a").await;
+    let project = app.create_project(team, "alpha", "dsn-alpha").await;
+    let uri = format!("/api/projects/{}/regenerate-dsn", project.short_id);
+
+    let mut previous = "dsn-alpha".to_string();
+    for email in ["owner@example.com", "manager@example.com"] {
+        let cookie = app.login(email).await;
+        let (status, body) = app.post_empty(&uri, &cookie).await;
+        assert_eq!(status, StatusCode::OK, "{email} may rotate the DSN key");
+        let rotated = body["public_key"].as_str().expect("public_key in response");
+        assert_ne!(rotated, previous, "{email} rotated the DSN key");
+        previous = rotated.to_string();
+    }
 }
 
 // ---------------------------------------------------------------------------

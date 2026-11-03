@@ -6,6 +6,13 @@
   import CopyField from '$lib/components/copy-field.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
   import KeyRound from '@lucide/svelte/icons/key-round';
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+  import { Button } from '$lib/components/ui/button';
+  import * as Dialog from '$lib/components/ui/dialog';
+  import { toast } from '$lib/components/ui/sonner';
+  import { invalidateAll } from '$app/navigation';
+  import { projects as projectsApi, errorMessage } from '$lib/api';
+  import { reportUnexpected } from '$lib/report';
   import { sdkSnippets } from '$lib/sdk-snippets';
   import type { PageData } from './$types';
 
@@ -18,6 +25,27 @@
   const dsn = $derived(data.project.dsn);
   const snippets = $derived(sdkSnippets(data.project.dsn, data.project.dsn_public_key));
   let active = $state(untrack(() => 'go'));
+
+  // Rotating the DSN is a project-admin action (team Admin or instance
+  // Owner/Manager); the backend enforces the same rule.
+  const canRegenerate = $derived(data.effectiveRole === 'admin');
+  let regenerateOpen = $state(false);
+  let regenerating = $state(false);
+
+  async function regenerateDsn() {
+    regenerating = true;
+    try {
+      await projectsApi.regenerateDsn(data.project.id);
+      regenerateOpen = false;
+      toast.success($t('dsn_regenerated'));
+      await invalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, $t('failed_to_regenerate_dsn')));
+      reportUnexpected(err);
+    } finally {
+      regenerating = false;
+    }
+  }
 </script>
 
 <PageTitle title={`${data.project.name} · ${$t('sdk_setup')}`} />
@@ -32,6 +60,19 @@
       <Card.Description>
         {$t('point_your_sentry_compatible_sdk_at_this_dsn_to_start_sending_events_to_this_pro')}
       </Card.Description>
+      {#if canRegenerate}
+        <Card.Action>
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            onclick={() => (regenerateOpen = true)}
+          >
+            <RefreshCw class="size-4" />
+            {$t('regenerate_dsn')}
+          </Button>
+        </Card.Action>
+      {/if}
     </Card.Header>
     <Card.Content>
       <CopyField value={dsn} label="DSN" />
@@ -82,3 +123,22 @@
     </Card.Content>
   </Card.Root>
 </div>
+
+<Dialog.Root bind:open={regenerateOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>{$t('regenerate_dsn_title')}</Dialog.Title>
+      <Dialog.Description>
+        {$t('regenerate_dsn_confirm', { values: { name: data.project.name } })}
+      </Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Button type="button" variant="outline" onclick={() => (regenerateOpen = false)}>
+        {$t('cancel')}
+      </Button>
+      <Button variant="destructive" disabled={regenerating} onclick={regenerateDsn}>
+        {regenerating ? $t('regenerating') : $t('regenerate_dsn')}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
