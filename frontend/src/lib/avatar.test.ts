@@ -21,6 +21,18 @@ describe('initials', () => {
   it('falls back to a placeholder for an empty name', () => {
     expect(initials('   ')).toBe('?');
   });
+
+  it('skips special characters instead of putting them in the initials', () => {
+    expect(initials('Lab Board (dev)')).toBe('LD');
+    expect(initials('(dev) Lab')).toBe('DL');
+    expect(initials('lab-board-dev')).toBe('LD');
+    expect(initials('(dev)')).toBe('DE');
+    expect(initials('@#$ %^&')).toBe('?');
+  });
+
+  it('keeps digits and non-Latin letters', () => {
+    expect(initials('Проект 42')).toBe('П4');
+  });
 });
 
 describe('avatarTint', () => {
@@ -43,9 +55,13 @@ describe('avatarTint', () => {
 
 describe('Unicode identities', () => {
   it('keeps complete code points in initials', () => {
-    expect(initials('😀 Team')).toBe('😀T');
-    expect(initials('😀Dev')).toBe('😀D');
-    expect(initials('Team 😀')).toBe('T😀');
+    expect(initials('𝐀lpha 𝐁eta')).toBe('𝐀𝐁');
+    expect(initials('𝐀𝐁𝐂')).toBe('𝐀𝐁');
+  });
+
+  it('drops emoji from initials', () => {
+    expect(initials('😀 Team')).toBe('TE');
+    expect(initials('😀')).toBe('?');
   });
 
   it('hashes supplementary characters as one code point', () => {
