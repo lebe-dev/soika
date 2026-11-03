@@ -267,7 +267,7 @@
       <Card.Root>
         <Card.Header><Card.Title>{$t('notifications_webhooks')}</Card.Title></Card.Header>
         <Card.Content class="space-y-2">
-          <Badge variant={data.telemetry?.webhooks_enabled ? 'enabled' : 'outline'}
+          <Badge variant={data.telemetry?.webhooks_enabled ? 'enabled' : 'disabled'}
             >{data.telemetry?.webhooks_enabled ? $t('enabled') : $t('disabled')}</Badge
           >
           <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
@@ -288,7 +288,7 @@
                 {$t('configured')}
               </Badge>
             {:else if !smtp.enabled}
-              <Badge variant="outline">{$t('disabled')}</Badge>
+              <Badge variant="disabled">{$t('disabled')}</Badge>
             {:else}
               <Badge variant="outline">
                 <MailX class="size-3" />

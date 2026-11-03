@@ -300,7 +300,7 @@
         class={cn('space-y-2', !webhooksEnabled && 'opacity-50 grayscale')}
       >
         {#if !webhooksEnabled}
-          <Badge variant="outline">{$t('disabled')}</Badge>
+          <Badge variant="disabled">{$t('disabled')}</Badge>
           <p class="text-muted-foreground text-xs">{$t('webhooks_disabled_by_webhooks_enabled')}</p>
         {/if}
         <label for="webhook-url" class="text-sm font-medium">{$t('webhook_url')}</label>

@@ -7,6 +7,7 @@
       variant: {
         default: 'bg-primary text-primary-foreground [a]:hover:bg-primary/80',
         enabled: 'border-border text-primary [a]:hover:bg-muted',
+        disabled: 'border-border text-muted-foreground [a]:hover:bg-muted',
         secondary: 'bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80',
         destructive:
           'bg-destructive/10 [a]:hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 text-destructive dark:bg-destructive/20',
