@@ -3,8 +3,13 @@
   import type { AuthenticationStatus } from '$lib/api';
   import * as Card from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
+  import InfoTip from '$lib/components/info-tip.svelte';
   let { authentication: auth }: { authentication: AuthenticationStatus } = $props();
 </script>
+
+{#snippet term(label: string, tip: string)}
+  <dt class="text-muted-foreground flex items-center gap-1.5">{label}<InfoTip text={$t(tip)} /></dt>
+{/snippet}
 
 <div class="space-y-6">
   <p class="text-muted-foreground text-sm">{$t('auth_config_readonly')}</p>
@@ -22,13 +27,13 @@
           <dl class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             <dt class="text-muted-foreground">{$t('auth_provider')}</dt>
             <dd class="break-words">{auth.sso.provider_name}</dd>
-            <dt class="text-muted-foreground">{$t('auth_domains')}</dt>
+            {@render term($t('auth_domains'), 'tip_auth_domains')}
             <dd class="break-words">
               {auth.sso.allowed_email_domains.length
                 ? auth.sso.allowed_email_domains.join(', ')
                 : $t('auth_any_domain')}
             </dd>
-            <dt class="text-muted-foreground">{$t('auth_approval')}</dt>
+            {@render term($t('auth_approval'), 'tip_auth_approval')}
             <dd>{$t(auth.sso.require_approval ? 'auth_required' : 'auth_not_required')}</dd>
           </dl>
           <p class="text-muted-foreground">{$t('auth_owner_sso')}</p>
@@ -59,11 +64,11 @@
         >
         {#if auth.passkeys}
           <dl class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-            <dt class="text-muted-foreground">{$t('auth_rp_id')}</dt>
+            {@render term($t('auth_rp_id'), 'tip_auth_rp_id')}
             <dd class="break-all">{auth.passkeys.rp_id}</dd>
-            <dt class="text-muted-foreground">{$t('auth_origin')}</dt>
+            {@render term($t('auth_origin'), 'tip_auth_origin')}
             <dd class="break-all">{auth.passkeys.rp_origin}</dd>
-            <dt class="text-muted-foreground">{$t('auth_passkey_limit')}</dt>
+            {@render term($t('auth_passkey_limit'), 'tip_auth_passkey_limit')}
             <dd>{auth.passkeys.max_per_user}</dd>
           </dl>
         {/if}
@@ -73,19 +78,19 @@
       <Card.Header><Card.Title>{$t('auth_access')}</Card.Title></Card.Header>
       <Card.Content class="space-y-4 text-sm">
         <dl class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-          <dt class="text-muted-foreground">{$t('allow_public_sign_up')}</dt>
+          {@render term($t('allow_public_sign_up'), 'tip_allow_signup')}
           <dd>
             <Badge variant={auth.public_signup ? 'enabled' : 'disabled'}
               >{$t(auth.public_signup ? 'enabled' : 'disabled')}</Badge
             >
           </dd>
-          <dt class="text-muted-foreground">{$t('auth_setup')}</dt>
+          {@render term($t('auth_setup'), 'tip_auth_setup')}
           <dd>
             <Badge variant={auth.admin_setup_enabled ? 'enabled' : 'disabled'}
               >{$t(auth.admin_setup_enabled ? 'enabled' : 'disabled')}</Badge
             >
           </dd>
-          <dt class="text-muted-foreground">{$t('auth_login_protection')}</dt>
+          {@render term($t('auth_login_protection'), 'tip_auth_login_protection')}
           <dd>
             <Badge variant={auth.login_protection_enabled ? 'enabled' : 'disabled'}
               >{$t(auth.login_protection_enabled ? 'enabled' : 'disabled')}</Badge

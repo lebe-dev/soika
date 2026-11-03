@@ -5,6 +5,7 @@
   import { t } from '$lib/i18n';
   import { reportUnexpected } from '$lib/report';
   import * as Card from '$lib/components/ui/card';
+  import InfoTip from '$lib/components/info-tip.svelte';
   import { Button } from '$lib/components/ui/button';
   import { toast } from '$lib/components/ui/sonner';
 
@@ -50,7 +51,10 @@
 
 <Card.Root>
   <Card.Header>
-    <Card.Title>{$t('default_teams_title')}</Card.Title>
+    <div class="flex items-center gap-1.5">
+      <Card.Title>{$t('default_teams_title')}</Card.Title>
+      <InfoTip text={$t('tip_default_teams')} />
+    </div>
     <Card.Description>{$t('default_teams_description')}</Card.Description>
   </Card.Header>
   <Card.Content class="space-y-4">

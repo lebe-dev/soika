@@ -7,6 +7,7 @@
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import InfoTip from '$lib/components/info-tip.svelte';
   import { toast } from '$lib/components/ui/sonner';
 
   let { view }: { view: NotificationView } = $props();
@@ -135,7 +136,9 @@
     {:else}
       <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
       <div class="flex items-center justify-between gap-4">
-        <span class="text-sm font-medium">{$t('notifications_alertmanager_enabled')}</span>
+        <span class="flex items-center gap-1.5 text-sm font-medium"
+          >{$t('notifications_alertmanager_enabled')}<InfoTip text={$t('tip_am_enabled')} /></span
+        >
         <Button
           variant={enabled ? 'default' : 'outline'}
           size="sm"
@@ -145,9 +148,12 @@
         >
       </div>
       <div class="grid gap-2">
-        <label for="alertmanager-url" class="text-sm font-medium"
-          >{$t('notifications_base_url')}</label
-        >
+        <div class="flex items-center gap-1.5">
+          <label for="alertmanager-url" class="text-sm font-medium"
+            >{$t('notifications_base_url')}</label
+          >
+          <InfoTip text={$t('tip_am_url')} />
+        </div>
         <Input
           id="alertmanager-url"
           type="url"
@@ -162,9 +168,12 @@
       <p class="text-muted-foreground text-sm">{$t('notifications_identity')}</p>
       <div class="grid gap-4 lg:grid-cols-2">
         <div class="grid gap-2">
-          <label for="alertmanager-labels" class="text-sm font-medium"
-            >{$t('notifications_labels')}</label
-          >
+          <div class="flex items-center gap-1.5">
+            <label for="alertmanager-labels" class="text-sm font-medium"
+              >{$t('notifications_labels')}</label
+            >
+            <InfoTip text={$t('tip_am_labels')} />
+          </div>
           <textarea
             id="alertmanager-labels"
             class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
@@ -174,9 +183,12 @@
           ></textarea>
         </div>
         <div class="grid gap-2">
-          <label for="alertmanager-annotations" class="text-sm font-medium"
-            >{$t('notifications_annotations')}</label
-          >
+          <div class="flex items-center gap-1.5">
+            <label for="alertmanager-annotations" class="text-sm font-medium"
+              >{$t('notifications_annotations')}</label
+            >
+            <InfoTip text={$t('tip_am_annotations')} />
+          </div>
           <textarea
             id="alertmanager-annotations"
             class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"

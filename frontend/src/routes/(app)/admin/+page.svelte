@@ -34,6 +34,7 @@
   import ManagedConfigBanner from '$lib/components/managed-config-banner.svelte';
   import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
+  import InfoTip from '$lib/components/info-tip.svelte';
   import type { PageData } from './$types';
   import { page } from '$app/state';
 
@@ -360,7 +361,10 @@
         </Card.Header>
         <Card.Content class="space-y-4">
           <div class="grid gap-2">
-            <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
+            <div class="flex items-center gap-1.5">
+              <label for="org-name" class="text-sm font-medium">{$t('organization_name')}</label>
+              <InfoTip text={$t('tip_org_name')} />
+            </div>
             <Input
               id="org-name"
               bind:value={orgName}
@@ -381,7 +385,9 @@
         <Card.Content>
           <div class="flex items-center justify-between gap-4 rounded-lg border p-4">
             <div class="space-y-0.5">
-              <p class="text-sm font-medium">{$t('allow_public_sign_up')}</p>
+              <p class="flex items-center gap-1.5 text-sm font-medium">
+                {$t('allow_public_sign_up')}<InfoTip text={$t('tip_allow_signup')} />
+              </p>
               <p class="text-muted-foreground text-sm">
                 {$t('when_off_accounts_are_created_only_via_invite')}
               </p>

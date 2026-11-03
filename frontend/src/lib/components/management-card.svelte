@@ -1,9 +1,14 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
   import * as Card from '$lib/components/ui/card';
+  import InfoTip from '$lib/components/info-tip.svelte';
   import type { ManagementStatus } from '$lib/api';
   let { management }: { management: ManagementStatus } = $props();
 </script>
+
+{#snippet term(label: string, tip: string)}
+  <dt class="flex items-center gap-1.5">{label}<InfoTip text={$t(tip)} /></dt>
+{/snippet}
 
 <Card.Root>
   <Card.Header><Card.Title>{$t('management')}</Card.Title></Card.Header>
@@ -17,23 +22,23 @@
       )}
     </p>
     <dl class="grid grid-cols-2 gap-2">
-      <dt>{$t('projects')}</dt>
+      {@render term($t('projects'), 'tip_projects')}
       <dd>
         {$t(management.settings.project_source === 'ui' ? 'managed_in_ui' : 'configuration_file')}
       </dd>
-      <dt>{$t('teams')}</dt>
+      {@render term($t('teams'), 'tip_teams')}
       <dd>
         {$t(management.settings.team_source === 'ui' ? 'managed_in_ui' : 'configuration_file')}
       </dd>
-      <dt>{$t('service_settings')}</dt>
+      {@render term($t('service_settings'), 'tip_service_settings')}
       <dd>
         {$t(
           management.settings.service_source === 'env' ? 'managed_by_deployment' : 'managed_in_ui'
         )}
       </dd>
-      <dt>{$t('configuration_file')}</dt>
+      {@render term($t('configuration_file'), 'tip_config_file')}
       <dd>{management.settings.path}</dd>
-      <dt>{$t('status')}</dt>
+      {@render term($t('status'), 'tip_status')}
       <dd>
         {management.report.loaded
           ? management.report.default_file
@@ -41,26 +46,26 @@
             : $t('loaded')
           : $t('not_used')}
       </dd>
-      <dt>{$t('last_sync')}</dt>
+      {@render term($t('last_sync'), 'tip_last_sync')}
       <dd>{management.report.synced_at ?? '—'}</dd>
-      <dt>{$t('projects_in_file')}</dt>
+      {@render term($t('projects_in_file'), 'tip_projects_in_file')}
       <dd>{management.report.projects_in_file}</dd>
-      <dt>{$t('teams_in_file')}</dt>
+      {@render term($t('teams_in_file'), 'tip_teams_in_file')}
       <dd>{management.report.teams_in_file}</dd>
-      <dt>{$t('orphan_policy')}</dt>
+      {@render term($t('orphan_policy'), 'tip_orphan_policy')}
       <dd>
         {management.settings.project_orphan_policy} / {management.settings.team_orphan_policy}
       </dd>
-      <dt>{$t('sync_result')}</dt>
+      {@render term($t('sync_result'), 'tip_sync_result')}
       <dd>
         +{management.report.created} / ~{management.report.updated} / ={management.report.unchanged} /
         ↩{management.report.restored} / !{management.report.orphaned} / −{management.report.deleted}
       </dd>
-      <dt>{$t('not_signed_in_yet')}</dt>
+      {@render term($t('not_signed_in_yet'), 'tip_not_signed_in')}
       <dd>{management.report.pending_grants}</dd>
-      <dt>{$t('local_account_grants')}</dt>
+      {@render term($t('local_account_grants'), 'tip_local_grants')}
       <dd>{management.report.local_grants}</dd>
-      <dt>{$t('orphaned_entities')}</dt>
+      {@render term($t('orphaned_entities'), 'tip_orphaned_entities')}
       <dd>{management.report.orphaned_projects ?? 0} / {management.report.orphaned_teams ?? 0}</dd>
     </dl>
     {#if management.settings.project_orphan_policy === 'delete' || management.settings.team_orphan_policy === 'delete'}<p
