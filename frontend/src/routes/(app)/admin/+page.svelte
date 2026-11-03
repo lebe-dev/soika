@@ -126,7 +126,6 @@
   let busyUserId = $state<string | null>(null);
 
   // Count of accounts awaiting approval — surfaced on the Users tab label.
-  const pendingCount = $derived(data.users.filter((u) => u.status === 'pending').length);
 
   async function approveUser(id: string) {
     busyUserId = id;
@@ -247,18 +246,9 @@
         ><a href="/admin/auth">{$t('authentication')}</a></Tabs.Trigger
       >
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="users"
-        ><a href="/admin/users">
-          {$t('users')}{data.users.length})
-          {#if pendingCount > 0}
-            <Badge variant="default" class="ml-1.5">{pendingCount} {$t('pending')}</Badge>
-          {/if}
-        </a></Tabs.Trigger
-      >
+      <Tabs.Trigger value="users"><a href="/admin/users">{$t('users')}</a></Tabs.Trigger>
       <span aria-hidden="true" class="bg-border h-4 w-px self-center"></span>
-      <Tabs.Trigger value="teams"
-        ><a href="/admin/teams">{$t('teams_b2ba35')}{data.teams.length})</a></Tabs.Trigger
-      >
+      <Tabs.Trigger value="teams"><a href="/admin/teams">{$t('teams_b2ba35')}</a></Tabs.Trigger>
     </Tabs.List>
 
     <ManagedConfigBanner
