@@ -33,7 +33,10 @@ pub async fn spa_fallback(uri: Uri) -> Response {
     if let Some(content) = Assets::get(path) {
         let mime = mime_guess::from_path(path).first_or_octet_stream();
         return (
-            [(header::CONTENT_TYPE, mime.as_ref())],
+            [
+                (header::CONTENT_TYPE, mime.as_ref()),
+                (header::CACHE_CONTROL, cache_control(path)),
+            ],
             content.data.into_owned(),
         )
             .into_response();
@@ -42,7 +45,10 @@ pub async fn spa_fallback(uri: Uri) -> Response {
     // Fallback to index.html for client-side routing.
     match Assets::get("index.html") {
         Some(content) => (
-            [(header::CONTENT_TYPE, "text/html")],
+            [
+                (header::CONTENT_TYPE, "text/html"),
+                (header::CACHE_CONTROL, cache_control("index.html")),
+            ],
             content.data.into_owned(),
         )
             .into_response(),
@@ -51,5 +57,36 @@ pub async fn spa_fallback(uri: Uri) -> Response {
             Body::from("frontend assets not embedded"),
         )
             .into_response(),
+    }
+}
+
+/// `Cache-Control` for an embedded asset. SvelteKit fingerprints everything
+/// under `_app/immutable/`, so those files never change at a given URL and can
+/// be cached forever; everything else (the `index.html` shell, `version.json`,
+/// favicon) must be revalidated so a new release is picked up.
+fn cache_control(path: &str) -> &'static str {
+    if path.starts_with("_app/immutable/") {
+        return "public, max-age=31536000, immutable";
+    }
+    "no-cache"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cache_control;
+
+    #[test]
+    fn fingerprinted_assets_are_cached_forever() {
+        assert_eq!(
+            cache_control("_app/immutable/chunks/abc123.js"),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn shell_and_unversioned_files_are_revalidated() {
+        for path in ["index.html", "_app/version.json", "favicon.svg"] {
+            assert_eq!(cache_control(path), "no-cache", "{path}");
+        }
     }
 }
