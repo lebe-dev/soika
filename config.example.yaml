@@ -1,0 +1,76 @@
+# Example declarative configuration for Soika.
+# The file is read once at startup from CONFIG_PATH (default /etc/soika/config.yaml);
+# restart the service to apply changes. Each section is used only when its
+# management source selects the file; sections owned by the UI are ignored.
+# String values may reference environment variables as ${NAME}; an unset
+# variable fails startup. Never put DSNs or credentials in this file.
+
+# Schema version; must be 1.
+version: 1
+
+# Teams, read when TEAM_MANAGEMENT_SOURCE=yaml. Required in that mode
+# (use `teams: []` explicitly for none). Teams are matched by name: renaming
+# creates a new team, and missing teams follow TEAM_ORPHAN_POLICY.
+teams:
+  - name: Platform # Unique display name; projects reference it.
+    # Email grants. Entries do not create users: the grant applies when the
+    # person signs in. Role is admin (manages the team) or contributor.
+    members:
+      - email: alice@example.com
+        role: admin
+      - email: bob@example.com
+        role: contributor
+    # SSO group grants; require OAUTH_PROVIDER=oidc with a groups claim
+    # (OAUTH_GROUPS_CLAIM). Group paths match exactly, including case.
+    # sso_groups:
+    #   - group: acme/platform
+    #     role: contributor
+  - name: Web
+    # A team needs members or sso_groups; an empty list keeps it empty on purpose.
+    members: []
+
+# Projects, read when PROJECT_MANAGEMENT_SOURCE=yaml. Required in that mode
+# (use `projects: []` explicitly for none). Projects are matched by slug:
+# changing a slug creates a new project with a new DSN, and missing projects
+# follow PROJECT_ORPHAN_POLICY.
+projects:
+  - slug: backend-api # Unique lowercase slug: letters, digits and dashes.
+    name: Backend API # Display name.
+    team: Platform # Owning team; must exist in the file or in the UI.
+    retention_events: 5000 # Max stored events (>= 1); default DEFAULT_EVENTS_RETENTION.
+    retention_days: 30 # Max event age in days; 0 or omitted falls back to DEFAULT_RETENTION_DAYS.
+    # Outgoing webhook (http/https); omit to disable this channel.
+    # webhook_url: ${BACKEND_WEBHOOK_URL}
+  - slug: frontend
+    name: Frontend
+    team: Web
+
+# Notifications. With SERVICE_MANAGEMENT_SOURCE=env only
+# alertmanager.project_labels is read; with ui the section is ignored.
+notifications:
+  alertmanager:
+    # Extra Alertmanager labels per project slug; they override default labels
+    # with the same name. Values accept templates such as {{ level }}.
+    project_labels:
+      backend-api:
+        team: platform
+        severity: '{{ level }}'
+      frontend:
+        team: web
+
+# Legacy mode (NOTIFICATION_MANAGEMENT_SOURCE=yaml with SERVICE_MANAGEMENT_SOURCE
+# unset) reads the full Alertmanager configuration instead of project_labels:
+#
+# notifications:
+#   alertmanager:
+#     enabled: true # Send alerts to Alertmanager.
+#     url: http://alertmanager.monitoring:9093 # Base URL, optionally with a path prefix.
+#     # A labels or annotations map replaces the defaults in full; alertname is required.
+#     labels:
+#       alertname: SoikaIssue
+#       project: '{{ project_slug }}'
+#       severity: '{{ level }}'
+#     annotations:
+#       summary: '{{ title }}'
+#       description: '{{ project_name }}: {{ culprit }}'
+#       issue_url: '{{ issue_url }}'

@@ -25,6 +25,9 @@ node_modules
 .env.*
 !.env.example
 
+# Local declarative configuration; see config.example.yaml
+/config.yaml
+
 # Editor / OS
 .DS_Store
 *.swp

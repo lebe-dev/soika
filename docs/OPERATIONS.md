@@ -547,7 +547,8 @@ required whenever either source is `yaml`. `version: 1` and the section for each
 YAML-managed type are mandatory; empty sections must be explicit. Unknown fields,
 duplicate keys/entities, invalid slugs, retention values and webhook URLs fail
 startup. Sections for UI-managed types are ignored. For local development use
-`CONFIG_PATH=deploy/config.yaml`.
+`CONFIG_PATH=deploy/config.yaml`. The repository root contains a commented
+`config.example.yaml` describing every field.
 
 ```yaml
 version: 1

@@ -88,3 +88,18 @@ fn deletion_plan_checks_final_ownership_and_aggregates_errors() {
     assert!(error.contains("unknown team Missing"));
     assert!(error.contains("still owns projects: other"));
 }
+
+#[test]
+fn example_configuration_file_is_valid() {
+    let text = include_str!("../config.example.yaml");
+    let settings = ManagementSettings {
+        service_source: ManagementSource::Env,
+        ..yaml_settings()
+    };
+    let file = parse(text, &settings).expect("config.example.yaml must parse");
+    validate_references(&file, &[]).expect("example projects must reference example teams");
+    assert_eq!(file.projects.as_ref().map(Vec::len), Some(2));
+    assert_eq!(file.teams.as_ref().map(Vec::len), Some(2));
+    assert_eq!(file.alertmanager_project_labels.len(), 2);
+    parse(text, &ManagementSettings::default()).expect("UI-managed sections are ignored");
+}
