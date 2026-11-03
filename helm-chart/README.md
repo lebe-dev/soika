@@ -55,7 +55,9 @@ Alternatively, create a Kubernetes Secret with `SECRET_KEY` and set
 `secrets.create=false` and `secrets.existingSecret=<name>`. Other sensitive
 variables such as `SMTP_PASSWORD` and `OAUTH_CLIENT_SECRET` can go in the same
 Secret. List non-sensitive variables in `envs`; the full set is documented in
-the root `.env.example`.
+the root `.env.example`. `values.yaml` lists the commonly used defaults and names the
+remaining optional variables in comments. Helm replaces the whole `envs` list when you
+override it, so copy the entries you want to keep.
 When using an existing Secret, restart the Deployment after changing its data;
 Helm can only trigger an automatic rollout for a Secret created by this chart.
 
