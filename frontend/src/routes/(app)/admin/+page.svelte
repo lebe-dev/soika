@@ -604,22 +604,32 @@
 
 <style>
   .admin-tabs :global([data-managed-config-banner]) {
-    transition:
-      border-color 250ms ease,
-      box-shadow 250ms ease;
+    transition: border-color 250ms ease;
   }
 
   .admin-tabs:has(:global([data-managed-readonly] label:hover)),
-  .admin-tabs:has(:global([data-slot='badge'][data-variant='disabled']:hover)) {
+  .admin-tabs:has(:global([data-slot='badge'][data-variant='disabled']:hover)),
+  .admin-tabs:has(:global([data-slot='badge'][data-variant='enabled']:hover)) {
     & :global([data-managed-config-banner]) {
       border-color: var(--primary);
-      box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 25%, transparent);
+      animation: managed-border 2s ease-in-out infinite;
+    }
+  }
+
+  @keyframes managed-border {
+    0%,
+    100% {
+      border-color: var(--primary);
+    }
+    50% {
+      border-color: color-mix(in oklab, var(--primary) 35%, #b36cff);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .admin-tabs :global([data-managed-config-banner]) {
       transition: none;
+      animation: none !important;
     }
   }
 </style>
