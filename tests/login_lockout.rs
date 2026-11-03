@@ -170,6 +170,7 @@ fn test_config(lockout: LockoutConfig) -> Config {
         sentry: None,
         lockout,
         timezone: "UTC".to_string(),
+        service_deploy_url: None,
     }
 }
 

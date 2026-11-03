@@ -416,6 +416,10 @@ pub struct Config {
     /// `UTC`. The backend itself always works in UTC; this value is only passed
     /// to the SPA via `ClientConfigView`.
     pub timezone: String,
+    /// Optional link to the deployment configuration (`SERVICE_DEPLOY_URL`),
+    /// e.g. a Git repository. Must be an `http(s)` URL; `None` when unset or
+    /// blank. Shown to instance managers in the admin area.
+    pub service_deploy_url: Option<String>,
 }
 
 impl std::fmt::Debug for Config {
@@ -452,6 +456,7 @@ impl std::fmt::Debug for Config {
             .field("sentry", &self.sentry)
             .field("lockout", &self.lockout)
             .field("timezone", &self.timezone)
+            .field("service_deploy_url", &self.service_deploy_url)
             .finish()
     }
 }
@@ -514,6 +519,7 @@ impl Config {
         let sentry = Self::sentry_from_env();
         let lockout = Self::lockout_from_env()?;
         let timezone = env_or("TIMEZONE", "UTC");
+        let service_deploy_url = Self::service_deploy_url_from_env()?;
 
         Ok(Config {
             management: management_from_env()?,
@@ -545,7 +551,25 @@ impl Config {
             sentry,
             lockout,
             timezone,
+            service_deploy_url,
         })
+    }
+
+    /// Read the optional `SERVICE_DEPLOY_URL`. A blank value means "not set";
+    /// anything else must be an absolute `http` or `https` URL.
+    fn service_deploy_url_from_env() -> Result<Option<String>> {
+        let Some(raw) = env_opt("SERVICE_DEPLOY_URL") else {
+            return Ok(None);
+        };
+        let value = raw.trim();
+        let parsed = reqwest::Url::parse(value)
+            .map_err(|e| Error::validation(format!("SERVICE_DEPLOY_URL: {e}")))?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err(Error::validation(
+                "SERVICE_DEPLOY_URL: only http and https URLs are allowed",
+            ));
+        }
+        Ok(Some(value.to_string()))
     }
 
     /// Build the database pool / locking / write-retry config, applying
@@ -1785,6 +1809,44 @@ mod tests {
         assert_eq!(sentry.environment.as_deref(), Some("staging"));
 
         clear_sentry_env();
+    }
+
+    #[test]
+    fn deploy_url_unset_or_blank_yields_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::remove_var("SERVICE_DEPLOY_URL") };
+        assert_eq!(Config::service_deploy_url_from_env().unwrap(), None);
+
+        unsafe { std::env::set_var("SERVICE_DEPLOY_URL", "   ") };
+        assert_eq!(Config::service_deploy_url_from_env().unwrap(), None);
+
+        unsafe { std::env::remove_var("SERVICE_DEPLOY_URL") };
+    }
+
+    #[test]
+    fn deploy_url_accepts_http_and_https() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("SERVICE_DEPLOY_URL", " https://git.example.com/ops/soika ") };
+        assert_eq!(
+            Config::service_deploy_url_from_env().unwrap().as_deref(),
+            Some("https://git.example.com/ops/soika")
+        );
+
+        unsafe { std::env::remove_var("SERVICE_DEPLOY_URL") };
+    }
+
+    #[test]
+    fn deploy_url_rejects_other_schemes_and_garbage() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        for bad in ["javascript:alert(1)", "ftp://example.com", "not a url"] {
+            unsafe { std::env::set_var("SERVICE_DEPLOY_URL", bad) };
+            assert!(
+                Config::service_deploy_url_from_env().is_err(),
+                "{bad} should be rejected"
+            );
+        }
+
+        unsafe { std::env::remove_var("SERVICE_DEPLOY_URL") };
     }
 
     const SMTP_KEYS: &[&str] = &[

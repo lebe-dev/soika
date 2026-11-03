@@ -29,6 +29,8 @@ pub struct SettingsView {
     pub updated_at: Timestamp,
     /// SMTP configuration, surfaced READ-ONLY.
     pub smtp: SmtpStatus,
+    /// Link to the deployment configuration (`SERVICE_DEPLOY_URL`); `null` when unset.
+    pub deploy_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,6 +195,7 @@ fn to_view(settings: ServiceSettings, state: &AppState, default_team_ids: Vec<Id
         default_team_ids,
         updated_at: settings.updated_at,
         smtp: smtp_status(state),
+        deploy_url: state.config.service_deploy_url.clone(),
     }
 }
 
@@ -535,6 +538,7 @@ mod tests {
                 port: Some(587),
                 from: Some("noreply@example.com".into()),
             },
+            deploy_url: None,
         };
         let json = serde_json::to_string(&view).unwrap();
         // Secrets (username/password) are never part of the shape.

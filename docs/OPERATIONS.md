@@ -497,6 +497,18 @@ SENTRY_ENVIRONMENT=production   # optional environment tag
 > on a best-effort basis and may not flush before the process exits;
 > `tracing::error!` events are reported reliably.
 
+## Deployment configuration link
+
+Set `SERVICE_DEPLOY_URL` to an `http(s)` URL (for example the Git repository that
+holds your deployment configuration) and instance managers get a link to it on
+the **Service settings** tab of the admin area. It opens in a new tab. A blank or
+unset value hides the link; any other scheme (or an unparsable value) stops
+startup with a validation error.
+
+```
+SERVICE_DEPLOY_URL=https://git.example.com/ops/soika-deploy
+```
+
 ## License
 
 [MIT](LICENSE.md)

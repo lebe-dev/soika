@@ -56,4 +56,23 @@ describe('managed configuration banner', () => {
     expect(text).toContain('notifications');
     expect(text).not.toContain('service settings');
   });
+
+  it('links "deployment configuration" to the deploy URL in a new tab', () => {
+    render({
+      projectSource: 'yaml',
+      deployUrl: 'https://git.example.com/ops/soika'
+    });
+    const link = target.querySelector('a');
+    expect(link?.textContent?.trim()).toBe('deployment configuration');
+    expect(link?.getAttribute('href')).toBe('https://git.example.com/ops/soika');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(link?.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders plain text when no deploy URL is set', () => {
+    const text = render({ projectSource: 'yaml', deployUrl: null });
+    expect(target.querySelector('a')).toBeNull();
+    expect(text).toContain('Managed by deployment configuration');
+  });
 });

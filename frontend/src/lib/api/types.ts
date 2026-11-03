@@ -502,6 +502,8 @@ export interface ServiceSettings {
   org_name: string;
   updated_at: string;
   smtp: SmtpStatus;
+  /** Link to the deployment configuration (`SERVICE_DEPLOY_URL`); null when unset. */
+  deploy_url: string | null;
 }
 
 export interface UpdateSettingsRequest {

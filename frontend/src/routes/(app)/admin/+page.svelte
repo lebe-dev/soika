@@ -15,6 +15,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { toast } from '$lib/components/ui/sonner';
+  import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Check from '@lucide/svelte/icons/check';
   import Clock from '@lucide/svelte/icons/clock';
@@ -264,6 +265,7 @@
       teamSource={data.settings.management?.settings.team_source}
       serviceSource={data.settings.management?.settings.service_source}
       notificationSource={data.notifications?.source}
+      deployUrl={data.settings.deploy_url}
     />
 
     <Tabs.Content value="authentication">
@@ -401,6 +403,26 @@
           </div>
         </Card.Content>
       </Card.Root>
+
+      {#if data.settings.deploy_url}
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>{$t('deploy_config_title')}</Card.Title>
+            <Card.Description>{$t('deploy_config_help')}</Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <a
+              href={data.settings.deploy_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary inline-flex items-center gap-1.5 font-mono text-sm break-all underline-offset-4 hover:underline"
+            >
+              {data.settings.deploy_url}
+              <SquareArrowOutUpRight class="size-4 shrink-0" />
+            </a>
+          </Card.Content>
+        </Card.Root>
+      {/if}
 
       <div class="flex items-center gap-2">
         <Button onclick={save} disabled={serviceEnv || !dirty || saving}>

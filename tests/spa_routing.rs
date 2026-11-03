@@ -45,6 +45,7 @@ fn test_config() -> Config {
         sentry: None,
         lockout: Default::default(),
         timezone: "UTC".to_string(),
+        service_deploy_url: None,
     }
 }
 

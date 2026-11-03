@@ -276,5 +276,6 @@ fn test_config() -> Config {
             max_lockout: Duration::from_secs(3600),
         },
         timezone: "UTC".to_string(),
+        service_deploy_url: None,
     }
 }
