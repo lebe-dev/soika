@@ -54,7 +54,6 @@
     <Card.Description>{$t('default_teams_description')}</Card.Description>
   </Card.Header>
   <Card.Content class="space-y-4">
-    {#if readonly}<p class="text-muted-foreground text-sm">{$t('service_env_readonly')}</p>{/if}
     {#if teams.length === 0}
       <p class="text-muted-foreground text-sm">{$t('default_teams_empty')}</p>
     {:else}

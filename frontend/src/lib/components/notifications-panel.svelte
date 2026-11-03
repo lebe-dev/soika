@@ -134,9 +134,6 @@
       <p class="text-muted-foreground text-sm">{$t('notifications_feature_disabled')}</p>
     {:else}
       <p class="text-muted-foreground text-sm">{$t('notifications_lifecycle')}</p>
-      {#if readonly}<p class="rounded-md border p-3 text-sm">
-          {$t(view.source === 'env' ? 'service_env_readonly' : 'notifications_yaml_readonly')}
-        </p>{/if}
       <div class="flex items-center justify-between gap-4">
         <span class="text-sm font-medium">{$t('notifications_alertmanager_enabled')}</span>
         <Button

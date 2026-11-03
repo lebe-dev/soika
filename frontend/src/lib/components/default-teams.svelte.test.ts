@@ -137,7 +137,7 @@ it('locks default teams when service settings come from environment variables', 
       props: { teams, defaultTeamIds: [], readonly: true }
     });
   });
-  expect(target.textContent).toContain('Configured through environment variables');
+  expect(target.textContent).not.toContain('environment variables');
   expect(target.querySelector('fieldset')!.disabled).toBe(true);
   expect(button('Save changes').disabled).toBe(true);
 });

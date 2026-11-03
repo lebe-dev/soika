@@ -30,6 +30,7 @@
   import NotificationsPanel from '$lib/components/notifications-panel.svelte';
   import AuthenticationPanel from '$lib/components/authentication-panel.svelte';
   import ManagementCard from '$lib/components/management-card.svelte';
+  import ManagedConfigBanner from '$lib/components/managed-config-banner.svelte';
   import DefaultTeams from '$lib/components/default-teams.svelte';
   import Info from '@lucide/svelte/icons/info';
   import type { PageData } from './$types';
@@ -258,6 +259,13 @@
       >
     </Tabs.List>
 
+    <ManagedConfigBanner
+      projectSource={data.settings.management?.settings.project_source}
+      teamSource={data.settings.management?.settings.team_source}
+      serviceSource={data.settings.management?.settings.service_source}
+      notificationSource={data.notifications?.source}
+    />
+
     <Tabs.Content value="authentication">
       <AuthenticationPanel authentication={data.settings.authentication} />
     </Tabs.Content>
@@ -357,9 +365,6 @@
               class="max-w-sm"
               disabled={saving || serviceEnv}
             />
-            {#if serviceEnv}<p class="text-muted-foreground text-sm">
-                {$t('service_env_readonly')}
-              </p>{/if}
           </div>
         </Card.Content>
       </Card.Root>

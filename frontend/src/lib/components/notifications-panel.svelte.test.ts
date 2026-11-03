@@ -48,7 +48,7 @@ function render(value = view) {
 }
 it('locks configuration in YAML mode while allowing a preview', () => {
   render({ ...view, source: 'yaml' });
-  expect(target.textContent).toContain('Managed through YAML');
+  expect(target.textContent).not.toContain('Managed through YAML');
   expect(target.querySelector<HTMLInputElement>('#alertmanager-url')!.disabled).toBe(true);
   expect(target.querySelector<HTMLTextAreaElement>('#alertmanager-labels')!.disabled).toBe(true);
   expect(
@@ -175,7 +175,7 @@ it('allows the test action in YAML mode', () => {
     b.textContent?.includes('Send test alert')
   )!;
   expect(button.disabled).toBe(false);
-  expect(target.textContent).toContain('Managed through YAML');
+  expect(target.textContent).not.toContain('Managed through YAML');
 });
 
 it('locks notification settings while allowing testing in env mode', () => {
@@ -184,7 +184,7 @@ it('locks notification settings while allowing testing in env mode', () => {
     source: 'env',
     config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
   });
-  expect(target.textContent).toContain('Configured through environment variables');
+  expect(target.textContent).not.toContain('environment variables');
   expect(target.querySelector<HTMLInputElement>('#alertmanager-url')!.disabled).toBe(true);
   expect(
     [...target.querySelectorAll('button')].find((b) => b.textContent?.includes('Send test alert'))!
