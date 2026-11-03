@@ -116,6 +116,20 @@
   h3 {
     letter-spacing: -0.015em;
   }
+  /* Interface labels are not selectable; only editable fields, code samples
+     and event data (opt in with `select-text`) can be selected and copied. */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input,
+  textarea,
+  pre,
+  code,
+  [contenteditable]:not([contenteditable='false']) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 /* Tailwind v4 drops the opinionated `container` component; provide a centered,

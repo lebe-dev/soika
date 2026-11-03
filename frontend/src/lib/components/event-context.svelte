@@ -30,7 +30,7 @@
 </script>
 
 {#if !isContextEmpty(ctx)}
-  <div class="space-y-4">
+  <div class="space-y-4 select-text">
     <!-- The error string an SDK attached to the event: the one line that says
          what actually went wrong, so it leads rather than hiding in a table. -->
     {#if ctx.error}

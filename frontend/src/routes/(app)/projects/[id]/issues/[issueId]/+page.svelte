@@ -303,7 +303,9 @@
       <div class="space-y-1">
         <h1 class="text-2xl font-semibold tracking-tight break-words">{issue.title}</h1>
         {#if issue.culprit}
-          <p class="text-muted-foreground flex items-center gap-1.5 font-mono text-sm break-all">
+          <p
+            class="text-muted-foreground flex items-center gap-1.5 font-mono text-sm break-all select-text"
+          >
             <Crosshair class="size-3.5 shrink-0" />
             {issue.culprit}
           </p>
@@ -359,7 +361,7 @@
             {$t('setting_a_fingerprint_already_used_by_another_issue_merges_them')}
           </p>
         {:else}
-          <div class="truncate font-mono text-xs" title={issue.fingerprint}>
+          <div class="truncate font-mono text-xs select-text" title={issue.fingerprint}>
             {issue.fingerprint}
           </div>
           <Button
@@ -420,7 +422,7 @@
     <!-- Exception summary -->
     {#if parsed?.exceptionType || parsed?.exceptionValue}
       <Card.Root class={cn('border-l-2', sev.accentBorder)}>
-        <Card.Content class="space-y-1 p-4">
+        <Card.Content class="space-y-1 p-4 select-text">
           {#if parsed.exceptionType}
             <div class="font-mono text-sm font-semibold">{parsed.exceptionType}</div>
           {/if}

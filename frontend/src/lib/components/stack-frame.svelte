@@ -93,7 +93,7 @@
   </button>
 
   {#if showContext && open}
-    <div class="bg-muted/20 overflow-x-auto border-t font-mono text-xs leading-relaxed">
+    <div class="bg-muted/20 overflow-x-auto border-t font-mono text-xs leading-relaxed select-text">
       {#each sourceLines as line (`${line.no}-${line.text}`)}
         <div class={cn('flex whitespace-pre', line.highlight && 'bg-destructive/10')}>
           <span
