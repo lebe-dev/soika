@@ -586,5 +586,8 @@
   "tip_am_annotations": "Free-form details attached to the alert, such as a summary or a link. They can change without creating a new alert.",
   "auth_invites": "Team invites",
   "tip_auth_invites": "Whether team admins can create invite links. Always off while teams are managed by the configuration file.",
-  "invites_unavailable_yaml_teams": "Teams are managed in the configuration file, so invites are unavailable."
+  "invites_unavailable_yaml_teams": "Teams are managed in the configuration file, so invites are unavailable.",
+  "add_a_teammate_to_give_access_to_this_team_s_projects": "Add a teammate to give access to this team’s projects.",
+  "share_an_invite_link_to_give_access_to_this_team_s_projects": "Share an invite link to give access to this team’s projects.",
+  "team_members_managed_by_configuration": "Team members are managed in the configuration file."
 }

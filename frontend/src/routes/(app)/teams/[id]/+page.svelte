@@ -65,6 +65,18 @@
   // always wins: the button stays visible yet disabled, with the reason in a tooltip.
   const canManageTeam = $derived(authStore.canManageInstance || myRole === 'admin');
   const canInvite = $derived(canManageTeam && data.telemetry?.invites_enabled === true);
+  // The empty-state hint only offers what the viewer can actually do.
+  const emptyHint = $derived(
+    teamsManaged
+      ? 'team_members_managed_by_configuration'
+      : canManageMembers && canInvite
+        ? 'add_a_teammate_or_share_an_invite_link_to_give_access_to_this_team_s_projects'
+        : canManageMembers
+          ? 'add_a_teammate_to_give_access_to_this_team_s_projects'
+          : canInvite
+            ? 'share_an_invite_link_to_give_access_to_this_team_s_projects'
+            : null
+  );
   const showInvite = $derived(canInvite || (canManageTeam && teamsManaged));
 
   // Count of Team Admins — used for last-Team-Admin protection: the only
@@ -421,9 +433,9 @@
             <UserPlus class="size-5" />
           </span>
           <p class="font-medium">{$t('no_members_yet')}</p>
-          <p class="text-muted-foreground max-w-xs text-sm">
-            {$t('add_a_teammate_or_share_an_invite_link_to_give_access_to_this_team_s_projects')}
-          </p>
+          {#if emptyHint}
+            <p class="text-muted-foreground max-w-xs text-sm">{$t(emptyHint)}</p>
+          {/if}
           {#if canManageMembers || showInvite}
             <div class="mt-3 flex items-center gap-2">
               {#if showInvite}{@render inviteButton()}{/if}
