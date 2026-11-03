@@ -18,7 +18,13 @@
   import Avatar from '$lib/components/avatar.svelte';
   import SegmentedControl from '$lib/components/segmented-control.svelte';
   import { NativeSelect } from '$lib/components/ui/native-select';
-  import { teamFilterOptions, visibleProjects, type SortMode } from '$lib/dashboard';
+  import {
+    isDisabledProject,
+    teamFilterOptions,
+    visibleProjects,
+    type SortMode
+  } from '$lib/dashboard';
+  import { Badge } from '$lib/components/ui/badge';
   import { readJson, writeJson } from '$lib/local-storage';
   import type { PageData } from './$types';
 
@@ -341,15 +347,33 @@
     {:else}
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each filteredAndSorted as { project, unresolvedCount } (project.id)}
+          {@const disabled = isDisabledProject(project)}
           <a
             href={`/projects/${project.id}`}
-            class="group bg-card focus-visible:ring-primary/30 hover:border-primary/35 flex flex-col rounded-xl border transition-[border-color,box-shadow] hover:shadow-[0_6px_20px_-12px_rgb(20_23_28/0.25)] focus-visible:ring-2 focus-visible:outline-none"
+            data-disabled={disabled || undefined}
+            class="group bg-card data-disabled:bg-muted/40 focus-visible:ring-primary/30 hover:border-primary/35 flex flex-col rounded-xl border transition-[border-color,box-shadow] hover:shadow-[0_6px_20px_-12px_rgb(20_23_28/0.25)] focus-visible:ring-2 focus-visible:outline-none"
           >
             <div class="flex items-start gap-3 py-4 pr-3 pl-4">
-              <Avatar name={project.name} id={project.id} shape="tile" />
+              <Avatar
+                name={project.name}
+                id={project.id}
+                shape="tile"
+                class={disabled ? 'opacity-50 grayscale' : undefined}
+              />
               <div class="min-w-0 flex-1 pt-px">
-                <div class="truncate text-[15px] font-medium tracking-[-0.01em]">
-                  {project.name}
+                <div class="flex items-center gap-2">
+                  <span
+                    class="truncate text-[15px] font-medium tracking-[-0.01em] {disabled
+                      ? 'text-muted-foreground'
+                      : ''}"
+                  >
+                    {project.name}
+                  </span>
+                  {#if disabled}
+                    <Badge variant="disabled" title={$t('orphaned_project')}>
+                      {$t('project_disabled')}
+                    </Badge>
+                  {/if}
                 </div>
                 <div class="text-muted-foreground truncate font-mono text-xs">
                   {project.slug}
@@ -380,7 +404,12 @@
             <div
               class="border-hairline mt-auto flex min-h-12 items-center justify-between gap-3 border-t px-4"
             >
-              {#if unresolvedCount === 0}
+              {#if disabled}
+                <span class="text-muted-foreground flex items-center gap-2 text-[13px]">
+                  <span class="bg-muted-foreground/40 size-1.5 rounded-full"></span>
+                  {$t('project_events_rejected')}
+                </span>
+              {:else if unresolvedCount === 0}
                 <span class="text-muted-foreground flex items-center gap-2 text-[13px]">
                   <span class="bg-success size-1.5 rounded-full"></span>
                   {$t('no_unresolved_issues')}

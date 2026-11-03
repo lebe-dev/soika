@@ -13,14 +13,25 @@ import { translate } from './i18n';
  * not depend on a route module.
  */
 export interface DashboardProject {
-  project: { id: string; name: string; team_id: string };
+  project: { id: string; name: string; team_id: string; orphaned_at?: string | null };
   /** Number of unresolved issues for the project. */
   unresolvedCount: number;
   /** RFC 3339 timestamp of the most recent unresolved issue; null when none. */
   lastIssueAt: string | null;
 }
 
-/** Ordering of the project grid. Favorites always float to the top of both. */
+/**
+ * A project removed from the deployment configuration (`orphaned_at` set):
+ * it no longer accepts events and is shown as disabled.
+ */
+export function isDisabledProject(project: { orphaned_at?: string | null }): boolean {
+  return project.orphaned_at != null;
+}
+
+/**
+ * Ordering of the project grid. Disabled projects always sink to the bottom
+ * (name-sorted); among the rest, favorites float to the top in both modes.
+ */
 export type SortMode = 'activity' | 'name';
 
 export interface ProjectViewOptions {
@@ -55,6 +66,11 @@ export function visibleProjects<T extends DashboardProject>(
   });
 
   return filtered.sort((a, b) => {
+    const aOff = isDisabledProject(a.project) ? 1 : 0;
+    const bOff = isDisabledProject(b.project) ? 1 : 0;
+    if (aOff !== bOff) return aOff - bOff;
+    if (aOff) return a.project.name.localeCompare(b.project.name);
+
     const aFav = favoritedIds.has(a.project.id) ? 1 : 0;
     const bFav = favoritedIds.has(b.project.id) ? 1 : 0;
     if (bFav !== aFav) return bFav - aFav;

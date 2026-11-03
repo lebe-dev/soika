@@ -5,6 +5,8 @@
   import { cn } from '$lib/utils';
   import type { LayoutData } from './$types';
   import BellOff from '@lucide/svelte/icons/bell-off';
+  import CircleOff from '@lucide/svelte/icons/circle-off';
+  import { isDisabledProject } from '$lib/dashboard';
   import EntityHeader from '$lib/components/entity-header.svelte';
   import StatPill from '$lib/components/stat-pill.svelte';
 
@@ -15,6 +17,7 @@
 
   const project = $derived(data.project);
   const base = $derived(`/projects/${project.id}`);
+  const disabled = $derived(isDisabledProject(project));
 
   type Tab = {
     href: string;
@@ -42,13 +45,6 @@
   const path = $derived(page.url.pathname);
 </script>
 
-{#if project.orphaned_at}<div
-    role="status"
-    class="border-destructive bg-destructive/10 mb-4 rounded border p-4"
-  >
-    {$t('orphaned_project')}
-  </div>{/if}
-
 <div class="space-y-6">
   <EntityHeader
     title={project.name}
@@ -56,6 +52,12 @@
     back={{ href: '/', label: $t('projects') }}
   >
     {#snippet pills()}
+      {#if disabled}
+        <StatPill class="text-destructive">
+          <CircleOff />
+          {$t('project_disabled')}
+        </StatPill>
+      {/if}
       <StatPill class="font-mono">{project.slug}</StatPill>
       <StatPill>{$t('you_re')} <strong class="capitalize">{data.effectiveRole}</strong></StatPill>
       {#if project.muted}
@@ -70,6 +72,17 @@
       {/if}
     {/snippet}
   </EntityHeader>
+
+  {#if disabled}
+    <div
+      role="status"
+      data-project-disabled
+      class="bg-card space-y-0.5 rounded-lg border px-4 py-3 text-sm"
+    >
+      <p class="font-medium">{$t('project_disabled_title')}</p>
+      <p class="text-muted-foreground">{$t('orphaned_project')}</p>
+    </div>
+  {/if}
 
   <nav class="flex flex-wrap items-center gap-6 border-b text-sm">
     {#each tabs as tab (tab.href)}

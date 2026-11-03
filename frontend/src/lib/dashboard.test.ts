@@ -3,7 +3,12 @@
 // the team-filter option derivation.
 
 import { describe, expect, it } from 'vitest';
-import { teamFilterOptions, visibleProjects, type DashboardProject } from './dashboard';
+import {
+  isDisabledProject,
+  teamFilterOptions,
+  visibleProjects,
+  type DashboardProject
+} from './dashboard';
 
 function proj(
   id: string,
@@ -136,6 +141,46 @@ describe('visibleProjects', () => {
       favoritedIds: new Set()
     });
     expect(ids(out)).toEqual(['p4', 'p2']);
+  });
+
+  it('sinks disabled (orphaned) projects to the bottom in every sort mode, even favorites', () => {
+    const orphan = {
+      project: { id: 'p0', name: 'Aaa', team_id: 't1', orphaned_at: '2026-06-01T00:00:00Z' },
+      unresolvedCount: 5,
+      lastIssueAt: '2026-06-09T00:00:00Z'
+    };
+    for (const sortMode of ['name', 'activity'] as const) {
+      const out = visibleProjects([orphan, ...all], {
+        query: '',
+        teamId: '',
+        onlyWithIssues: false,
+        sortMode,
+        favoritedIds: new Set(['p0'])
+      });
+      expect(ids(out).at(-1)).toBe('p0');
+    }
+  });
+
+  it('orders disabled projects among themselves by name', () => {
+    const orphanB = proj('o2', 'Bravo', 't1');
+    const orphanA = proj('o1', 'Alpha', 't1');
+    orphanA.project.orphaned_at = orphanB.project.orphaned_at = '2026-06-01T00:00:00Z';
+    const out = visibleProjects([orphanB, alpha, orphanA], {
+      query: '',
+      teamId: '',
+      onlyWithIssues: false,
+      sortMode: 'activity',
+      favoritedIds: new Set()
+    });
+    expect(ids(out)).toEqual(['p1', 'o1', 'o2']);
+  });
+});
+
+describe('isDisabledProject', () => {
+  it('is true only when orphaned_at is set', () => {
+    expect(isDisabledProject({ orphaned_at: '2026-06-01T00:00:00Z' })).toBe(true);
+    expect(isDisabledProject({ orphaned_at: null })).toBe(false);
+    expect(isDisabledProject({})).toBe(false);
   });
 });
 
