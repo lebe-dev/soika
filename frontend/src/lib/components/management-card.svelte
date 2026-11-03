@@ -16,14 +16,6 @@
 <Card.Root>
   <Card.Header><Card.Title>{$t('management')}</Card.Title></Card.Header>
   <Card.Content class="space-y-3 text-sm">
-    <p>
-      {$t(
-        'management_summary_' +
-          management.settings.project_source +
-          '_' +
-          management.settings.team_source
-      )}
-    </p>
     <dl class="grid grid-cols-2 gap-2">
       {@render term($t('projects'), 'tip_projects')}
       <dd>
