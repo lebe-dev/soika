@@ -97,7 +97,7 @@ it.each([
     setLocale(language);
     render({ ...view, feature_enabled: false });
     expect(target.textContent).toContain(message);
-    expect(target.textContent).toContain('NOTIFICATIONS_ALERTMANAGER_ENABLED=false');
+    expect(target.textContent).not.toContain('NOTIFICATIONS_ALERTMANAGER_ENABLED');
     expect(target.querySelector('input, textarea, button')).toBeNull();
     expect(api.notifications.update).not.toHaveBeenCalled();
     expect(api.notifications.preview).not.toHaveBeenCalled();

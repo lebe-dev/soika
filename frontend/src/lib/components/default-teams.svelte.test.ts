@@ -139,5 +139,6 @@ it('locks default teams when service settings come from environment variables', 
   });
   expect(target.textContent).not.toContain('environment variables');
   expect(target.querySelector('fieldset')!.disabled).toBe(true);
-  expect(button('Save changes').disabled).toBe(true);
+  expect(target.textContent).not.toContain('Save changes');
+  expect(target.textContent).not.toContain('Reset');
 });

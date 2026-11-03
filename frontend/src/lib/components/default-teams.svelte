@@ -76,17 +76,15 @@
         {/each}
       </fieldset>
     {/if}
-    <div class="flex items-center gap-2">
-      <Button onclick={save} disabled={readonly || !dirty || saving}>
-        {saving ? $t('saving') : $t('save_changes')}
-      </Button>
-      <Button
-        variant="ghost"
-        onclick={() => (selected = [...saved])}
-        disabled={readonly || !dirty || saving}
-      >
-        {$t('reset')}
-      </Button>
-    </div>
+    {#if !readonly}
+      <div class="flex items-center gap-2">
+        <Button onclick={save} disabled={!dirty || saving}>
+          {saving ? $t('saving') : $t('save_changes')}
+        </Button>
+        <Button variant="ghost" onclick={() => (selected = [...saved])} disabled={!dirty || saving}>
+          {$t('reset')}
+        </Button>
+      </div>
+    {/if}
   </Card.Content>
 </Card.Root>
