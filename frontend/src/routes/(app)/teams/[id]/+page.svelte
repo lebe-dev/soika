@@ -278,8 +278,9 @@
 </script>
 
 <PageTitle title={team.name} />
-{#if teamsManaged}<p class="text-muted-foreground text-sm">{$t('managed_by_configuration')}</p>{/if}
-{#if team.orphaned_at}<p role="status" class="rounded border p-4">{$t('orphaned_team')}</p>{/if}
+{#if team.orphaned_at}<p role="status" class="mb-6 rounded border p-4">
+    {$t('orphaned_team')}
+  </p>{/if}
 
 <div class="space-y-6">
   <!-- Identity: team chip + soft stat pills. The pills carry the at-a-glance
@@ -294,6 +295,9 @@
       </StatPill>
       {#if myRole}
         <StatPill>{$t('you_re')} <strong class="capitalize">{$t(myRole)}</strong></StatPill>
+      {/if}
+      {#if teamsManaged}
+        <StatPill>{$t('managed_by_configuration')}</StatPill>
       {/if}
     {/snippet}
     {#snippet actions()}
