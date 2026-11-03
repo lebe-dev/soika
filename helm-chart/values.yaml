@@ -2,6 +2,8 @@
 # Soika runs the selected database's migrations at startup.
 replicaCount: 1
 revisionHistoryLimit: 2
+strategy:
+  type: Recreate
 
 image:
   repository: tinyops/soika
