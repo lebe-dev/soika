@@ -62,7 +62,14 @@ fn transport_error(error: reqwest::Error) -> Error {
             "HTTP request failed"
         }
     });
-    Error::Alertmanager(format!("Alertmanager delivery failed: {detail}"))
+    report_failure(format!("Alertmanager delivery failed: {detail}"))
+}
+
+// Report at the transport boundary so test sends, initial delivery, refreshes and
+// resolutions all reach Sentry. Only our redacted diagnosis is recorded.
+fn report_failure(message: String) -> Error {
+    tracing::error!(error = %message, channel = "alertmanager", "Alertmanager delivery failed");
+    Error::Alertmanager(message)
 }
 
 pub struct HttpAlertmanager {
@@ -91,7 +98,7 @@ impl AlertmanagerClient for HttpAlertmanager {
             .await
             .map_err(transport_error)?;
         if !response.status().is_success() {
-            return Err(Error::Alertmanager(format!(
+            return Err(report_failure(format!(
                 "Alertmanager returned HTTP {}",
                 response.status().as_u16()
             )));
@@ -109,6 +116,10 @@ mod tests {
         let refused = std::io::Error::from(std::io::ErrorKind::ConnectionRefused);
         assert_eq!(cause_detail(&refused), Some("connection refused"));
         for (message, expected) in [
+            (
+                "invalid peer certificate: NotValidForName; secret-token",
+                "TLS certificate does not match the hostname",
+            ),
             (
                 "invalid peer certificate: UnknownIssuer; secret-token",
                 "TLS certificate has an unknown issuer",

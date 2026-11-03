@@ -496,6 +496,10 @@ SENTRY_ENVIRONMENT=production   # optional environment tag
 - **Backend:** the SDK is initialized at startup and captures panics plus
   `tracing` error events. Transport uses rustls (the `ring` provider, like the
   rest of the stack), so no OpenSSL is pulled into the musl build.
+- **Alertmanager delivery:** failed test alerts, initial notifications, refreshes
+  and resolutions produce backend error events, including TLS certificate, DNS,
+  connection, timeout and non-success HTTP status errors. Events contain a
+  redacted diagnosis, without the endpoint URL, credentials or response body.
 - **Frontend:** the DSN is served **only** from the session-authenticated
   `GET /api/client-config` endpoint, and the browser SDK initializes **after
   sign-in**. This keeps the DSN off every unauthenticated route — the tradeoff
