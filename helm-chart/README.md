@@ -4,7 +4,7 @@ This chart deploys the single-binary Soika image with SQLite or PostgreSQL 15+.
 It uses one replica and a `Recreate` deployment strategy: the retention scheduler,
 ingestion rate limiter, and login lockout are per process. The application runs
 the selected database's migrations at startup; no migration Job is needed.
-Chart version: `0.3.1`. Default application image: `tinyops/soika:0.10.0`.
+Chart version: `0.3.1`. Default application image: `tinyops/soika:0.10.1`.
 
 ## Publishing
 
