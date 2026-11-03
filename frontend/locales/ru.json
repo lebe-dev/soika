@@ -531,6 +531,7 @@
   "managed_config_title_link": "конфигурацией развёртывания",
   "deploy_config_title": "Конфигурация развёртывания",
   "deploy_config_help": "Открыть конфигурацию развёртывания в новой вкладке.",
+  "deploy_config_view": "Просмотреть",
   "managed_config_readonly": "Здесь доступно только для чтения: {areas}.",
   "managed_area_service": "настройки сервиса и уведомления",
   "managed_area_notifications": "уведомления",

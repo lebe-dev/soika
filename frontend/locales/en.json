@@ -531,6 +531,7 @@
   "managed_config_title_link": "deployment configuration",
   "deploy_config_title": "Deployment configuration",
   "deploy_config_help": "Open the deployment configuration in a new tab.",
+  "deploy_config_view": "View",
   "managed_config_readonly": "Read-only here: {areas}.",
   "managed_area_service": "service settings and notifications",
   "managed_area_notifications": "notifications",
