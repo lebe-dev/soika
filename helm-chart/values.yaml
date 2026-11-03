@@ -116,6 +116,8 @@ envs:
   #   OAUTH_PROVIDER, OAUTH_ISSUER_URL, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URL,
   #   OAUTH_SCOPES, OAUTH_PROVIDER_NAME, OAUTH_ALLOWED_EMAIL_DOMAINS,
   #   OAUTH_REQUIRE_APPROVAL, OAUTH_GROUPS_CLAIM
+  # OAUTH_GROUPS_CLAIM is the claim field name (e.g. groups), not a group name.
+  # Put group names such as infra in configFile.content.teams[].sso_groups[].group.
   # Passkeys:
   #   PASSKEY_RP_ID, PASSKEY_RP_NAME, PASSKEY_RP_ORIGIN, PASSKEY_EXTRA_ORIGINS,
   #   PASSKEY_ALLOW_SUBDOMAINS, PASSKEY_TIMEOUT_SECONDS,
