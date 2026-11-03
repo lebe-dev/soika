@@ -494,7 +494,7 @@
   "teams_without_sso_warning": "OAuth is disabled: new users cannot join.",
   "management_summary_ui_ui": "Projects and teams are managed in the UI.",
   "management_summary_yaml_ui": "Projects are managed in the configuration file. Teams are managed in the UI.",
-  "management_summary_ui_yaml": "Teams are managed in the configuration file; sign-up is disabled. Projects are managed in the UI.",
+  "management_summary_ui_yaml": "Teams are managed in the configuration file; sign-up and invites are disabled. Projects are managed in the UI.",
   "management_summary_yaml_yaml": "Projects and teams are managed in the configuration file. Mute settings stay in the UI.",
   "orphaned_entities": "Read-only projects / teams",
   "authentication": "Authentication",
@@ -522,7 +522,7 @@
   "auth_access": "Account access",
   "auth_setup": "Initial administrator setup",
   "auth_login_protection": "Password brute-force protection",
-  "auth_yaml_access": "Teams are managed through YAML. Public sign-up is disabled; SSO access follows the configured team grants.",
+  "auth_yaml_access": "Teams are managed through YAML. Public sign-up and invites are disabled; SSO access follows the configured team grants.",
   "notifications_tab": "Notifications",
   "notifications_alertmanager_description": "Send issue alerts to Prometheus Alertmanager. Applies to every project.",
   "notifications_skip_tls_warning": "Warning: Alertmanager TLS certificate verification is disabled (ALERTMANAGER_SKIP_TLS=true).",
@@ -585,6 +585,6 @@
   "tip_am_labels": "Labels identify an alert: alerts with identical labels are treated as one. Keep values that change on every occurrence in annotations.",
   "tip_am_annotations": "Free-form details attached to the alert, such as a summary or a link. They can change without creating a new alert.",
   "auth_invites": "Team invites",
-  "tip_auth_invites": "Whether team admins can create invite links. With teams managed in the configuration file, invited members are kept in addition to the members listed in the file.",
-  "signup_disabled_invites_enabled": "Sign-up is disabled. Invites are enabled; invited members are kept in addition to the configuration file."
+  "tip_auth_invites": "Whether team admins can create invite links. Always off while teams are managed by the configuration file.",
+  "invites_unavailable_yaml_teams": "Teams are managed in the configuration file, so invites are unavailable."
 }

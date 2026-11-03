@@ -77,7 +77,7 @@
         {$t('delete_orphans_warning')}
       </p>{/if}
     {#if management.settings.team_source === 'yaml'}
-      <p>{$t(invitesEnabled ? 'signup_disabled_invites_enabled' : 'signup_invites_disabled')}</p>
+      <p>{$t('signup_invites_disabled')}</p>
       {#if !management.oauth_enabled}<p class="text-destructive">
           {$t('teams_without_sso_warning')}
         </p>{/if}

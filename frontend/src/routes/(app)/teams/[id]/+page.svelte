@@ -35,6 +35,7 @@
   import EntityHeader from '$lib/components/entity-header.svelte';
   import StatPill from '$lib/components/stat-pill.svelte';
   import { NativeSelect } from '$lib/components/ui/native-select';
+  import * as Tooltip from '$lib/components/ui/tooltip';
   import type { PageData } from './$types';
 
   // Team detail: members (with team roles), assigned projects, and invites.
@@ -60,10 +61,11 @@
   // invites: an instance manager OR a Team Admin of this team.
   const canManageMembers = $derived((canManageInstance || myRole === 'admin') && !teamsManaged);
 
-  // Invites follow ALLOW_INVITES and work for YAML-managed teams too: an invited
-  // member is kept alongside the members granted by the configuration file.
+  // Invites follow ALLOW_INVITES, but a configuration file that manages teams
+  // always wins: the button stays visible yet disabled, with the reason in a tooltip.
   const canManageTeam = $derived(authStore.canManageInstance || myRole === 'admin');
   const canInvite = $derived(canManageTeam && data.telemetry?.invites_enabled === true);
+  const showInvite = $derived(canInvite || (canManageTeam && teamsManaged));
 
   // Count of Team Admins — used for last-Team-Admin protection: the only
   // remaining Admin cannot be demoted or removed.
@@ -305,6 +307,31 @@
     {/snippet}
   </EntityHeader>
 
+  {#snippet inviteButton()}
+    {#if canInvite}
+      <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
+        <Link2 class="size-4" />
+        {$t('invite_by_link')}
+      </Button>
+    {:else}
+      <Tooltip.Provider delayDuration={150}>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span {...props} class="inline-flex" tabindex="0" role="button" aria-disabled="true">
+                <Button variant="outline" size="sm" class="gap-1.5" disabled>
+                  <Link2 class="size-4" />
+                  {$t('invite_by_link')}
+                </Button>
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>{$t('invites_unavailable_yaml_teams')}</Tooltip.Content>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    {/if}
+  {/snippet}
+
   <!-- Members: the primary surface. Soft top accent, roster with avatars.
        Invites live here as a secondary action (dialog), not their own block. -->
   <Card.Root class="shadow-sm">
@@ -329,14 +356,9 @@
         </div>
         <Card.Description>{$t('who_s_in_this_team_and_what_role_they_have')}</Card.Description>
       </div>
-      {#if canManageMembers || canInvite}
+      {#if canManageMembers || showInvite}
         <Card.Action class="flex items-center gap-2">
-          {#if canInvite}
-            <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
-              <Link2 class="size-4" />
-              {$t('invite_by_link')}
-            </Button>
-          {/if}
+          {#if showInvite}{@render inviteButton()}{/if}
           {#if canManageMembers}
             <Button
               variant="default"
@@ -402,14 +424,9 @@
           <p class="text-muted-foreground max-w-xs text-sm">
             {$t('add_a_teammate_or_share_an_invite_link_to_give_access_to_this_team_s_projects')}
           </p>
-          {#if canManageMembers || canInvite}
+          {#if canManageMembers || showInvite}
             <div class="mt-3 flex items-center gap-2">
-              {#if canInvite}
-                <Button variant="outline" size="sm" class="gap-1.5" onclick={openInvite}>
-                  <Link2 class="size-4" />
-                  {$t('invite_by_link')}
-                </Button>
-              {/if}
+              {#if showInvite}{@render inviteButton()}{/if}
               {#if canManageMembers}
                 <Button
                   size="sm"

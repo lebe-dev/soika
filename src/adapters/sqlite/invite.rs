@@ -148,8 +148,8 @@ impl InviteRepository for SqliteInviteRepository {
                     ));
                 }
                 sqlx::query(
-                    "INSERT INTO team_members (team_id, user_id, role, created_at, source) \
-                 VALUES (?, ?, ?, ?, 'invite') \
+                    "INSERT INTO team_members (team_id, user_id, role, created_at) \
+                 VALUES (?, ?, ?, ?) \
                  ON CONFLICT(team_id, user_id) DO UPDATE SET role = CASE \
                  WHEN team_members.role = 'admin' THEN 'admin' ELSE excluded.role END",
                 )

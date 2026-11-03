@@ -876,7 +876,7 @@ async fn disabled_invites_reject_acceptance() {
 }
 
 #[tokio::test]
-async fn yaml_teams_keep_invited_membership_after_grant_reconciliation() {
+async fn yaml_teams_reject_invites_even_when_allowed() {
     let app = Fixture::spawn_with(yaml_teams_config(true), None).await;
     let team_id = app.seed_team().await;
     let user_id = app.create_user("invited@example.com").await;
@@ -890,42 +890,7 @@ async fn yaml_teams_keep_invited_membership_after_grant_reconciliation() {
             Some(json!({ "email": "invited@example.com", "password": PASSWORD })),
         )
         .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        app.membership_role(team_id, user_id).await,
-        Some(Role::Member)
-    );
 
-    // A sign-in or restart recomputes memberships from the configuration file.
-    app.state
-        .config_sync
-        .reconcile_user(user_id, &[])
-        .await
-        .unwrap();
-
-    assert_eq!(
-        app.membership_role(team_id, user_id).await,
-        Some(Role::Member),
-        "an invited member is not a configuration grant and must survive"
-    );
-}
-
-#[tokio::test]
-async fn yaml_teams_still_remove_memberships_that_are_not_granted() {
-    let app = Fixture::spawn_with(yaml_teams_config(true), None).await;
-    let team_id = app.seed_team().await;
-    let user_id = app.create_user("stale@example.com").await;
-    app.state
-        .teams
-        .add_member(team_id, user_id, TeamRole::Contributor)
-        .await
-        .unwrap();
-
-    app.state
-        .config_sync
-        .reconcile_user(user_id, &[])
-        .await
-        .unwrap();
-
+    assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(app.membership_role(team_id, user_id).await, None);
 }

@@ -538,7 +538,7 @@ where
         .map(|r| r.as_str());
         if let Some(role) = role {
             sqlx::query::<DB>(DB::sql("INSERT INTO team_members(team_id, user_id, role, created_at) VALUES (?, ?, ?, ?) ON \
-            CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, source = 'config'"))
+            CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role"))
                 .bind(team.clone())
                 .bind(user.clone())
                 .bind(role.to_string())
@@ -546,7 +546,7 @@ where
                 .execute(&mut **tx).await?;
         } else {
             let result = sqlx::query::<DB>(DB::sql(
-                "DELETE FROM team_members WHERE team_id = ? AND user_id = ? AND source = 'config'",
+                "DELETE FROM team_members WHERE team_id = ? AND user_id = ?",
             ))
             .bind(team.clone())
             .bind(user.clone())

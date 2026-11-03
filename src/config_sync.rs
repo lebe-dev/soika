@@ -206,8 +206,14 @@ pub fn require_ui_management(state: &AppState, team: bool) -> Result<()> {
     Ok(())
 }
 
-/// Invites are an opt-in feature (`ALLOW_INVITES`), independent of how teams are managed.
+/// Invites are opt-in (`ALLOW_INVITES`) and always off while teams are managed by
+/// the configuration file, which owns team membership.
+pub fn invites_enabled(state: &AppState) -> bool {
+    state.config.allow_invites && state.config.management.team_source != ManagementSource::Yaml
+}
+
 pub fn require_invites_enabled(state: &AppState) -> Result<()> {
+    require_ui_management(state, true)?;
     if !state.config.allow_invites {
         return Err(Error::Forbidden("invites are disabled".into()));
     }

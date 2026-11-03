@@ -193,8 +193,9 @@ team.
 Invites are off by default. Set `ALLOW_INVITES=true` (restart required) to let
 team admins create invite links and invitees accept them. With the flag off, the
 **Invite by link** button is hidden, creating and accepting invites returns `403`,
-and existing pending invites can still be revoked. The flag applies in every
-team management mode.
+and existing pending invites can still be revoked. `TEAM_MANAGEMENT_SOURCE=yaml`
+overrides the flag: invites stay off, and team pages show a disabled **Invite by
+link** button with a short explanation.
 
 ## Notifications
 
@@ -554,7 +555,7 @@ file status and the last synchronization report.
 | Projects | Teams | Management |
 |---|---|---|
 | ui | ui | Existing UI management; no file needed |
-| yaml | ui | Projects reference teams created in the UI; invites work with `ALLOW_INVITES=true` |
+| yaml | ui | Projects reference teams created in the UI; invites work when `ALLOW_INVITES=true` |
 | ui | yaml | Create projects in the UI within file-defined teams |
 | yaml | yaml | Projects, teams and memberships come from the file |
 
@@ -630,11 +631,7 @@ warns when using the exact default file, and the settings page marks it.
 ### Team grants and SSO
 
 With YAML-managed teams, registration and default-team management are
-disabled. Invites stay available when `ALLOW_INVITES=true`: the **Invite by link**
-button appears on team pages, and an invited member is stored as an invite
-membership that configuration reconciliation never removes (it only removes
-memberships it granted itself). Invited members cannot be removed from the team
-page while teams are managed by the file. `/setup` still creates the initial Owner. File entries do not create
+disabled, and `ALLOW_INVITES` has no effect. `/setup` still creates the initial Owner. File entries do not create
 users: verified SSO login creates their accounts, applies memberships and
 automatically approves users with matching grants even when
 `OAUTH_REQUIRE_APPROVAL=true`. Email grants also apply to local accounts already

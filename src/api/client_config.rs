@@ -57,7 +57,7 @@ impl ClientConfigView {
             release: concat!("soika@", env!("CARGO_PKG_VERSION")).to_string(),
             timezone: state.config.timezone.clone(),
             webhooks_enabled: state.config.webhooks_enabled,
-            invites_enabled: state.config.allow_invites,
+            invites_enabled: crate::config_sync::invites_enabled(state),
         }
     }
 }
