@@ -28,6 +28,7 @@ vi.mock('@sveltejs/kit', async () => {
 
 import { api } from '$lib/api';
 import { load } from './+page';
+import { load as loadTab } from './[tab]/+page';
 
 const settingsGet = vi.mocked(api.settings.get);
 const adminUsers = vi.mocked(api.admin.users);
@@ -76,4 +77,17 @@ describe('(app)/admin +page load', () => {
   it('surfaces an unavailable admin slice', async () => {
     await expect(callLoad({ instance_role: 'owner' }, {})).rejects.toMatchObject({ status: 503 });
   });
+});
+
+it('loads the admin data for a tab route', async () => {
+  const admin = {
+    settings: { name: 'soika' },
+    users: [{ id: 'u1' }],
+    notifications: { feature_enabled: true }
+  };
+  const result = await (loadTab as (e: unknown) => Promise<unknown>)({
+    parent: async () => ({ user: { instance_role: 'manager' }, config: { admin, teams: [] } }),
+    url: new URL('https://app.test/admin/notifications')
+  });
+  expect(result).toEqual({ ...admin, teams: [] });
 });

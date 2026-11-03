@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import { requireInstanceManager } from '$lib/guards';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ parent, url }) => {
+export const load = async ({ parent, url }: Pick<Parameters<PageLoad>[0], 'parent' | 'url'>) => {
   const { user, config } = await parent();
   requireInstanceManager(user, url.pathname + url.search);
   if (!config?.admin) error(503, 'Configuration unavailable');
