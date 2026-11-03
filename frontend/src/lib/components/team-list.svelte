@@ -15,7 +15,7 @@
     {#each teams as team (team.id)}
       <li>
         <a
-          href={`/teams/${team.id}`}
+          href={`/teams/${team.short_id}`}
           class="group hover:bg-muted/50 focus-visible:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors outline-none"
         >
           <Avatar name={team.name} id={team.id} shape="tile" />

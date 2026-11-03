@@ -19,6 +19,49 @@ async fn create_rename_list_delete() {
 }
 
 #[tokio::test]
+async fn teams_get_a_unique_short_id_and_are_found_by_it() {
+    let db = test_db().await;
+    let repo = db.teams.clone();
+
+    let a = repo.create("Alpha".to_string()).await.unwrap();
+    let b = repo.create("Beta".to_string()).await.unwrap();
+    for team in [&a, &b] {
+        assert_eq!(team.short_id.len(), 10, "{}", team.short_id);
+        assert!(
+            team.short_id
+                .bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)),
+            "{}",
+            team.short_id
+        );
+    }
+    assert_ne!(a.short_id, b.short_id);
+
+    let found = repo.find_by_short_id(&a.short_id).await.unwrap().unwrap();
+    assert_eq!(found.id, a.id);
+    assert_eq!(found.short_id, a.short_id);
+    assert!(repo.find_by_short_id("0000000000").await.unwrap().is_none());
+
+    // Every read path carries the same short id.
+    assert_eq!(
+        repo.find_by_id(a.id).await.unwrap().unwrap().short_id,
+        a.short_id
+    );
+    let renamed = repo.rename(a.id, "Gamma".to_string()).await.unwrap();
+    assert_eq!(renamed.short_id, a.short_id);
+    let listed = repo.list().await.unwrap();
+    assert!(
+        listed
+            .iter()
+            .any(|t| t.id == a.id && t.short_id == a.short_id)
+    );
+    let user = insert_user(&db, "short@example.com").await;
+    repo.add_member(b.id, user, TeamRole::Admin).await.unwrap();
+    let mine = repo.list_for_user(user).await.unwrap();
+    assert_eq!(mine[0].short_id, b.short_id);
+}
+
+#[tokio::test]
 async fn duplicate_name_is_conflict() {
     let db = test_db().await;
     let repo = db.teams.clone();

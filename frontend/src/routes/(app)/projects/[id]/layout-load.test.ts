@@ -18,6 +18,9 @@ vi.mock('@sveltejs/kit', async () => {
     ...actual,
     error: (status: number, body?: unknown) => {
       throw { status, body };
+    },
+    redirect: (status: number, location: string) => {
+      throw { status, location };
     }
   };
 });
@@ -35,10 +38,12 @@ const project = {
   issues: [{ id: 'i1' }]
 } as unknown as Awaited<ReturnType<typeof projects.get>>;
 
-function callLoad(user: unknown, role: string | null = 'contributor') {
+function callLoad(user: unknown, role: string | null = 'contributor', path = '/projects/p1') {
+  const url = new URL(`https://app.test${path}`);
   return (load as (e: unknown) => Promise<unknown>)({
-    params: { id: 'p1' },
+    params: { id: url.pathname.split('/')[2] },
     parent: async () => ({ user, config: { teams: [{ id: 't1', role }] } }),
+    url,
     fetch: vi.fn()
   });
 }
@@ -124,5 +129,17 @@ describe('(app)/projects/[id] +layout load', () => {
     get.mockRejectedValue(boom);
 
     await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toBe(boom);
+  });
+
+  it('redirects a legacy short-id URL to the slug URL, keeping the sub-path and query', async () => {
+    get.mockResolvedValue(project);
+
+    await expect(
+      callLoad(
+        { id: 'u1', instance_role: 'member' },
+        'contributor',
+        '/projects/abc123/issues/i1?q=1'
+      )
+    ).rejects.toMatchObject({ status: 308, location: '/projects/p1/issues/i1?q=1' });
   });
 });

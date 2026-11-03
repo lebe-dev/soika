@@ -40,7 +40,7 @@
       // The dashboard reads its team list from the root auth/config load. Refresh
       // it after creation so returning there doesn't show the stale empty state.
       await invalidateAll();
-      await goto(`/teams/${team.id}`);
+      await goto(`/teams/${team.short_id}`);
     } catch (err) {
       toast.error(errorMessage(err, $t('failed_to_create_team')));
       reportUnexpected(err);

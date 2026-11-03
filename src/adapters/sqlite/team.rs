@@ -50,6 +50,7 @@ impl SqliteTeamRepository {
 #[derive(FromRow)]
 struct TeamRow {
     id: String,
+    short_id: String,
     name: String,
     created_at: String,
     updated_at: String,
@@ -61,6 +62,7 @@ impl TeamRow {
         Ok(Team {
             orphaned_at: self.orphaned_at.as_deref().map(ts_from_db).transpose()?,
             id: id_from_db(&self.id)?,
+            short_id: self.short_id,
             name: self.name,
             created_at: ts_from_db(&self.created_at)?,
             updated_at: ts_from_db(&self.updated_at)?,
@@ -105,7 +107,8 @@ impl MemberUserRow {
     }
 }
 
-const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at, orphaned_at FROM teams";
+const SELECT_TEAM: &str =
+    "SELECT id, short_id, name, created_at, updated_at, orphaned_at FROM teams";
 
 #[async_trait]
 impl TeamRepository for SqliteTeamRepository {
@@ -121,10 +124,17 @@ impl TeamRepository for SqliteTeamRepository {
             .execute(&self.db)
             .await
             .map_err(|e| conflict_or_db(e, format!("team name already exists: {name}")))?;
+        // The short id is assigned by an AFTER INSERT trigger, which RETURNING
+        // would not see, so read it back.
+        let short_id: String = sqlx::query_scalar("SELECT short_id FROM teams WHERE id = ?")
+            .bind(id_to_db(id))
+            .fetch_one(&self.db)
+            .await?;
 
         Ok(Team {
             orphaned_at: None,
             id,
+            short_id,
             name,
             created_at: now,
             updated_at: now,
@@ -136,6 +146,16 @@ impl TeamRepository for SqliteTeamRepository {
             "{SELECT_TEAM} WHERE id = ?"
         )))
         .bind(id_to_db(id))
+        .fetch_optional(&self.db)
+        .await?;
+        row.map(TeamRow::into_domain).transpose()
+    }
+
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Team>> {
+        let row = sqlx::query_as::<_, TeamRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_TEAM} WHERE short_id = ?"
+        )))
+        .bind(short_id)
         .fetch_optional(&self.db)
         .await?;
         row.map(TeamRow::into_domain).transpose()
@@ -221,7 +241,7 @@ impl TeamRepository for SqliteTeamRepository {
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {
         let rows = sqlx::query_as::<_, TeamRow>(
-            "SELECT t.id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
+            "SELECT t.id, t.short_id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
              JOIN team_members m ON m.team_id = t.id \
              WHERE m.user_id = ? ORDER BY t.name",
         )

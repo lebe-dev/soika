@@ -49,6 +49,7 @@ impl PgTeamRepository {
 #[derive(FromRow)]
 struct TeamRow {
     id: Id,
+    short_id: String,
     name: String,
     created_at: Timestamp,
     updated_at: Timestamp,
@@ -60,6 +61,7 @@ impl From<TeamRow> for Team {
         Team {
             orphaned_at: row.orphaned_at,
             id: row.id,
+            short_id: row.short_id,
             name: row.name,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -82,7 +84,8 @@ impl MemberUserRow {
     }
 }
 
-const SELECT_TEAM: &str = "SELECT id, name, created_at, updated_at, orphaned_at FROM teams";
+const SELECT_TEAM: &str =
+    "SELECT id, short_id, name, created_at, updated_at, orphaned_at FROM teams";
 
 #[async_trait]
 impl TeamRepository for PgTeamRepository {
@@ -90,17 +93,22 @@ impl TeamRepository for PgTeamRepository {
         let id = Id::new_v4();
         let now = now();
 
-        sqlx::query("INSERT INTO teams (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)")
-            .bind(id)
-            .bind(&name)
-            .bind(now)
-            .execute(&self.db)
-            .await
-            .map_err(|e| conflict_or_db(e, format!("team name already exists: {name}")))?;
+        // The short id comes from the column default.
+        let short_id: String = sqlx::query_scalar(
+            "INSERT INTO teams (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3) \
+             RETURNING short_id",
+        )
+        .bind(id)
+        .bind(&name)
+        .bind(now)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| conflict_or_db(e, format!("team name already exists: {name}")))?;
 
         Ok(Team {
             orphaned_at: None,
             id,
+            short_id,
             name,
             created_at: now,
             updated_at: now,
@@ -112,6 +120,16 @@ impl TeamRepository for PgTeamRepository {
             "{SELECT_TEAM} WHERE id = $1"
         )))
         .bind(id)
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.map(Team::from))
+    }
+
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Team>> {
+        let row = sqlx::query_as::<_, TeamRow>(sqlx::AssertSqlSafe(format!(
+            "{SELECT_TEAM} WHERE short_id = $1"
+        )))
+        .bind(short_id)
         .fetch_optional(&self.db)
         .await?;
         Ok(row.map(Team::from))
@@ -129,7 +147,7 @@ impl TeamRepository for PgTeamRepository {
     async fn rename(&self, id: Id, name: String) -> Result<Team> {
         let row = sqlx::query_as::<_, TeamRow>(
             "UPDATE teams SET name = $1, updated_at = $2 WHERE id = $3 \
-             RETURNING id, name, created_at, updated_at, orphaned_at",
+             RETURNING id, short_id, name, created_at, updated_at, orphaned_at",
         )
         .bind(&name)
         .bind(now())
@@ -198,7 +216,7 @@ impl TeamRepository for PgTeamRepository {
 
     async fn list_for_user(&self, user_id: Id) -> Result<Vec<Team>> {
         let rows = sqlx::query_as::<_, TeamRow>(
-            "SELECT t.id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
+            "SELECT t.id, t.short_id, t.name, t.created_at, t.updated_at, t.orphaned_at FROM teams t \
              JOIN team_members m ON m.team_id = t.id \
              WHERE m.user_id = $1 ORDER BY t.name",
         )

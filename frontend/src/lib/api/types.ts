@@ -189,8 +189,10 @@ export interface UpdateProfileRequest {
 /** `InviteView` returned by `GET /invite/{token}` (the accept page). */
 export interface InvitePreview {
   token: string;
-  /** Target team id; the accept flow redirects to `/teams/{id}` after joining. */
+  /** Target team id. */
   team_id: string;
+  /** Target team's short id; the accept flow redirects to `/teams/{team_short_id}`. */
+  team_short_id: string;
   /** Team name, for display on the accept page. */
   team_name: string;
   /** Team role the invite grants on accept. */
@@ -209,7 +211,7 @@ export interface AcceptInviteRequest {
 
 export interface Project {
   orphaned_at?: string | null;
-  /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
+  /** Public id: the project slug, used in URLs and API paths (not a UUID). */
   id: string;
   team_id: string;
   name: string;
@@ -300,7 +302,7 @@ export interface CreateInviteRequest {
 // --- Issues & events (src/api/issues.rs, src/api/events.rs) ---
 
 export interface Issue {
-  /** Short public id (6-char `a-z0-9`) used in URLs and API paths, not a UUID. */
+  /** Public id: the project slug, used in URLs and API paths (not a UUID). */
   id: string;
   /** Parent project's short public id (used to build the back-link), not a UUID. */
   project_id: string;
@@ -389,6 +391,8 @@ export interface IssueListQuery {
 export interface TeamSummary {
   role?: TeamRole | null;
   id: string;
+  /** Short public id used in web URLs (`/teams/{short_id}`). */
+  short_id: string;
   name: string;
   member_count: number;
   project_count: number;
@@ -416,6 +420,8 @@ export interface Team {
   } | null;
   orphaned_at?: string | null;
   id: string;
+  /** Short public id used in web URLs (`/teams/{short_id}`). */
+  short_id: string;
   name: string;
   created_at: string;
   updated_at: string;

@@ -109,10 +109,10 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
     })?;
     file.alertmanager_project_labels = project_labels;
     for (slug, labels) in &file.alertmanager_project_labels {
-        if slug.is_empty() || super::slugify(slug) != *slug {
-            return Err(Error::validation(
-                "invalid project slug in Alertmanager labels",
-            ));
+        if let Err(reason) = super::validate_slug(slug) {
+            return Err(Error::validation(format!(
+                "invalid project slug {slug:?} in Alertmanager labels: {reason}"
+            )));
         }
         let mut config = super::notifications::AlertmanagerConfig::default();
         config.labels.extend(labels.clone());
@@ -137,7 +137,7 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
             .ok_or_else(|| Error::validation("notifications section is required"))?
             .validate_stored()?;
     }
-    validate_projects(file.projects.iter().flatten())?;
+    validate_projects(file.projects.as_deref().unwrap_or_default())?;
     validate_teams(file.teams.iter().flatten())?;
     Ok(file)
 }
@@ -153,12 +153,30 @@ struct EnvAlertmanager {
     project_labels: BTreeMap<String, BTreeMap<String, String>>,
 }
 
-fn validate_projects<'a>(projects: impl Iterator<Item = &'a ProjectConfig>) -> Result<()> {
-    let mut slugs = BTreeSet::new();
+/// Enforce the strict slug rule and slug uniqueness across the whole file,
+/// reporting every offending slug at once so a broken file is fixed in one pass.
+fn validate_project_slugs(projects: &[ProjectConfig]) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    let mut duplicates = BTreeSet::new();
+    let mut errors = Vec::new();
     for p in projects {
-        if p.slug.is_empty() || super::slugify(&p.slug) != p.slug || !slugs.insert(&p.slug) {
-            return Err(Error::validation("invalid or duplicate project slug"));
+        if let Err(reason) = super::validate_slug(&p.slug) {
+            errors.push(format!("invalid project slug {:?}: {reason}", p.slug));
+            continue;
         }
+        if !seen.insert(p.slug.as_str()) && duplicates.insert(p.slug.as_str()) {
+            errors.push(format!("duplicate project slug {:?}", p.slug));
+        }
+    }
+    if errors.is_empty() {
+        return Ok(());
+    }
+    Err(Error::validation(errors.join("; ")))
+}
+
+fn validate_projects(projects: &[ProjectConfig]) -> Result<()> {
+    validate_project_slugs(projects)?;
+    for p in projects {
         if p.name.trim().is_empty() || p.team.trim().is_empty() {
             return Err(Error::validation("project name and team are required"));
         }

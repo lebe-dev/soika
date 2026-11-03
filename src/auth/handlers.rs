@@ -155,8 +155,11 @@ pub struct SetupRequest {
 #[derive(Debug, Serialize)]
 pub struct InviteView {
     pub token: String,
-    /// Target team id, so the accept flow can route to the team after joining.
+    /// Target team id.
     pub team_id: Id,
+    /// Target team's short public id, so the accept flow can route to
+    /// `/teams/{team_short_id}` after joining.
+    pub team_short_id: String,
     /// Team name, for display on the accept page.
     pub team_name: String,
     pub role: TeamRole,
@@ -441,6 +444,7 @@ pub async fn get_invite(
     Ok(Json(InviteView {
         token: invite.token,
         team_id: team.id,
+        team_short_id: team.short_id,
         team_name: team.name,
         role: invite.role,
         email: invite.email,

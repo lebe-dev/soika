@@ -29,11 +29,13 @@ import { load } from './+page';
 const teamGet = vi.mocked(teams.get);
 const adminUsers = vi.mocked(admin.users);
 
-const team = { id: 't1', name: 'Team' } as unknown as Awaited<ReturnType<typeof teams.get>>;
+const team = { id: 'uuid-1', short_id: 't1', name: 'Team' } as unknown as Awaited<
+  ReturnType<typeof teams.get>
+>;
 
-function callLoad(user: unknown) {
+function callLoad(user: unknown, id = 't1') {
   return (load as (e: unknown) => Promise<unknown>)({
-    params: { id: 't1' },
+    params: { id },
     parent: async () => ({
       user,
       config: {
@@ -43,7 +45,7 @@ function callLoad(user: unknown) {
             : undefined
       }
     }),
-    url: new URL('https://app.test/teams/t1'),
+    url: new URL(`https://app.test/teams/${id}`),
     fetch: vi.fn()
   });
 }
@@ -115,5 +117,14 @@ describe('(app)/teams/[id] +page load', () => {
     teamGet.mockRejectedValue(boom);
 
     await expect(callLoad({ id: 'u1', instance_role: 'member' })).rejects.toBe(boom);
+  });
+
+  it('redirects a UUID URL to the short-id URL', async () => {
+    teamGet.mockResolvedValue(team);
+
+    await expect(callLoad({ id: 'u1', instance_role: 'member' }, 'uuid-1')).rejects.toMatchObject({
+      status: 308,
+      location: '/teams/t1'
+    });
   });
 });

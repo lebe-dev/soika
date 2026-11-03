@@ -280,3 +280,44 @@ fn test_config() -> Config {
         service_deploy_url: None,
     }
 }
+
+#[tokio::test]
+async fn team_is_addressed_by_short_id_and_uuid_with_access_checks_intact() {
+    let app = Fixture::spawn().await;
+    let seeded = app.seed().await;
+    let cookie = app.login("a@example.com").await;
+    let team_a = app
+        .state
+        .teams
+        .find_by_id(seeded.team_a)
+        .await
+        .unwrap()
+        .unwrap();
+    let team_b = app
+        .state
+        .teams
+        .find_by_id(seeded.team_b)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let (status, teams) = app.get("/api/teams", &cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(teams[0]["short_id"], team_a.short_id);
+
+    for path in [team_a.short_id.clone(), team_a.id.to_string()] {
+        let (status, body) = app.get(&format!("/api/teams/{path}"), &cookie).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body["short_id"], team_a.short_id);
+        assert_eq!(body["id"], team_a.id.to_string());
+        assert_eq!(body["projects"][0]["id"], "alpha", "projects carry slugs");
+    }
+
+    let (status, _) = app
+        .get(&format!("/api/teams/{}", team_b.short_id), &cookie)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "foreign team stays 403");
+
+    let (status, _) = app.get("/api/teams/ffffffffff", &cookie).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

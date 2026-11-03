@@ -13,17 +13,24 @@ import { translate } from '$lib/i18n';
 // the settings page can gate its admin actions without a separate request. This
 // load re-runs on `invalidateAll()` after a mutation, keeping every tab fresh.
 
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { projects, ApiError, type Role } from '$lib/api';
 import type { LayoutLoad } from './$types';
 
-export const load: LayoutLoad = async ({ params, parent, fetch }) => {
+export const load: LayoutLoad = async ({ params, parent, url, fetch }) => {
   const { user, config } = await parent();
 
   try {
     // Project detail embeds the default (unresolved) issue list, so the issues
     // page can render its initial view without a separate request.
     const project = await projects.get(params.id, { fetch });
+
+    // The project's address is its slug. Old links still carry the legacy
+    // short id, which the API accepts; move them to the canonical URL.
+    if (params.id !== project.id) {
+      const rest = url.pathname.slice(`/projects/${params.id}`.length);
+      redirect(308, `/projects/${encodeURIComponent(project.id)}${rest}${url.search}`);
+    }
 
     // The bootstrap carries the caller's team role; no member directory read is needed.
     const effectiveRole: Role =

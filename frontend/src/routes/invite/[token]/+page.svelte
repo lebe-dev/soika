@@ -44,7 +44,7 @@
       });
       authStore.set(user);
       toast.success($t('invite_accepted'));
-      await goto(`/teams/${data.preview.team_id}`, { invalidateAll: true });
+      await goto(`/teams/${data.preview.team_short_id}`, { invalidateAll: true });
     } catch (err) {
       toast.error(errorMessage(err, $t('could_not_accept_invite')));
     } finally {

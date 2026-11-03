@@ -51,6 +51,9 @@ impl IntoResponse for ApiError {
         // Lock contention is expected load, so keep it at warn level.
         if self.0.is_busy() {
             tracing::warn!(error = %self.0, "request failed: database is busy");
+        } else if matches!(&self.0, Error::Alertmanager(_)) {
+            // The HTTP adapter already reported the redacted delivery failure.
+            tracing::warn!(error = %self.0, "request failed: Alertmanager delivery failed");
         } else if status.is_server_error() {
             tracing::error!(error = %self.0, "request failed");
         }
@@ -158,6 +161,21 @@ fn parse_id(raw: &str) -> Result<Id, Error> {
     Id::parse_str(raw).map_err(|_| Error::validation(format!("invalid id: {raw}")))
 }
 
+/// Resolve a team from its path segment: the short public id used in web URLs,
+/// or the UUID (still accepted so older links and API clients keep working).
+pub async fn resolve_team(state: &AppState, raw: &str) -> Result<Team, Error> {
+    let team = match Id::parse_str(raw) {
+        Ok(id) => state.teams.find_by_id(id).await?,
+        Err(_) => state.teams.find_by_short_id(raw).await?,
+    };
+    team.ok_or_else(|| Error::not_found(format!("team {raw}")))
+}
+
+/// [`resolve_team`] for handlers that only need the internal id.
+pub async fn resolve_team_id(state: &AppState, raw: &str) -> Result<Id, Error> {
+    Ok(resolve_team(state, raw).await?.id)
+}
+
 // ---------------------------------------------------------------------------
 // DTOs
 // ---------------------------------------------------------------------------
@@ -168,6 +186,8 @@ pub struct TeamView {
     pub grants: Option<crate::domain::config_file::TeamGrantView>,
     pub orphaned_at: Option<Timestamp>,
     pub id: Id,
+    /// Short public id used in web URLs (`/teams/{short_id}`).
+    pub short_id: String,
     pub name: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
@@ -181,6 +201,8 @@ pub struct TeamSummary {
     /// Caller's role in this team; instance privileges are carried by the profile.
     pub role: Option<TeamRole>,
     pub id: Id,
+    /// Short public id used in web URLs (`/teams/{short_id}`).
+    pub short_id: String,
     pub name: String,
     pub member_count: usize,
     pub project_count: usize,
@@ -264,6 +286,7 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
         grants,
         orphaned_at: team.orphaned_at,
         id: team.id,
+        short_id: team.short_id,
         name: team.name,
         created_at: team.created_at,
         updated_at: team.updated_at,
@@ -274,7 +297,7 @@ async fn load_team_view(state: &AppState, team: Team) -> Result<TeamView, Error>
         projects: projects
             .into_iter()
             .map(|p| ProjectView {
-                id: p.short_id,
+                id: p.slug.clone(),
                 name: p.name,
                 slug: p.slug,
             })
@@ -303,6 +326,7 @@ pub async fn summaries(state: &AppState, user: &User) -> Result<Vec<TeamSummary>
         out.push(TeamSummary {
             role: state.teams.member_role(team.id, user.id).await?,
             id: team.id,
+            short_id: team.short_id,
             name: team.name,
             member_count: members.len(),
             project_count: projects.len(),
@@ -344,12 +368,8 @@ pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<TeamView>, ApiError> {
-    let id = parse_id(&id)?;
-    let team = state
-        .teams
-        .find_by_id(id)
-        .await?
-        .ok_or_else(|| Error::not_found(format!("team {id}")))?;
+    let team = resolve_team(&state, &id).await?;
+    let id = team.id;
     if !user.instance_role.can_manage_instance() && !state.teams.is_member(id, user.id).await? {
         return Err(ApiError(Error::Forbidden(
             "you do not have access to this team".into(),
@@ -367,7 +387,7 @@ pub async fn update(
     Json(body): Json<UpdateTeam>,
 ) -> Result<Json<TeamView>, ApiError> {
     crate::config_sync::require_ui_management(&state, true)?;
-    let id = parse_id(&id)?;
+    let id = resolve_team_id(&state, &id).await?;
     let name = validate_team_name(&body.name)?;
     let team = state.teams.rename(id, name).await?;
     tracing::info!(team_id = %id, "team updated");
@@ -388,7 +408,7 @@ pub async fn delete(
     Query(query): Query<DeleteTeamQuery>,
 ) -> Result<StatusCode, ApiError> {
     crate::config_sync::require_ui_management(&state, true)?;
-    let id = parse_id(&id)?;
+    let id = resolve_team_id(&state, &id).await?;
     if query.move_projects_to.is_some() {
         crate::config_sync::require_ui_management(&state, false)?;
     }
@@ -421,7 +441,7 @@ pub async fn add_member(
     Json(body): Json<AddMember>,
 ) -> Result<Json<TeamView>, ApiError> {
     crate::config_sync::require_ui_management(&state, true)?;
-    let id = parse_id(&id)?;
+    let id = resolve_team_id(&state, &id).await?;
     require_team_manager(&state, &caller, id).await?;
     // Ensure team & user exist for clear 404s (avoids opaque FK failures).
     let team = state
@@ -450,7 +470,7 @@ pub async fn set_member_role(
     Json(body): Json<SetMemberRole>,
 ) -> Result<Json<TeamView>, ApiError> {
     crate::config_sync::require_ui_management(&state, true)?;
-    let id = parse_id(&id)?;
+    let id = resolve_team_id(&state, &id).await?;
     let user_id = parse_id(&user_id)?;
     require_team_manager(&state, &caller, id).await?;
 
@@ -494,7 +514,7 @@ pub async fn remove_member(
     Path((id, user_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     crate::config_sync::require_ui_management(&state, true)?;
-    let id = parse_id(&id)?;
+    let id = resolve_team_id(&state, &id).await?;
     let user_id = parse_id(&user_id)?;
     require_team_manager(&state, &caller, id).await?;
 

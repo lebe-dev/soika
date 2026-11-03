@@ -74,14 +74,14 @@ pub struct IssueView {
 }
 
 impl IssueView {
-    /// Build a view from an issue plus its parent project's short id.
+    /// Build a view from an issue plus its parent project's slug.
     ///
-    /// `project_short_id` cannot be derived from the issue alone (it carries the
+    /// `project_slug` cannot be derived from the issue alone (it carries the
     /// project UUID), so callers pass it in from the resolved/loaded project.
-    pub fn from_issue(issue: Issue, project_short_id: String) -> Self {
+    pub fn from_issue(issue: Issue, project_slug: String) -> Self {
         IssueView {
             id: issue.short_id,
-            project_id: project_short_id,
+            project_id: project_slug,
             fingerprint: issue.fingerprint,
             title: issue.title,
             culprit: issue.culprit,
@@ -207,7 +207,7 @@ pub async fn list_for_project(
         Ok(issues) => {
             let views: Vec<IssueView> = issues
                 .into_iter()
-                .map(|i| IssueView::from_issue(i, project.short_id.clone()))
+                .map(|i| IssueView::from_issue(i, project.slug.clone()))
                 .collect();
             Json(views).into_response()
         }
@@ -233,7 +233,7 @@ pub async fn default_project_issues(
     let issues = state.issues.list(project.id, filter).await?;
     Ok(issues
         .into_iter()
-        .map(|i| IssueView::from_issue(i, project.short_id.clone()))
+        .map(|i| IssueView::from_issue(i, project.slug.clone()))
         .collect())
 }
 
@@ -241,7 +241,7 @@ pub async fn default_project_issues(
 /// project; returns the issue together with its parent project.
 ///
 /// The project is returned so callers can build [`IssueView`]s (which need the
-/// project's short id) without a second lookup.
+/// project's slug) without a second lookup.
 async fn authorize_issue(
     state: &AppState,
     user: &crate::domain::User,
@@ -291,7 +291,7 @@ pub async fn get(
     }
 
     Json(IssueDetail {
-        issue: IssueView::from_issue(issue, project.short_id),
+        issue: IssueView::from_issue(issue, project.slug),
         latest_event: latest,
     })
     .into_response()
@@ -424,7 +424,7 @@ pub async fn mute(
     match state.issues.mute(issue.id, spec, state.clock.now()).await {
         Ok(issue) => {
             tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
-            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+            Json(IssueView::from_issue(issue, project.slug)).into_response()
         }
         Err(err) => error_response(err),
     }
@@ -481,7 +481,7 @@ pub async fn update_fingerprint(
         // one we already loaded.
         Ok(issue) => {
             tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
-            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+            Json(IssueView::from_issue(issue, project.slug)).into_response()
         }
         Err(err) => error_response(err),
     }
@@ -502,7 +502,7 @@ async fn set_status(
     match state.issues.set_status(issue.id, status).await {
         Ok(issue) => {
             tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
-            Json(IssueView::from_issue(issue, project.short_id)).into_response()
+            Json(IssueView::from_issue(issue, project.slug)).into_response()
         }
         Err(err) => error_response(err),
     }

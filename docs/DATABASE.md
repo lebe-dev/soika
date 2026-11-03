@@ -63,9 +63,9 @@ except `created_by` columns, which become `NULL` when the user is deleted.
 | --- | --- | --- |
 | `users` | Accounts: email (unique), password hash (empty for OIDC), `instance_role` (`owner`/`manager`/`member`), `status`, `locale`, `auth_provider`. | — |
 | `sessions` | Server-side login sessions with expiry. | → `users` |
-| `teams` | Teams (unique name). | — |
+| `teams` | Teams: unique name and `short_id` (10 hex chars assigned by the database, used in `/teams/{short_id}` URLs). | — |
 | `team_members` | Team membership with `role` (`admin`/`contributor`); the only path from users to projects. | → `teams`, → `users` |
-| `projects` | Projects: `short_id`, unique `slug` and `dsn_public_key`, retention settings, mute flag, webhook URL. | → `teams` |
+| `projects` | Projects: unique `slug` (the web URL address), legacy `short_id` (old links, still accepted), unique `dsn_public_key`, retention settings, mute flag, webhook URL. | → `teams` |
 | `project_favorites` | Per-user favorite projects. | → `users`, → `projects` |
 | `issues` | Grouped errors, unique per `(project_id, fingerprint)`; status, mute bookkeeping, `first_seen`/`last_seen`, `event_count`. | → `projects` |
 | `events` | Individual occurrences; full event JSON in `payload`; `project_id` denormalized for retention. | → `issues`, → `projects` |

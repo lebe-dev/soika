@@ -11,7 +11,7 @@ import { translate } from '$lib/i18n';
 // a manager; a Team Admin who is only an instance Member can manage existing
 // members/roles but cannot add arbitrary users (the picker is hidden).
 
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { teams, ApiError } from '$lib/api';
 import { requireUser } from '$lib/guards';
 import type { PageLoad } from './$types';
@@ -22,6 +22,12 @@ export const load: PageLoad = async ({ params, parent, url, fetch }) => {
 
   try {
     const team = await teams.get(params.id, { fetch });
+
+    // The team's address is its short id. Old links carry the UUID, which the
+    // API accepts; move them to the canonical URL.
+    if (params.id !== team.short_id) {
+      redirect(308, `/teams/${team.short_id}${url.search}`);
+    }
 
     const users = config?.admin?.users ?? [];
     const targets =

@@ -75,7 +75,7 @@ pub fn variables(
             format!(
                 "{}/projects/{}/issues/{}",
                 state.config.base_url.trim_end_matches('/'),
-                project.short_id,
+                project.slug,
                 issue.short_id
             ),
         ),

@@ -58,9 +58,9 @@ pub struct CreateRuleRequest {
 pub async fn list(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path(project_short_id): Path<String>,
+    Path(project_public_id): Path<String>,
 ) -> Result<Response, Response> {
-    let project = resolve_project(&state, &project_short_id).await?;
+    let project = resolve_project(&state, &project_public_id).await?;
     require_member(&state, &user, project.id).await?;
 
     let rules = state
@@ -77,10 +77,10 @@ pub async fn list(
 pub async fn create(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path(project_short_id): Path<String>,
+    Path(project_public_id): Path<String>,
     Json(body): Json<CreateRuleRequest>,
 ) -> Result<Response, Response> {
-    let project = resolve_project(&state, &project_short_id).await?;
+    let project = resolve_project(&state, &project_public_id).await?;
     require_member(&state, &user, project.id).await?;
 
     let tags = validate_tags(body.tags)?;
@@ -107,9 +107,9 @@ pub async fn create(
 pub async fn delete(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Path((project_short_id, rule_id)): Path<(String, String)>,
+    Path((project_public_id, rule_id)): Path<(String, String)>,
 ) -> Result<Response, Response> {
-    let project = resolve_project(&state, &project_short_id).await?;
+    let project = resolve_project(&state, &project_public_id).await?;
     require_member(&state, &user, project.id).await?;
     let rule_id = parse_id(&rule_id)?;
 

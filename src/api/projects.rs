@@ -106,24 +106,36 @@ pub fn error_response(err: Error) -> Response {
 /// Parse a path id into a [`Id`] (UUID), mapping failure to a `400`.
 ///
 /// Used for ids that are still UUIDs on the wire (user ids, event ids). Project
-/// and issue path params are short public ids — resolve those with
-/// [`resolve_project`] / `issues::authorize_issue` instead.
+/// path params are slugs and issue path params are short public ids — resolve
+/// those with [`resolve_project`] / `issues::authorize_issue` instead.
 pub fn parse_id(raw: &str) -> std::result::Result<Id, Response> {
     Id::parse_str(raw).map_err(|_| json_error(StatusCode::BAD_REQUEST, "invalid id"))
 }
 
-/// Resolve a project from its short public id (the web URL / SPA path param),
+/// Resolve a project from its public address (the web URL / SPA path param),
 /// returning the full project or a `404` JSON response.
 ///
+/// The address is the project slug. The legacy 6-char short id is still
+/// accepted so links sent before the switch to slugs keep working; the SPA then
+/// redirects to the slug URL. The slug wins when both could match.
+///
 /// The internal UUID lives on [`Project::id`]; handlers use that for membership
-/// checks and downstream queries while the wire only ever speaks short ids.
+/// checks and downstream queries while the wire only ever speaks public ids.
 pub async fn resolve_project(
     state: &AppState,
-    short_id: &str,
+    public_id: &str,
 ) -> std::result::Result<Project, Response> {
+    if let Some(project) = state
+        .projects
+        .find_by_slug(public_id)
+        .await
+        .map_err(error_response)?
+    {
+        return Ok(project);
+    }
     state
         .projects
-        .find_by_short_id(short_id)
+        .find_by_short_id(public_id)
         .await
         .map_err(error_response)?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "project not found"))
@@ -277,8 +289,8 @@ fn ingest_urls(base_url: &str, project_id: Id) -> (String, String) {
 #[derive(Debug, Serialize)]
 pub struct ProjectView {
     pub orphaned_at: Option<crate::domain::Timestamp>,
-    /// Short public id (used in web URLs and as the SPA-facing path param). The
-    /// internal UUID is never exposed to the client.
+    /// Public id: the project slug (used in web URLs and as the SPA-facing path
+    /// param). The internal UUID is never exposed to the client.
     pub id: String,
     pub team_id: Id,
     pub name: String,
@@ -300,7 +312,7 @@ impl ProjectView {
         let dsn = build_dsn(base_url, &project.dsn_public_key, project.id);
         ProjectView {
             orphaned_at: project.orphaned_at,
-            id: project.short_id,
+            id: project.slug.clone(),
             team_id: project.team_id,
             name: project.name,
             slug: project.slug,

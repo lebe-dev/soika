@@ -222,7 +222,7 @@ fn issue_link(config: &Config, project: &Project, issue: &Issue) -> String {
     format!(
         "{}/projects/{}/issues/{}",
         config.base_url.trim_end_matches('/'),
-        project.short_id,
+        project.slug,
         issue.short_id,
     )
 }
@@ -493,9 +493,9 @@ mod tests {
         assert!(html.contains("#1d85e5")); // --primary
         assert!(html.contains("#dc2626")); // Tailwind red-600
         // Deep link to the issue and the unsubscribe/settings page.
-        // Deep link uses the short public ids (web001/iss001), not the UUIDs —
-        // mirrors the SPA route so the link resolves in the dashboard.
-        assert!(html.contains("https://errors.example.com/projects/web001/issues/iss001"));
+        // Deep link uses the public ids (project slug, issue short id), not the
+        // UUIDs — mirrors the SPA route so the link resolves in the dashboard.
+        assert!(html.contains("https://errors.example.com/projects/checkout-api/issues/iss001"));
         assert!(html.contains("https://errors.example.com/profile"));
         // Footer explains why the recipient got this.
         assert!(html.contains("You're receiving this because"));

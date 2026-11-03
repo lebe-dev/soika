@@ -593,7 +593,16 @@ projects:
 
 Members have role `admin` or `contributor`. A team must specify `members` or
 `sso_groups`; use `members: []` for an intentionally empty team. File projects
-require `slug`, `name` and `team`. Missing retention settings use
+require `slug`, `name` and `team`.
+
+The slug is the project's address in the web UI (`/projects/{slug}`), so the
+file enforces a strict rule: 1–48 characters from `a-z`, `0-9` and `-`, with no
+leading, trailing or repeated `-` (for example `backend-api`, `web2`). Slugs
+must be unique across the file. Every invalid or duplicate slug is reported by
+name in a single startup error. The same rule applies to the slug keys of
+`notifications.alertmanager.project_labels`.
+
+Missing retention settings use
 `DEFAULT_EVENTS_RETENTION` and zero days; a missing webhook disables that channel.
 `${VAR}` in string values reads the process environment; unset variables fail
 startup. Environment values are expanded as strings after YAML parsing, so a

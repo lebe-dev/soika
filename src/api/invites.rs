@@ -73,9 +73,12 @@ fn invite_link(base_url: &str, token: &str) -> String {
     format!("{}/invite/{}", base_url.trim_end_matches('/'), token)
 }
 
-/// Parse a team-id path segment, mapping a bad UUID to a `400`.
-fn parse_team_id(raw: &str) -> std::result::Result<Id, Response> {
-    Id::parse_str(raw).map_err(|_| json_error(StatusCode::BAD_REQUEST, "invalid team id"))
+/// Resolve a team path segment (short public id or UUID), mapping an unknown
+/// team to a `404`.
+async fn parse_team_id(state: &AppState, raw: &str) -> std::result::Result<Id, Response> {
+    crate::api::teams::resolve_team_id(state, raw)
+        .await
+        .map_err(error_response)
 }
 
 /// Require that `user` may manage `team_id`'s invites: an instance
@@ -104,7 +107,7 @@ pub async fn list(
     CurrentUser(user): CurrentUser,
     Path(team_id): Path<String>,
 ) -> Response {
-    let team_id = match parse_team_id(&team_id) {
+    let team_id = match parse_team_id(&state, &team_id).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
@@ -150,7 +153,7 @@ pub async fn create(
     if let Err(err) = crate::config_sync::require_invites_enabled(&state) {
         return error_response(err);
     }
-    let team_id = match parse_team_id(&team_id) {
+    let team_id = match parse_team_id(&state, &team_id).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
@@ -240,7 +243,7 @@ pub async fn revoke(
     CurrentUser(user): CurrentUser,
     Path((team_id, token)): Path<(String, String)>,
 ) -> Response {
-    let team_id = match parse_team_id(&team_id) {
+    let team_id = match parse_team_id(&state, &team_id).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };

@@ -23,7 +23,7 @@ pub use issue::{Issue, IssueStatus, MuteSpec};
 pub use membership::{Role, TeamRole};
 pub use mute_rule::{TagMatch, TagMuteRule};
 pub use passkey::{MAX_PASSKEY_NAME_LEN, Passkey, normalize_passkey_name};
-pub use project::{Project, is_valid_webhook_url, slugify};
+pub use project::{Project, SLUG_MAX_LEN, SlugError, is_valid_webhook_url, slugify, validate_slug};
 pub use settings::ServiceSettings;
 pub use stacktrace::{ExceptionValue, Frame, NormalizedEvent, Stacktrace};
 pub use team::{Team, TeamMember};

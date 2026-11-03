@@ -156,11 +156,10 @@ pub(crate) struct WebhookAlert {
 
 /// Build the webhook payload for an issue notification (pure; unit-tested).
 ///
-/// `generatorURL` is `{base_url}/projects/{project_short_id}/issues/{issue_short_id}`
+/// `generatorURL` is `{base_url}/projects/{project_slug}/issues/{issue_short_id}`
 /// with any trailing slash on `base_url` trimmed (mirroring `mail.rs` link
 /// building and the frontend route `/projects/[id]/issues/[issueId]`, both of
-/// which use the short public ids — not the UUIDs — so the link resolves in the
-/// SPA).
+/// which use the public ids — not the UUIDs — so the link resolves in the SPA).
 pub(crate) fn build_webhook_payload(
     base_url: &str,
     project: &Project,
@@ -168,10 +167,7 @@ pub(crate) fn build_webhook_payload(
     trigger: Trigger,
 ) -> WebhookPayload {
     let base = base_url.trim_end_matches('/');
-    let issue_url = format!(
-        "{base}/projects/{}/issues/{}",
-        project.short_id, issue.short_id
-    );
+    let issue_url = format!("{base}/projects/{}/issues/{}", project.slug, issue.short_id);
     let group_labels = BTreeMap::from([
         ("project_id", project.id.to_string()),
         ("issue_id", issue.id.to_string()),
@@ -545,7 +541,7 @@ mod tests {
                     "annotations": annotations,
                     "startsAt": issue.first_seen,
                     "endsAt": "0001-01-01T00:00:00Z",
-                    "generatorURL": "https://errors.example.com/projects/web001/issues/iss001",
+                    "generatorURL": "https://errors.example.com/projects/web/issues/iss001",
                     "fingerprint": issue.id.simple().to_string(),
                 }],
             })
@@ -810,10 +806,7 @@ mod tests {
         );
         assert_eq!(
             alert["generatorURL"],
-            format!(
-                "{url}/projects/{}/issues/{}",
-                project.short_id, issue.short_id
-            )
+            format!("{url}/projects/{}/issues/{}", project.slug, issue.short_id)
         );
     }
 

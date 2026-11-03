@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub id: Id,
+    /// Short public id (10 lowercase hex chars) assigned by the database; used
+    /// in web URLs and accepted by the team API instead of the verbose UUID,
+    /// which remains the internal key.
+    pub short_id: String,
     pub name: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,

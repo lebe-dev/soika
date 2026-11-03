@@ -37,9 +37,11 @@ use tower::ServiceExt;
 const PASSWORD: &str = "correct-horse-battery";
 
 /// A created project's identifiers: the internal UUID (used to seed direct
-/// membership rows) and the short public id (the wire/path param).
+/// membership rows), the slug (the wire/path param) and the legacy short id
+/// (still accepted on the path for old links).
 struct SeededProject {
     id: Id,
+    slug: String,
     short_id: String,
 }
 
@@ -104,6 +106,7 @@ impl Fixture {
             .unwrap();
         SeededProject {
             id: project.id,
+            slug: project.slug,
             short_id: project.short_id,
         }
     }
@@ -256,15 +259,15 @@ async fn direct_member_can_get_but_not_patch_project() {
 
     // GET is allowed for any role (require_member).
     let (status, body) = app
-        .get(&format!("/api/projects/{}", project.short_id), &cookie)
+        .get(&format!("/api/projects/{}", project.slug), &cookie)
         .await;
     assert_eq!(status, StatusCode::OK, "member may view the project");
-    assert_eq!(body["id"], project.short_id);
+    assert_eq!(body["id"], project.slug);
 
     // PATCH is admin-only (require_admin) → 403 for a plain member.
     let (status, _) = app
         .patch_json(
-            &format!("/api/projects/{}", project.short_id),
+            &format!("/api/projects/{}", project.slug),
             &cookie,
             &json!({ "name": "renamed" }),
         )
@@ -277,9 +280,29 @@ async fn direct_member_can_get_but_not_patch_project() {
 
     // The rejected PATCH did not mutate the project.
     let (_, body) = app
-        .get(&format!("/api/projects/{}", project.short_id), &cookie)
+        .get(&format!("/api/projects/{}", project.slug), &cookie)
         .await;
     assert_eq!(body["name"], "Project alpha", "name left unchanged");
+}
+
+#[tokio::test]
+async fn project_is_addressed_by_slug_and_legacy_short_id() {
+    let app = Fixture::spawn().await;
+    let user = app.create_user("slug@example.com", false).await;
+    let team = app.create_team("team-a").await;
+    let project = app.create_project(team, "checkout-api", "dsn-co").await;
+    app.add_membership(project.id, user, Role::Member).await;
+    let cookie = app.login("slug@example.com").await;
+
+    for path in [&project.slug, &project.short_id] {
+        let (status, body) = app.get(&format!("/api/projects/{path}"), &cookie).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body["id"], "checkout-api", "public id is the slug");
+        assert_eq!(body["slug"], "checkout-api");
+    }
+
+    let (status, _) = app.get("/api/projects/no-such-project", &cookie).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +327,7 @@ async fn team_admin_grants_project_admin_access() {
     // resolves to project-admin access.
     let (status, body) = app
         .patch_json(
-            &format!("/api/projects/{}", project.short_id),
+            &format!("/api/projects/{}", project.slug),
             &cookie,
             &json!({ "name": "renamed by admin" }),
         )
@@ -379,13 +402,14 @@ async fn create_project_makes_creator_admin() {
         .await;
     assert_eq!(status, StatusCode::CREATED, "team admin may create");
 
-    // The newly-created project's short id is returned; resolve the internal id
-    // through the port to confirm the creator's effective role.
-    let short_id = body["id"].as_str().expect("created project id");
+    // The newly-created project's slug is returned as its public id; resolve the
+    // internal id through the port to confirm the creator's effective role.
+    let slug = body["id"].as_str().expect("created project id");
+    assert_eq!(slug, "fresh-project");
     let created = app
         .state
         .projects
-        .find_by_short_id(short_id)
+        .find_by_slug(slug)
         .await
         .unwrap()
         .expect("created project exists");
@@ -398,7 +422,7 @@ async fn create_project_makes_creator_admin() {
     // End-to-end: the creator can now perform an admin-only action.
     let (status, _) = app
         .patch_json(
-            &format!("/api/projects/{short_id}"),
+            &format!("/api/projects/{slug}"),
             &cookie,
             &json!({ "muted": true }),
         )
@@ -418,7 +442,7 @@ async fn patch_rejects_bad_webhook_url_and_empty_string_clears_it() {
     let project = app.create_project(team, "alpha", "dsn-alpha").await;
     app.add_membership(project.id, user, Role::Admin).await;
     let cookie = app.login("owner@example.com").await;
-    let uri = format!("/api/projects/{}", project.short_id);
+    let uri = format!("/api/projects/{}", project.slug);
 
     // First set a valid webhook so we can observe it being cleared later.
     let (status, body) = app
@@ -471,7 +495,7 @@ async fn regenerate_dsn_requires_admin() {
     let project = app.create_project(team, "alpha", "dsn-alpha").await;
     app.add_membership(project.id, member, Role::Member).await;
     app.add_membership(project.id, admin, Role::Admin).await;
-    let uri = format!("/api/projects/{}/regenerate-dsn", project.short_id);
+    let uri = format!("/api/projects/{}/regenerate-dsn", project.slug);
 
     // A plain member is forbidden.
     let member_cookie = app.login("member@example.com").await;
@@ -486,7 +510,7 @@ async fn regenerate_dsn_requires_admin() {
     let unchanged = app
         .state
         .projects
-        .find_by_short_id(&project.short_id)
+        .find_by_slug(&project.slug)
         .await
         .unwrap()
         .unwrap();
@@ -506,7 +530,7 @@ async fn regenerate_dsn_rejects_outsiders_and_anonymous_callers() {
     app.create_user("outsider@example.com", false).await;
     let team = app.create_team("team-a").await;
     let project = app.create_project(team, "alpha", "dsn-alpha").await;
-    let uri = format!("/api/projects/{}/regenerate-dsn", project.short_id);
+    let uri = format!("/api/projects/{}/regenerate-dsn", project.slug);
 
     // A user outside the owning team has no access at all.
     let cookie = app.login("outsider@example.com").await;
@@ -527,7 +551,7 @@ async fn regenerate_dsn_rejects_outsiders_and_anonymous_callers() {
     let unchanged = app
         .state
         .projects
-        .find_by_short_id(&project.short_id)
+        .find_by_slug(&project.slug)
         .await
         .unwrap()
         .unwrap();
@@ -546,7 +570,7 @@ async fn instance_owner_and_manager_may_regenerate_dsn_without_team_membership()
         .await;
     let team = app.create_team("team-a").await;
     let project = app.create_project(team, "alpha", "dsn-alpha").await;
-    let uri = format!("/api/projects/{}/regenerate-dsn", project.short_id);
+    let uri = format!("/api/projects/{}/regenerate-dsn", project.slug);
 
     let mut previous = "dsn-alpha".to_string();
     for email in ["owner@example.com", "manager@example.com"] {
@@ -583,10 +607,7 @@ async fn manager_can_change_project_team_and_access_follows() {
     // Before the move, the target-team member has no access (closed membership).
     let target_cookie = app.login("target@example.com").await;
     let (status, _) = app
-        .get(
-            &format!("/api/projects/{}", project.short_id),
-            &target_cookie,
-        )
+        .get(&format!("/api/projects/{}", project.slug), &target_cookie)
         .await;
     assert_eq!(
         status,
@@ -598,7 +619,7 @@ async fn manager_can_change_project_team_and_access_follows() {
     let owner_cookie = app.login("owner@example.com").await;
     let (status, body) = app
         .patch_json(
-            &format!("/api/projects/{}/team", project.short_id),
+            &format!("/api/projects/{}/team", project.slug),
             &owner_cookie,
             &json!({ "team_id": team_b.to_string() }),
         )
@@ -618,7 +639,7 @@ async fn manager_can_change_project_team_and_access_follows() {
     let moved = app
         .state
         .projects
-        .find_by_short_id(&project.short_id)
+        .find_by_slug(&project.slug)
         .await
         .unwrap()
         .unwrap();
@@ -626,10 +647,7 @@ async fn manager_can_change_project_team_and_access_follows() {
 
     // Access follows the team: the target-team member can now read the project.
     let (status, _) = app
-        .get(
-            &format!("/api/projects/{}", project.short_id),
-            &target_cookie,
-        )
+        .get(&format!("/api/projects/{}", project.slug), &target_cookie)
         .await;
     assert_eq!(
         status,
@@ -651,7 +669,7 @@ async fn change_team_requires_manager() {
     let cookie = app.login("teamadmin@example.com").await;
     let (status, _) = app
         .patch_json(
-            &format!("/api/projects/{}/team", project.short_id),
+            &format!("/api/projects/{}/team", project.slug),
             &cookie,
             &json!({ "team_id": team_b.to_string() }),
         )
@@ -677,7 +695,7 @@ async fn change_team_to_unknown_team_is_404() {
     let cookie = app.login("owner@example.com").await;
     let (status, _) = app
         .patch_json(
-            &format!("/api/projects/{}/team", project.short_id),
+            &format!("/api/projects/{}/team", project.slug),
             &cookie,
             &json!({ "team_id": Id::new_v4().to_string() }),
         )

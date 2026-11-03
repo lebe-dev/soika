@@ -9,6 +9,8 @@ use async_trait::async_trait;
 pub trait TeamRepository: Send + Sync {
     async fn create(&self, name: String) -> Result<Team>;
     async fn find_by_id(&self, id: Id) -> Result<Option<Team>>;
+    /// Look a team up by its short public id.
+    async fn find_by_short_id(&self, short_id: &str) -> Result<Option<Team>>;
     async fn list(&self) -> Result<Vec<Team>>;
     async fn rename(&self, id: Id, name: String) -> Result<Team>;
     /// Refuse deletion while projects remain, or atomically move them to the target.

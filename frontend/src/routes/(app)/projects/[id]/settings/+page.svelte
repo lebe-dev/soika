@@ -91,6 +91,11 @@
   let selectedTeamId = $state(untrack(() => data.project.team_id));
   let movingTeam = $state(false);
   const teamDirty = $derived(selectedTeamId !== project.team_id);
+  // Link by the team's short id when the bootstrap knows it; the team page
+  // also accepts the UUID and redirects to the short URL.
+  const teamHref = $derived(
+    `/teams/${data.config?.teams?.find((team) => team.id === project.team_id)?.short_id ?? project.team_id}`
+  );
 
   async function changeTeam(event: SubmitEvent) {
     event.preventDefault();
@@ -423,7 +428,7 @@
       </Card.Description>
     </Card.Header>
     <Card.Content>
-      <Button variant="outline" href={`/teams/${project.team_id}`}>{$t('manage_team')}</Button>
+      <Button variant="outline" href={teamHref}>{$t('manage_team')}</Button>
     </Card.Content>
   </Card.Root>
 

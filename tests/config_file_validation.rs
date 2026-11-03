@@ -26,6 +26,39 @@ fn rejects_invalid_projects_and_duplicate_slugs() {
 }
 
 #[test]
+fn slug_errors_name_every_offending_slug_and_the_rule() {
+    let long = "a".repeat(49);
+    let text = format!(
+        "version: 1\nteams: []\nprojects: [\
+         {{slug: Web_API, name: A, team: P}}, \
+         {{slug: -edge, name: B, team: P}}, \
+         {{slug: {long}, name: C, team: P}}, \
+         {{slug: api, name: D, team: P}}, \
+         {{slug: api, name: E, team: P}}]"
+    );
+    let err = parse(&text, &yaml_settings()).unwrap_err().to_string();
+    assert!(err.contains("\"Web_API\""), "{err}");
+    assert!(
+        err.contains("lowercase latin letters, digits and '-'"),
+        "{err}"
+    );
+    assert!(err.contains("\"-edge\""), "{err}");
+    assert!(err.contains("at most 48 characters"), "{err}");
+    assert!(err.contains("duplicate project slug \"api\""), "{err}");
+}
+
+#[test]
+fn alertmanager_label_keys_follow_the_slug_rule() {
+    let settings = ManagementSettings {
+        service_source: ManagementSource::Env,
+        ..Default::default()
+    };
+    let text = "version: 1\nnotifications:\n  alertmanager:\n    project_labels:\n      Bad--Slug: {team: x}";
+    let err = parse(text, &settings).unwrap_err().to_string();
+    assert!(err.contains("\"Bad--Slug\""), "{err}");
+}
+
+#[test]
 fn rejects_invalid_teams_and_duplicate_grants() {
     for teams in [
         "[{name: '', members: []}]",
