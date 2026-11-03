@@ -267,7 +267,7 @@
       <Card.Root>
         <Card.Header><Card.Title>{$t('notifications_webhooks')}</Card.Title></Card.Header>
         <Card.Content class="space-y-2">
-          <Badge variant="outline"
+          <Badge variant={data.telemetry?.webhooks_enabled ? 'enabled' : 'outline'}
             >{data.telemetry?.webhooks_enabled ? $t('enabled') : $t('disabled')}</Badge
           >
           <p class="text-muted-foreground text-sm">{$t('notifications_webhooks_help')}</p>
@@ -283,7 +283,7 @@
         <Card.Content class="space-y-3">
           <div class="flex items-center gap-2">
             {#if smtp.enabled && smtp.configured}
-              <Badge variant="secondary">
+              <Badge variant="enabled">
                 <Mail class="size-3" />
                 {$t('configured')}
               </Badge>

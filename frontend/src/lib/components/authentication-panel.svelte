@@ -15,7 +15,7 @@
         <Card.Description>{$t(auth.sso ? 'auth_sso_on' : 'auth_sso_off')}</Card.Description>
       </Card.Header>
       <Card.Content class="space-y-4 text-sm">
-        <Badge variant={auth.sso ? 'secondary' : 'outline'}
+        <Badge variant={auth.sso ? 'enabled' : 'outline'}
           >{$t(auth.sso ? 'enabled' : 'disabled')}</Badge
         >
         {#if auth.sso}
@@ -42,7 +42,7 @@
         ></Card.Header
       >
       <Card.Content
-        ><Badge variant={auth.password_login === 'disabled' ? 'outline' : 'secondary'}
+        ><Badge variant={auth.password_login === 'disabled' ? 'outline' : 'enabled'}
           >{$t(auth.password_login === 'disabled' ? 'disabled' : 'enabled')}</Badge
         ></Card.Content
       >
@@ -54,7 +54,7 @@
         ></Card.Header
       >
       <Card.Content class="space-y-4 text-sm">
-        <Badge variant={auth.passkeys ? 'secondary' : 'outline'}
+        <Badge variant={auth.passkeys ? 'enabled' : 'outline'}
           >{$t(auth.passkeys ? 'enabled' : 'disabled')}</Badge
         >
         {#if auth.passkeys}
@@ -74,11 +74,23 @@
       <Card.Content class="space-y-4 text-sm">
         <dl class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
           <dt class="text-muted-foreground">{$t('allow_public_sign_up')}</dt>
-          <dd>{$t(auth.public_signup ? 'enabled' : 'disabled')}</dd>
+          <dd>
+            <Badge variant={auth.public_signup ? 'enabled' : 'outline'}
+              >{$t(auth.public_signup ? 'enabled' : 'disabled')}</Badge
+            >
+          </dd>
           <dt class="text-muted-foreground">{$t('auth_setup')}</dt>
-          <dd>{$t(auth.admin_setup_enabled ? 'enabled' : 'disabled')}</dd>
+          <dd>
+            <Badge variant={auth.admin_setup_enabled ? 'enabled' : 'outline'}
+              >{$t(auth.admin_setup_enabled ? 'enabled' : 'disabled')}</Badge
+            >
+          </dd>
           <dt class="text-muted-foreground">{$t('auth_login_protection')}</dt>
-          <dd>{$t(auth.login_protection_enabled ? 'enabled' : 'disabled')}</dd>
+          <dd>
+            <Badge variant={auth.login_protection_enabled ? 'enabled' : 'outline'}
+              >{$t(auth.login_protection_enabled ? 'enabled' : 'disabled')}</Badge
+            >
+          </dd>
         </dl>
         {#if auth.yaml_teams}<p class="text-muted-foreground">{$t('auth_yaml_access')}</p>{/if}
       </Card.Content>

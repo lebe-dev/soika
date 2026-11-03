@@ -267,7 +267,7 @@
           {#if project.muted}
             <Badge variant="secondary">{$t('status_muted')}</Badge>
           {:else}
-            <Badge variant="outline">{$t('active')}</Badge>
+            <Badge variant="enabled">{$t('active')}</Badge>
           {/if}
         </div>
         {#if isAdmin}
