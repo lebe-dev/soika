@@ -15,6 +15,9 @@ process stops are not retried.
 
 ## Alertmanager
 
+For a setup walkthrough, readable messages and VMRule examples, see
+[Alertmanager integration](ALERTMANAGER.md).
+
 This channel sends an array of alerts to the Prometheus Alertmanager
 [`POST /api/v2/alerts` API](https://github.com/prometheus/alertmanager/blob/main/api/v2/openapi.yaml).
 Supply the **base URL**, for example `http://alertmanager.monitoring:9093`.

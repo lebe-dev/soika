@@ -210,6 +210,8 @@ is disabled in configuration, and no Alertmanager requests are sent.
 annotation templates. Choose UI or environment ownership with
 `SERVICE_MANAGEMENT_SOURCE=ui|env` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
+For readable messages, receiver templates and VictoriaMetrics rule examples, see
+[Alertmanager integration](ALERTMANAGER.md).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
 `SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,

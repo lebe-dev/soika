@@ -54,6 +54,7 @@ docker run -d \
 - [Installation and configuration](docs/OPERATIONS.md)
 - [Frequently asked questions](docs/FAQ.md)
 - [Outgoing webhooks](docs/WEBHOOKS.md)
+- [Alertmanager integration and VMRule examples](docs/ALERTMANAGER.md)
 - [Helm chart](helm-chart/README.md)
 - [User interface](docs/UI.md)
 - [Development](DEV.md)
