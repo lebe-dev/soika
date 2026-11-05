@@ -199,12 +199,13 @@ state at startup, so no additional UI toggle is required.
 | --- | --- | --- |
 | `SERVICE_MANAGEMENT_SOURCE` | `"ui"` | Owns global defaults and channel settings: `ui` or `env` |
 | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `"60"` | Refresh cadence for projects without an override; range `10..86400` |
-| `ALERTMANAGER_DEFAULT_SEVERITY` | `""` | Default class: `critical`, `warning`, `info`; empty uses the notification label template |
+| `ALERTMANAGER_DEFAULT_SEVERITY` | `"critical"` | Default class: `critical`, `warning`, `info`; empty/unset also selects `critical` in env mode |
 | `PROJECT_MANAGEMENT_SOURCE` | `"ui"` | Owns project overrides: `ui` or `yaml` |
 
 In env mode, global defaults are applied on startup and read-only in the admin
 panel. In UI mode, Owners and Managers edit them in **Admin → Notifications**;
-saved values survive restarts and the environment defaults are ignored. Project
+the initial database severity is `critical`; saved admin choices survive restarts
+and the environment defaults are ignored. Project
 admins manage overrides in **Project → Settings** when projects are UI-managed,
 or in `configFile.content.projects` with YAML project management. An explicit
 project severity overrides the global default, then notification label templates.
@@ -232,7 +233,7 @@ envs:
   - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
     value: "300"
   - name: ALERTMANAGER_DEFAULT_SEVERITY
-    value: "warning" # Allowed: "critical", "warning", "info", or "" for the label template.
+    value: "warning" # Allowed: "critical", "warning", "info"; empty/unset defaults to critical.
   - name: PROJECT_MANAGEMENT_SOURCE
     value: "yaml"
   - name: TEAM_MANAGEMENT_SOURCE

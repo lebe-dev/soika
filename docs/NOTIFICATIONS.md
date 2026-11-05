@@ -104,7 +104,9 @@ At startup, `NOTIFICATIONS_ALERTMANAGER_ENABLED` sets the channel enabled state,
 `ALERTMANAGER_URL` sets its URL and `ORGANIZATION_NAME` sets the organization name.
 `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` sets the global refresh interval (default
 `60`, range `10..86400`) and `ALERTMANAGER_DEFAULT_SEVERITY` sets the default class
-(`critical`, `warning`, `info`, or empty for the label template). Both defaults
+(`critical` by default, `warning` or `info`; unset/empty also selects `critical`).
+UI mode starts with `critical` stored in the database and preserves later admin
+choices, including an explicit template fallback. Both defaults
 follow service ownership and are editable in **Admin → Notifications** in UI mode.
 YAML contains only project overrides; see [global and project defaults](ALERTMANAGER.md#global-and-per-project-refresh-intervals).
 `ALERTMANAGER_DEFAULT_LABELS` adds or overrides labels using comma-separated `name=value`

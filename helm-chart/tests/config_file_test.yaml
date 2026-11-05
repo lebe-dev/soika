@@ -74,6 +74,9 @@ tests:
           value: "ui"
       - notExists:
           path: data.NOTIFICATION_MANAGEMENT_SOURCE
+      - equal:
+          path: data.ALERTMANAGER_DEFAULT_SEVERITY
+          value: "critical"
   - it: verifies Alertmanager TLS certificates by default
     template: configmap.yaml
     asserts:

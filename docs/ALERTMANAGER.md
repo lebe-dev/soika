@@ -137,14 +137,17 @@ Intervals are integer seconds from **10 to 86400**, with a built-in default of
 | Setting | Environment mode (`SERVICE_MANAGEMENT_SOURCE=env`) | UI mode (`SERVICE_MANAGEMENT_SOURCE=ui`) |
 | --- | --- | --- |
 | Global refresh interval | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` (default `60`) | Admin → Notifications → Alertmanager refresh interval |
-| Global severity | `ALERTMANAGER_DEFAULT_SEVERITY` (`critical`, `warning`, `info`, or empty) | Admin → Notifications → Default Alertmanager severity |
+| Global severity | `ALERTMANAGER_DEFAULT_SEVERITY` (default `critical`; `warning` and `info` also supported) | Admin → Notifications → Default Alertmanager severity |
 
 In env mode, restart Soika to apply changes; both global controls are read-only.
 In UI mode, saved defaults persist in the database across restarts and environment
 values for these defaults are ignored. Switching from env to UI preserves the
 last applied defaults as editable values. Switching to env replaces saved
 defaults on startup. A fresh installation in UI mode starts with 60 seconds and
-no default severity.
+`critical` as the default severity. An unset or empty
+`ALERTMANAGER_DEFAULT_SEVERITY` selects `critical` only in env mode. UI mode uses
+the persisted database value, including an explicit admin choice to use the
+notification template.
 
 Project admins edit interval and severity overrides in **Project → Settings**
 when `PROJECT_MANAGEMENT_SOURCE=ui`. UI edits take effect without restart.
@@ -208,6 +211,14 @@ Responses include `interval_seconds` (null for an inheriting project) and
 requires UI service management; the project PUT requires UI project management.
 
 ## Per-project severity
+
+The initial global severity is **`critical`** in both management modes. In env
+mode, an unset or empty `ALERTMANAGER_DEFAULT_SEVERITY` selects `critical`; set
+`warning` or `info` explicitly to change it. In UI mode, `critical` is the
+initial database default and admins can change or clear it in **Admin →
+Notifications**. Their choice persists across restarts. The upgrade initializes
+previously empty database defaults to `critical`, preserving explicit classes.
+
 
 Choose `critical`, `warning` or `info` in **Project → Settings → Alertmanager
 severity**. Project admins can edit this setting when

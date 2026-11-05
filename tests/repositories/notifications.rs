@@ -925,6 +925,7 @@ async fn project_interval_api_overrides_inherits_and_enforces_project_access() {
 async fn project_severity_overrides_labels_and_closes_the_previous_alert_identity() {
     use soika::domain::notifications::AlertSeverity;
     let db = notification_db().await;
+    db.notifications.set_severity(None, None).await.unwrap();
     let receiver = Receiver::start().await;
     let (project, issue) = setup(&db, &receiver.url).await;
     alertmanager::notify(&db, &project, &issue, "new_issue")
@@ -1104,4 +1105,33 @@ async fn default_severity_api_follows_service_ownership() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn initial_ui_default_severity_is_critical_and_can_be_changed() {
+    let db = notification_db().await;
+    assert_eq!(
+        db.notifications.severity(None).await.unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(
+        receiver.snapshot()[0].labels["severity"],
+        "critical",
+        "global DB default overrides the event level"
+    );
+    db.notifications
+        .set_severity(None, Some(AlertSeverity::Warning))
+        .await
+        .unwrap();
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.notifications.severity(None).await.unwrap(),
+        Some(AlertSeverity::Warning),
+        "UI choice survives synchronization"
+    );
 }

@@ -213,9 +213,10 @@ and teams. See [notification configuration, lifecycle and template variables](NO
 For readable messages, receiver templates and VictoriaMetrics rule examples, see
 [Alertmanager integration](ALERTMANAGER.md). Global defaults follow
 `SERVICE_MANAGEMENT_SOURCE=ui|env`: use `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS`
-(default `60`) and `ALERTMANAGER_DEFAULT_SEVERITY` (`critical`, `warning`, `info`,
-or empty for the notification template) in env mode, or **Admin → Notifications**
-in UI mode. Project overrides follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`.
+(default `60`) and `ALERTMANAGER_DEFAULT_SEVERITY` (default `critical`; also
+`warning` or `info`) in env mode, or **Admin → Notifications** in UI mode. An
+unset/empty severity selects `critical` in env mode. UI database defaults also
+start at `critical`; later admin choices are preserved. Project overrides follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`.
 See [severity configuration](ALERTMANAGER.md#per-project-severity).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure

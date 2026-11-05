@@ -535,7 +535,8 @@ impl Config {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .map(|value| value.parse())
-            .transpose()?;
+            .transpose()?
+            .or(Some(crate::domain::notifications::AlertSeverity::Critical));
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
@@ -1974,7 +1975,23 @@ mod tests {
         }
         let config = Config::from_env().unwrap();
         assert_eq!(config.alertmanager_default_interval_seconds, 60);
-        assert_eq!(config.alertmanager_default_severity, None);
+        assert_eq!(
+            config.alertmanager_default_severity.unwrap().as_str(),
+            "critical"
+        );
+        for value in ["", "   "] {
+            unsafe {
+                std::env::set_var(keys[2], value);
+            }
+            assert_eq!(
+                Config::from_env()
+                    .unwrap()
+                    .alertmanager_default_severity
+                    .unwrap()
+                    .as_str(),
+                "critical"
+            );
+        }
         unsafe {
             std::env::set_var(keys[1], "300");
             std::env::set_var(keys[2], "warning");
