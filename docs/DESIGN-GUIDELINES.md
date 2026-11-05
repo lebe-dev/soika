@@ -124,6 +124,17 @@ Rules:
   header row, `border-hairline` row dividers, hover `bg-accent/60`, numbers
   right-aligned with `tabular-nums`. Wide tables scroll horizontally inside
   their container (`overflow-x-auto` + `min-w-*`).
+- **Related settings**: group controls for the same feature in one card, with
+  clear labels and descriptions for each setting. Avoid a separate card for
+  every field.
+- **Configuration-managed settings**: show one page-level notice that the
+  settings are managed by the configuration file. Do not repeat the notice for
+  each control or expose implementation details such as YAML or environment
+  variable names in the UI. Keep managed controls visible and disabled. When
+  hovering over one, highlight the page-level notice with a subtle pulsing
+  primary colour; respect `prefers-reduced-motion` by disabling the animation.
+  Keep the notice readable without hover and do not rely on colour alone to
+  explain why controls are disabled.
 - **Severity**: a small dot plus a mono label. Only `error`/`fatal` are red and
   `warning` is amber; everything else stays neutral.
 
