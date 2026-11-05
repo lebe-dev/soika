@@ -39,10 +39,11 @@ envs:
   # Refresh cadence in seconds: 10..86400. Projects can override it in UI/YAML.
   - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
     value: "60"
-  # critical, warning or info; empty uses the notification severity label template.
+  # Allowed values: "critical", "warning", "info", or "" (empty).
+  # Empty uses the notification severity label template (Sentry event level by default).
   # A project's alertmanager_severity takes precedence over this default.
   - name: ALERTMANAGER_DEFAULT_SEVERITY
-    value: ""
+    value: "" # Allowed: "critical" | "warning" | "info" | "".
   # Disable certificate verification only for Alertmanager HTTPS requests.
   - name: ALERTMANAGER_SKIP_TLS
     value: "false"

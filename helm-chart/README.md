@@ -232,7 +232,7 @@ envs:
   - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
     value: "300"
   - name: ALERTMANAGER_DEFAULT_SEVERITY
-    value: "warning"
+    value: "warning" # Allowed: "critical", "warning", "info", or "" for the label template.
   - name: PROJECT_MANAGEMENT_SOURCE
     value: "yaml"
   - name: TEAM_MANAGEMENT_SOURCE
