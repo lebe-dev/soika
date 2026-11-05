@@ -50,7 +50,7 @@
   }
 </script>
 
-<Card.Root>
+<Card.Root class={projectId ? 'contents' : undefined}>
   <Card.Header>
     <Card.Title
       >{$t(
@@ -65,7 +65,7 @@
   </Card.Header>
   <Card.Content>
     <form onsubmit={save} class="space-y-3">
-      {#if managed}<p class="text-muted-foreground text-sm">
+      {#if managed && !projectId}<p class="text-muted-foreground text-sm">
           {$t(projectId ? 'alertmanager_severity_yaml' : 'alertmanager_defaults_env')}
         </p>{/if}
       <label class="block space-y-2 text-sm">

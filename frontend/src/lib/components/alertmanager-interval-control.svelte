@@ -49,14 +49,14 @@
   }
 </script>
 
-<Card.Root>
+<Card.Root class={projectId ? 'contents' : undefined}>
   <Card.Header>
     <Card.Title>{$t('alertmanager_interval_title')}</Card.Title>
     <Card.Description>{$t('alertmanager_interval_help')}</Card.Description>
   </Card.Header>
   <Card.Content>
     <form onsubmit={save} class="space-y-3">
-      {#if managed}<p class="text-muted-foreground text-sm">
+      {#if managed && !projectId}<p class="text-muted-foreground text-sm">
           {$t(managedBy === 'env' ? 'alertmanager_defaults_env' : 'alertmanager_interval_yaml')}
         </p>{/if}
       {#if projectId}
