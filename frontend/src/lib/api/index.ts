@@ -5,6 +5,7 @@
 
 import { http, type Fetch } from './client';
 import type {
+  AlertmanagerInterval,
   NotificationConfig,
   NotificationView,
   AlertmanagerAlert,
@@ -191,6 +192,16 @@ export const teams = {
 };
 
 export const notifications = {
+  projectInterval: (id: string, ctx?: Ctx) =>
+    http.get<AlertmanagerInterval>(`/projects/${id}/alertmanager-interval`, { fetch: ctx?.fetch }),
+  setProjectInterval: (id: string, seconds: number | null) =>
+    http.put<AlertmanagerInterval>(`/projects/${id}/alertmanager-interval`, {
+      body: { interval_seconds: seconds }
+    }),
+  setInterval: (seconds: number) =>
+    http.put<AlertmanagerInterval>('/settings/notifications/interval', {
+      body: { interval_seconds: seconds }
+    }),
   test: (locale: 'en' | 'ru', ctx?: Ctx) =>
     http.post<{ ok: boolean }>('/settings/notifications/test', {
       body: { locale },

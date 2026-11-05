@@ -17,6 +17,8 @@ vi.mock('$lib/components/ui/sonner', () => ({ toast: { success: vi.fn(), error: 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const view: NotificationView = {
+  interval_source: 'ui',
+  interval: { interval_seconds: 60, effective_interval_seconds: 60 },
   feature_enabled: true,
   alertmanager_skip_tls: false,
   source: 'ui',

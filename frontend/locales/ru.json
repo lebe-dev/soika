@@ -535,7 +535,7 @@
   "notifications_tab": "Уведомления",
   "notifications_alertmanager_description": "Отправка алертов в Prometheus Alertmanager для всех проектов.",
   "notifications_skip_tls_warning": "Внимание: проверка TLS-сертификата Alertmanager отключена (ALERTMANAGER_SKIP_TLS=true).",
-  "notifications_lifecycle": "Новая ошибка или регрессия открывает алерт. Открытые алерты обновляются каждую минуту; resolve, mute или удаление закрывает алерт в течение минуты. При включении канала старые ошибки не отправляются.",
+  "notifications_lifecycle": "Новые ошибки и регрессии создают алерты. Открытые алерты отправляются с глобальным или проектным интервалом; закрытие, mute или удаление завершают алерт при следующей проверке (обычно в течение 10 секунд). Включение канала не отправляет старые ошибки.",
   "managed_config_title_prefix": "Управляется",
   "managed_config_title_link": "конфигурацией развёртывания",
   "deploy_config_title": "Конфигурация развёртывания",
@@ -599,5 +599,11 @@
   "invites_unavailable_yaml_teams": "Команды управляются файлом конфигурации, поэтому приглашения недоступны.",
   "add_a_teammate_to_give_access_to_this_team_s_projects": "Добавьте участника, чтобы дать доступ к проектам команды.",
   "share_an_invite_link_to_give_access_to_this_team_s_projects": "Поделитесь ссылкой-приглашением, чтобы дать доступ к проектам команды.",
-  "team_members_managed_by_configuration": "Состав команды управляется файлом конфигурации."
+  "team_members_managed_by_configuration": "Состав команды управляется файлом конфигурации.",
+  "alertmanager_interval_title": "Интервал отправки в Alertmanager",
+  "alertmanager_interval_help": "Секунды между отправками активных алертов (10–86400). Частоту сообщений в чате настраивает Alertmanager.",
+  "alertmanager_interval_inherit": "Использовать глобальный интервал",
+  "alertmanager_interval_effective": "Действующий интервал: {seconds} секунд",
+  "alertmanager_interval_save": "Сохранить интервал",
+  "alertmanager_interval_yaml": "Интервалы задаются через YAML (PROJECT_MANAGEMENT_SOURCE)."
 }

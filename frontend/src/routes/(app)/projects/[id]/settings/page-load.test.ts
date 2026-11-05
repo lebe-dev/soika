@@ -4,6 +4,11 @@ vi.mock('$lib/api', async () => {
   const actual = await vi.importActual<typeof import('$lib/api')>('$lib/api');
   return {
     ...actual,
+    notifications: {
+      projectInterval: vi
+        .fn()
+        .mockResolvedValue({ interval_seconds: null, effective_interval_seconds: 60 })
+    },
     projects: { muteRules: vi.fn() },
     teams: { list: vi.fn() }
   };

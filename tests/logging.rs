@@ -124,7 +124,7 @@ async fn http_logs_redact_paths_queries_headers_and_correlate_boundaries() {
                 .to_owned()
         })
         .collect();
-    for pair in ids.chunks_exact(2) {
+    for pair in ids.as_chunks::<2>().0 {
         assert_eq!(pair[0], pair[1]);
     }
     assert_ne!(ids[0], ids[2]);

@@ -211,7 +211,9 @@ annotation templates. Choose UI or environment ownership with
 `SERVICE_MANAGEMENT_SOURCE=ui|env` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 For readable messages, receiver templates and VictoriaMetrics rule examples, see
-[Alertmanager integration](ALERTMANAGER.md).
+[Alertmanager integration](ALERTMANAGER.md). Global and per-project refresh
+intervals follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`, independently of the channel
+configuration source; the default is 60 seconds.
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
 `SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,

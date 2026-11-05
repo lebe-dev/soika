@@ -223,8 +223,26 @@ pub struct AlertmanagerAlert {
 /// restarts, template edits, resolution and deletion of the originating issue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveAlert {
+    #[serde(default)]
+    pub last_sent_at: Option<super::Timestamp>,
     pub issue_id: super::Id,
     pub endpoint: String,
     pub trigger: String,
     pub alert: AlertmanagerAlert,
+}
+
+/// Refresh cadence, owned by project management rather than channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertmanagerInterval {
+    pub interval_seconds: Option<i64>,
+    pub effective_interval_seconds: i64,
+}
+
+pub fn validate_interval(seconds: i64) -> Result<()> {
+    if !(10..=86400).contains(&seconds) {
+        return Err(Error::validation(
+            "Alertmanager interval must be between 10 and 86400 seconds",
+        ));
+    }
+    Ok(())
 }

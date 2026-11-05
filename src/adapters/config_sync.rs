@@ -75,6 +75,16 @@ where
         .fetch_all(&mut **tx)
         .await?;
         validate_plan(desired, settings, &existing_teams, &existing_projects)?;
+        if settings.project_source == ManagementSource::Yaml {
+            let seconds = desired.alertmanager_interval_seconds.unwrap_or(60);
+            crate::domain::notifications::validate_interval(seconds)?;
+            sqlx::query::<DB>(DB::sql(
+                "UPDATE notification_settings SET refresh_interval_seconds = ? WHERE id = 1",
+            ))
+            .bind(seconds)
+            .execute(&mut **tx)
+            .await?;
+        }
         if settings.notification_source == ManagementSource::Yaml
             && let Some(notifications) = &desired.notifications
         {
@@ -275,12 +285,16 @@ where
                 .ok_or_else(|| {
                     Error::validation(format!("project {} references an unknown team", p.slug))
                 })?;
-        let existing = sqlx::query::<DB>(DB::sql("SELECT id, name, team_id, retention_events, retention_days, webhook_url, orphaned_at FROM \
+        let existing = sqlx::query::<DB>(DB::sql("SELECT id, name, team_id, retention_events, retention_days, webhook_url, alertmanager_interval_seconds, orphaned_at FROM \
             projects WHERE slug = ?"))
             .bind(p.slug.clone())
             .fetch_optional(&mut **tx).await?;
         let events = p.retention_events.unwrap_or(retention);
         let days = p.retention_days.unwrap_or(0);
+        let interval = p.alertmanager_interval_seconds.unwrap_or(0);
+        if interval != 0 {
+            crate::domain::notifications::validate_interval(interval)?;
+        }
         if let Some(row) = existing {
             let id: DB::Id = row.try_get("id")?;
             let orphaned: Option<DB::Time> = row.try_get("orphaned_at")?;
@@ -288,16 +302,18 @@ where
                 || row.try_get::<DB::Id, _>("team_id")? != team_id
                 || row.try_get::<i64, _>("retention_events")? != events
                 || row.try_get::<i64, _>("retention_days")? != days
-                || row.try_get::<Option<String>, _>("webhook_url")? != p.webhook_url;
+                || row.try_get::<Option<String>, _>("webhook_url")? != p.webhook_url
+                || row.try_get::<i64, _>("alertmanager_interval_seconds")? != interval;
             let action = plan_present(true, orphaned.is_some(), changed);
             if action != SyncActionKind::Unchanged {
                 sqlx::query::<DB>(DB::sql("UPDATE projects SET name = ?, team_id = ?, retention_events = ?, retention_days = ?, \
-            webhook_url = ?, orphaned_at = NULL, updated_at = ? WHERE id = ?"))
+            webhook_url = ?, alertmanager_interval_seconds = ?, orphaned_at = NULL, updated_at = ? WHERE id = ?"))
                     .bind(p.name.clone())
                     .bind(team_id.clone())
                     .bind(events)
                     .bind(days)
                     .bind(p.webhook_url.clone())
+                    .bind(interval)
                     .bind(now.clone())
                     .bind(id.clone())
                     .execute(&mut **tx).await?;
@@ -308,7 +324,7 @@ where
             let short_id = crate::adapters::short_id::generate_short_id();
             let dsn = Id::new_v4().simple().to_string();
             sqlx::query::<DB>(DB::sql("INSERT INTO projects(id, short_id, team_id, name, slug, dsn_public_key, retention_events, \
-            retention_days, webhook_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
+            retention_days, webhook_url, alertmanager_interval_seconds, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
                 .bind(id.clone())
                 .bind(short_id.clone())
                 .bind(team_id.clone())
@@ -318,6 +334,7 @@ where
                 .bind(events)
                 .bind(days)
                 .bind(p.webhook_url.clone())
+                .bind(interval)
                 .bind(now.clone())
                 .bind(now.clone())
                 .execute(&mut **tx).await?;

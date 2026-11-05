@@ -565,7 +565,13 @@ export interface AlertmanagerConfig {
 export interface NotificationConfig {
   alertmanager: AlertmanagerConfig;
 }
+export interface AlertmanagerInterval {
+  interval_seconds: number | null;
+  effective_interval_seconds: number;
+}
 export interface NotificationView {
+  interval_source: 'ui' | 'yaml';
+  interval: AlertmanagerInterval;
   alertmanager_skip_tls: boolean;
   feature_enabled: boolean;
   default_url?: string | null;

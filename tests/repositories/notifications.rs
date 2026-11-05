@@ -85,6 +85,16 @@ async fn setup(db: &AppState, url: &str) -> (Project, Issue) {
     db.notifications.set(&config).await.unwrap();
     (project, issue)
 }
+async fn make_due(db: &AppState, issue_id: Id) {
+    let mut saved = db
+        .notifications
+        .find_alert(issue_id)
+        .await
+        .unwrap()
+        .unwrap();
+    saved.last_sent_at = Some(db.clock.now() - chrono::Duration::days(1));
+    db.notifications.save_alert(&saved).await.unwrap();
+}
 #[tokio::test]
 async fn notifications_lifecycle_refresh_resolve_and_regression() {
     let db = notification_db().await;
@@ -99,6 +109,8 @@ async fn notifications_lifecycle_refresh_resolve_and_regression() {
     assert_eq!(first.annotations["summary"], issue.title);
     assert_eq!(first.labels["issue_id"], issue.id.to_string());
     assert!(first.ends_at > first.starts_at);
+    alertmanager::refresh(&db).await.unwrap();
+    make_due(&db, issue.id).await;
     alertmanager::refresh(&db).await.unwrap();
     let second = receiver.snapshot()[1].clone();
     assert_eq!(first.labels, second.labels);
@@ -370,6 +382,13 @@ async fn notifications_resume_saved_alerts_after_rebuilding_application_state() 
         .unwrap();
     drop(db);
     let restarted = soika::build_state(pool, config).unwrap();
+    alertmanager::refresh(&restarted).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().len(),
+        1,
+        "restart preserves last successful send time"
+    );
+    make_due(&restarted, issue.id).await;
     alertmanager::refresh(&restarted).await.unwrap();
     assert_eq!(receiver.snapshot()[0].labels, receiver.snapshot()[1].labels);
     assert_eq!(
@@ -693,4 +712,206 @@ async fn notifications_view_reports_tls_verification_setting() {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(view["alertmanager_skip_tls"], skip_tls);
     }
+}
+
+#[tokio::test]
+async fn notification_intervals_throttle_refresh_and_close_without_waiting() {
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    db.notifications
+        .set_interval(None, Some(600))
+        .await
+        .unwrap();
+    db.notifications
+        .set_interval(Some(project.id), Some(120))
+        .await
+        .unwrap();
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    let first = receiver.snapshot()[0].clone();
+    assert_eq!((first.ends_at - first.starts_at).num_seconds(), 360);
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot().len(), 1, "not due yet");
+    let mut saved = db
+        .notifications
+        .find_alert(issue.id)
+        .await
+        .unwrap()
+        .unwrap();
+    saved.last_sent_at = Some(db.clock.now() - chrono::Duration::seconds(121));
+    db.notifications.save_alert(&saved).await.unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().len(),
+        2,
+        "project override is due before global interval"
+    );
+    db.notifications
+        .set_interval(Some(project.id), None)
+        .await
+        .unwrap();
+    let view = db.notifications.interval(Some(project.id)).await.unwrap();
+    assert_eq!(view.interval_seconds, None);
+    assert_eq!(view.effective_interval_seconds, 600);
+    alertmanager::refresh(&db).await.unwrap();
+    let extended = receiver.snapshot().last().unwrap().clone();
+    assert_eq!(
+        receiver.snapshot().len(),
+        3,
+        "longer interval extends the short lease immediately"
+    );
+    assert!((extended.ends_at - db.clock.now()).num_seconds() >= 1799);
+    db.issues
+        .set_status(issue.id, IssueStatus::Resolved)
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().len(),
+        4,
+        "resolution ignores refresh interval"
+    );
+    assert!(
+        db.notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn notification_interval_api_uses_project_ownership_and_validates_bounds() {
+    let mut db = notification_db().await;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Manager,
+        "PUT",
+        "/api/settings/notifications/interval",
+        serde_json::json!({"interval_seconds": 300}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        db.notifications
+            .interval(None)
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        300
+    );
+    for seconds in [0, 9, 86401] {
+        let (status, _) = request(
+            &db,
+            InstanceRole::Owner,
+            "PUT",
+            "/api/settings/notifications/interval",
+            serde_json::json!({"interval_seconds": seconds}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "PUT",
+        "/api/settings/notifications/interval",
+        serde_json::json!({"interval_seconds": 60}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        "/api/settings/notifications/interval",
+        serde_json::json!({"interval_seconds": 90}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "service ownership does not govern intervals"
+    );
+    Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        "/api/settings/notifications/interval",
+        serde_json::json!({"interval_seconds": 60}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn project_interval_api_overrides_inherits_and_enforces_project_access() {
+    let mut db = notification_db().await;
+    let project = seed_project(&db).await;
+    let slug = db.projects.find_by_id(project).await.unwrap().unwrap().slug;
+    let uri = format!("/api/projects/{slug}/alertmanager-interval");
+    let (status, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        &uri,
+        serde_json::json!({"interval_seconds": 120}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["effective_interval_seconds"], 120);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "PUT",
+        &uri,
+        serde_json::json!({"interval_seconds": 180}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "GET",
+        &uri,
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Manager,
+        "PUT",
+        &uri,
+        serde_json::json!({"interval_seconds": -1}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, view) = request(
+        &db,
+        InstanceRole::Manager,
+        "PUT",
+        &uri,
+        serde_json::json!({"interval_seconds": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(view["interval_seconds"].is_null());
+    assert_eq!(view["effective_interval_seconds"], 60);
+    Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        &uri,
+        serde_json::json!({"interval_seconds": 180}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(&db, InstanceRole::Owner, "GET", &uri, serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
 }

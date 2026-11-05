@@ -4,6 +4,16 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    async fn interval(
+        &self,
+        project_id: Option<crate::domain::Id>,
+    ) -> Result<crate::domain::notifications::AlertmanagerInterval>;
+    /// None resets a project to inheritance; the global value must be present.
+    async fn set_interval(
+        &self,
+        project_id: Option<crate::domain::Id>,
+        seconds: Option<i64>,
+    ) -> Result<()>;
     async fn find_alert(
         &self,
         issue_id: crate::domain::Id,

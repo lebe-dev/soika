@@ -46,6 +46,7 @@ impl Default for ManagementSettings {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
+    pub alertmanager_interval_seconds: Option<i64>,
     pub version: u32,
     pub notifications: Option<super::notifications::NotificationConfig>,
     pub projects: Option<Vec<ProjectConfig>>,
@@ -56,6 +57,7 @@ pub struct ConfigFile {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectConfig {
+    pub alertmanager_interval_seconds: Option<i64>,
     pub slug: String,
     pub name: String,
     pub team: String,
@@ -107,6 +109,9 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
     let mut file: ConfigFile = serde_yaml_ng::from_value(value).map_err(|_| {
         Error::validation("invalid configuration YAML (unknown field or invalid value)")
     })?;
+    if let Some(seconds) = file.alertmanager_interval_seconds {
+        super::notifications::validate_interval(seconds)?;
+    }
     file.alertmanager_project_labels = project_labels;
     for (slug, labels) in &file.alertmanager_project_labels {
         if let Err(reason) = super::validate_slug(slug) {
@@ -177,6 +182,10 @@ fn validate_project_slugs(projects: &[ProjectConfig]) -> Result<()> {
 fn validate_projects(projects: &[ProjectConfig]) -> Result<()> {
     validate_project_slugs(projects)?;
     for p in projects {
+        if let Some(seconds) = p.alertmanager_interval_seconds {
+            super::notifications::validate_interval(seconds)?;
+        }
+
         if p.name.trim().is_empty() || p.team.trim().is_empty() {
             return Err(Error::validation("project name and team are required"));
         }
@@ -372,6 +381,9 @@ pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &Manageme
         }
         if settings.project_source == ManagementSource::Ui {
             map.remove(serde_yaml_ng::Value::String("projects".into()));
+            map.remove(serde_yaml_ng::Value::String(
+                "alertmanager_interval_seconds".into(),
+            ));
         }
         if settings.team_source == ManagementSource::Ui {
             map.remove(serde_yaml_ng::Value::String("teams".into()));

@@ -11,6 +11,7 @@
   import { NativeSelect } from '$lib/components/ui/native-select';
   import { toast } from '$lib/components/ui/sonner';
   import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
+  import AlertmanagerIntervalControl from '$lib/components/alertmanager-interval-control.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
   import type { PageData } from './$types';
   import { cn } from '$lib/utils';
@@ -207,6 +208,14 @@
   </p>{/if}
 
 <div class="space-y-6">
+  {#key project.id}
+    <AlertmanagerIntervalControl
+      interval={data.alertmanagerInterval}
+      projectId={project.id}
+      readonly={!canEdit}
+      managed={projectsManaged}
+    />
+  {/key}
   <!-- General settings -->
   <Card.Root>
     <Card.Header>

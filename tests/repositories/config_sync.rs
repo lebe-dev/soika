@@ -609,3 +609,84 @@ async fn notification_feature_disabled_allows_startup_without_effective_url() {
     );
     soika::alertmanager::refresh(&state).await.unwrap();
 }
+
+#[tokio::test]
+async fn sync_alertmanager_intervals_and_reset_overrides() {
+    let db = test_db().await;
+    let mut file = desired();
+    file.alertmanager_interval_seconds = Some(300);
+    file.projects.as_mut().unwrap()[0].alertmanager_interval_seconds = Some(120);
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    let project = db.projects.find_by_slug("api").await.unwrap().unwrap();
+    assert_eq!(
+        db.notifications
+            .interval(None)
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        300
+    );
+    assert_eq!(
+        db.notifications
+            .interval(Some(project.id))
+            .await
+            .unwrap()
+            .interval_seconds,
+        Some(120)
+    );
+    let again = db
+        .config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(again.unchanged, 2);
+    file.projects.as_mut().unwrap()[0].alertmanager_interval_seconds = None;
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    let inherited = db.notifications.interval(Some(project.id)).await.unwrap();
+    assert_eq!(inherited.interval_seconds, None);
+    assert_eq!(inherited.effective_interval_seconds, 300);
+    file.alertmanager_interval_seconds = None;
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.notifications
+            .interval(Some(project.id))
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        60
+    );
+    db.notifications
+        .set_interval(None, Some(900))
+        .await
+        .unwrap();
+    let ui = ManagementSettings::default();
+    db.config_sync
+        .apply(
+            &ConfigFile {
+                version: 1,
+                ..Default::default()
+            },
+            &ui,
+            1000,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        db.notifications
+            .interval(None)
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        900,
+        "UI values survive startup synchronization"
+    );
+}

@@ -1,22 +1,23 @@
-# Alertmanager: подключение и читаемые уведомления
+# Alertmanager integration and readable notifications
 
-Soika отправляет новые ошибки и регрессии напрямую в `/api/v2/alerts`.
-Alertmanager группирует их и доставляет в настроенные каналы. Параллельно
-vmalert может отправлять туда алерты по метрикам сервисов из VMRule:
+Soika sends new issues and regressions directly to `/api/v2/alerts`, then
+periodically refreshes active alerts until they are resolved or muted.
+Alertmanager handles grouping, routing and delivery to chat. vmalert can send
+metric alerts from VMRule resources to the same Alertmanager:
 
 ```text
-Sentry SDK → Soika ───────────────────────────→ Alertmanager → получатель → чат
-Метрики сервиса → VictoriaMetrics → vmalert ──→ Alertmanager
+Sentry SDK → Soika ───────────────────────────→ Alertmanager → receiver → chat
+Service metrics → VictoriaMetrics → vmalert ──→ Alertmanager
                                       ↑ VMRule
 ```
 
-VMRule нужны для мониторинга метрик, а не для обработки ошибок из Soika.
-Метрики `hbb_*` ниже принадлежат happybirthday-bot; Soika их не экспортирует.
-Проектный [webhook](WEBHOOKS.md) — отдельный канал с другим протоколом.
+VMRule resources monitor metrics; they do not process Soika issues. The `hbb_*`
+metrics below belong to happybirthday-bot and are not exported by Soika.
+The project [webhook](WEBHOOKS.md) is a separate delivery channel.
 
-## Минимальная настройка Soika
+## Minimal setup
 
-1. Задайте окружение и перезапустите Soika:
+1. Set the following environment variables and restart Soika:
 
    ```dotenv
    NOTIFICATIONS_ALERTMANAGER_ENABLED=true
@@ -25,45 +26,104 @@ VMRule нужны для мониторинга метрик, а не для о�
    SERVICE_MANAGEMENT_SOURCE=ui
    ```
 
-2. Под Owner или Manager откройте **Admin → Notifications**, включите канал
-   Alertmanager и сохраните настройки. URL — базовый, без `/api/v2/alerts`;
-   пустое поле использует `ALERTMANAGER_URL`. `BASE_URL` задаёт публичные ссылки
-   на ошибки. Поддерживаются HTTP(S) и префикс reverse proxy, но не HTTP-аутентификация.
-3. Выполните **Send test alert**, затем создайте новую ошибку через SDK и
-   проверьте сообщение в чате. Тест проверяет доставку, но использует фиксированный
-   текст, поэтому свои шаблоны проверяйте через Preview и реальную новую ошибку.
+2. As an Owner or Manager, open **Admin → Notifications**, enable the Alertmanager
+   channel and save. Supply a base URL without `/api/v2/alerts`; leaving the URL
+   empty uses `ALERTMANAGER_URL`. `BASE_URL` supplies public issue links. HTTP(S)
+   and reverse-proxy prefixes are supported; HTTP authentication is not.
+3. Use **Send test alert**, then send a new issue through an SDK and check chat.
+   The test uses fixed text: use Preview and a real new issue to check custom
+   annotations.
 
-В режиме `SERVICE_MANAGEMENT_SOURCE=env` канал и стандартные labels задаются
-окружением; редактирование в UI недоступно. Проектные labels можно задать через
-`CONFIG_PATH`. Настройка произвольных annotations через env не поддерживается;
-для приведённых ниже шаблонов используйте UI или существующий legacy YAML mode.
-Режимы управления, YAML-конфигурация и полный список переменных описаны в
-[NOTIFICATIONS.md](NOTIFICATIONS.md); параметры развёртывания — в
-[OPERATIONS.md](OPERATIONS.md#notifications).
+With `SERVICE_MANAGEMENT_SOURCE=env`, environment variables configure the channel
+and default labels; the channel form is read-only. Project labels can be loaded
+from `CONFIG_PATH`. Custom annotations require UI or the existing legacy YAML
+mode. See [notification settings and template variables](NOTIFICATIONS.md) and
+[deployment configuration](OPERATIONS.md#notifications).
 
-## Короткий заголовок, подробности и действие
+## Global and per-project refresh intervals
 
-Стандартный `summary` Soika равен `{{ title }}`: туда может попасть длинный
-текст HTTP-ошибки с URL и JSON. Получатель, который печатает только summary,
-покажет именно эту строку. Для человека полезнее:
+Refresh cadence is owned by **`PROJECT_MANAGEMENT_SOURCE`**, independently of
+`SERVICE_MANAGEMENT_SOURCE` and the notification channel's configuration source.
+Intervals are integer seconds from **10 to 86400**, with a global default of
+**60 seconds**. A project without an override inherits the global value.
 
-- `summary`: сервис и коротко описанная проблема;
-- `description`: влияние, контекст и что проверить; сырой текст ошибки — здесь;
-- `issue_url` / `runbook_url`: ссылка на ошибку или инструкцию;
-- labels: стабильные поля для маршрутизации (`project`, `job`, `cluster`, `severity`, `chat`).
+- With `PROJECT_MANAGEMENT_SOURCE=ui` (default), Owners and Managers edit the
+  global interval in **Admin → Notifications → Alertmanager refresh interval**.
+  Project admins edit the override in **Project → Settings**; select **Use global
+  interval** to remove it. Changes are persisted and take effect without restart.
+- With `PROJECT_MANAGEMENT_SOURCE=yaml`, both controls are read-only. Set the
+  global value at the root of `CONFIG_PATH` and overrides in project entries,
+  then restart Soika. An omitted global value resets to 60; an omitted or null
+  project value removes the override.
 
-Например, в **Admin → Notifications** замените annotations этим JSON:
+```yaml
+version: 1
+alertmanager_interval_seconds: 300
+projects:
+  - slug: happybirthday-bot
+    name: happybirthday-bot
+    team: platform
+    alertmanager_interval_seconds: 120
+  - slug: backend
+    name: Backend
+    team: platform
+    # Inherits 300 seconds.
+```
+
+The owning team must already exist or be declared through the existing team
+management configuration. In UI mode these YAML interval settings are ignored.
+
+Soika checks tracked alerts every 10 seconds and sends a refresh when the
+interval since the last successful send has elapsed. The first alert is sent
+immediately for a new issue or regression. Failed sends are retried on the next
+check, and the last successful send time survives restarts. Resolution, mute,
+deletion, project orphaning and channel disablement bypass the refresh interval;
+under normal delivery, the resolved payload is sent on the next check.
+Enabling the channel does not send existing issues retroactively.
+
+Firing payloads expire after the greater of five minutes or three refresh
+intervals. Increasing an interval extends an existing short lease on the next
+check. If Soika stops or the global feature flag is disabled, alerts expire
+when their last lease ends. Disabling the channel while the feature remains
+enabled sends explicit resolved payloads. See [delivery lifecycle](NOTIFICATIONS.md#alertmanager).
+
+**Refresh cadence is not chat frequency.** Alertmanager's `repeat_interval`,
+`group_interval`, silences and receiver configuration control chat delivery.
+Refreshing an unchanged alert keeps it active without forcing another message.
+
+The interval API uses the same permissions and ownership rules:
+
+```text
+PUT /api/settings/notifications/interval
+    {"interval_seconds": 300}                 # Instance Owner or Manager
+GET /api/projects/{id}/alertmanager-interval   # Project member
+PUT /api/projects/{id}/alertmanager-interval
+    {"interval_seconds": 120}                 # Project admin
+    {"interval_seconds": null}                # Remove project override
+```
+
+Responses include `interval_seconds` (null for an inheriting project) and
+`effective_interval_seconds`. The global value cannot be null.
+
+## Short summaries, details and actions
+
+Soika's default summary is `{{ title }}`, which can contain a long HTTP error,
+URL and JSON. A receiver that prints only summary will show that raw line.
+Prefer a short service/problem summary, context and action in description,
+and a separate link to the issue or runbook.
+
+For example, replace annotations in **Admin → Notifications** with:
 
 ```json
 {
-  "summary": "{{ project_name }}: ошибка приложения",
-  "description": "Ошибка: {{ title }}\nМесто: {{ culprit }}\nОкружение: {{ environment }}\nРелиз: {{ release }}\nСобытий: {{ event_count }}\nПоследнее событие: {{ last_seen }}\nОткройте issue и проверьте последнее событие и стек вызовов.",
+  "summary": "{{ project_name }}: application error",
+  "description": "Error: {{ title }}\nLocation: {{ culprit }}\nEnvironment: {{ environment }}\nRelease: {{ release }}\nEvents: {{ event_count }}\nLast seen: {{ last_seen }}\nOpen the issue and inspect the latest event and stack trace.",
   "issue_url": "{{ issue_url }}",
   "trigger": "{{ trigger }}"
 }
 ```
 
-Пример labels для общей схемы маршрутизации:
+Example routing labels:
 
 ```json
 {
@@ -75,44 +135,43 @@ VMRule нужны для мониторинга метрик, а не для о�
 }
 ```
 
-Soika всегда добавляет `issue_id` и `project_id`. Её уровни — Sentry levels
-(`fatal`, `error`, `warning`, `info`, `debug`), а у VMRule ниже — `critical` и
-`warning`. Учтите оба набора в маршрутах Alertmanager или задайте постоянную
-severity для проекта через project labels. Синтаксис Soika — только подстановка
-`{{ variable }}`: условия, `printf` и `$labels` здесь недоступны. Шаблоны общие
-для всех проектов; автоматически превратить произвольный лог в объяснение
-«KeyHub отклоняет подпись» они не могут. Такие точные тексты задаются в правилах
-метрик, как ниже.
+Soika always adds `issue_id` and `project_id`. Its severity uses Sentry levels
+(`fatal`, `error`, `warning`, `info`, `debug`); the VMRule examples use `critical`
+and `warning`. Account for both in routes or set a constant project severity
+through project labels. Keep titles, counts and timestamps in annotations:
+changing a label creates a different alert identity.
 
-Не помещайте title, счётчик событий и время в labels: изменение label создаёт
-новую идентичность алерта. Они должны оставаться annotations.
+Soika supports literal `{{ variable }}` substitution only, without conditions,
+filters or `$labels`. Templates apply across projects and cannot turn arbitrary
+logs into a diagnosis such as “KeyHub rejected the signature”. Metric rules can
+provide precise descriptions of known conditions, as shown below.
 
-## Сообщение в чате и статусы
+## Chat formatting and status
 
-Получатель должен выводить description и ссылку, а статус брать у каждого
-алерта. Не добавляйте постоянный `✅` к summary. В шаблоне Alertmanager
-`.Status` всей группы означает firing, если хотя бы один её алерт firing;
-внутри `range .Alerts` это статус конкретного алерта.
-[Справочник шаблонов Alertmanager](https://prometheus.io/docs/alerting/latest/notifications/).
+Render description and the issue link, and read status from each alert rather
+than prefixing every summary with a fixed green check mark. The group `.Status`
+is firing if any member is firing; inside `range .Alerts`, `.Status` belongs to
+that individual alert. See the
+[Alertmanager template reference](https://prometheus.io/docs/alerting/latest/notifications/).
 
-Пример текстового шаблона `/etc/alertmanager/templates/readable.tmpl`:
+Example `/etc/alertmanager/templates/readable.tmpl`:
 
 ```gotemplate
 {{ define "readable.message" }}
 {{ range .Alerts }}
-{{ if eq .Status "firing" }}🔥 Активен{{ else }}✅ Закрыт{{ end }} [{{ .Labels.severity }}]
+{{ if eq .Status "firing" }}🔥 Active{{ else }}✅ Closed{{ end }} [{{ .Labels.severity }}]
 {{ .Annotations.summary }}
-{{ with .Labels.cluster }}Кластер: {{ . }}{{ end }}
-{{ with .Labels.instance }}Экземпляр: {{ . }}{{ end }}
+{{ with .Labels.cluster }}Cluster: {{ . }}{{ end }}
+{{ with .Labels.instance }}Instance: {{ . }}{{ end }}
 {{ with .Annotations.description }}{{ . }}{{ end }}
-{{ if .Annotations.issue_url }}Issue: {{ .Annotations.issue_url }}{{ else if .GeneratorURL }}Источник: {{ .GeneratorURL }}{{ end }}
-{{ with .Annotations.runbook_url }}Инструкция: {{ . }}{{ end }}
+{{ if .Annotations.issue_url }}Issue: {{ .Annotations.issue_url }}{{ else if .GeneratorURL }}Source: {{ .GeneratorURL }}{{ end }}
+{{ with .Annotations.runbook_url }}Runbook: {{ . }}{{ end }}
 {{ end }}
 {{ end }}
 ```
 
-Подключите файл через `templates` и вызовите `{{ template "readable.message" . }}`
-в текстовом поле своего receiver. Например, для Slack:
+Load the file through `templates` and invoke `{{ template "readable.message" . }}`
+in a receiver's text field. For example, with Slack:
 
 ```yaml
 templates:
@@ -129,60 +188,56 @@ route:
         - 'chat="service-general-status"'
 receivers:
   - name: fallback
-    # Добавьте ваш канал для алертов без label chat.
+    # Add your receiver for alerts without a matching chat label.
   - name: service-general-status
     slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack-webhook-url
         channel: '#service-general-status'
         send_resolved: true
-        title: 'Уведомления сервиса'
+        title: 'Service notifications'
         text: '{{ template "readable.message" . }}'
 ```
 
-Это пример конфигурации обычного Alertmanager; объедините его со своими
-routes/receivers. `fallback` здесь не доставляет сообщения, пока вы не добавите
-интеграцию. `chat` — условный label, он сам не выбирает чат без соответствующего
-маршрута. Настройку receiver сверяйте с
-[конфигурацией Alertmanager](https://prometheus.io/docs/alerting/latest/configuration/).
+Merge this into your Alertmanager configuration. The example fallback drops
+messages until you add an integration. `chat` is a custom label: it needs a route
+and does not select a destination automatically. See
+[Alertmanager receiver configuration](https://prometheus.io/docs/alerting/latest/configuration/).
 
-При webhook-доставке в Пачку или собственный шлюз сообщение строит сам шлюз
-по `alerts[].status`, `alerts[].annotations` и `alerts[].generatorURL`.
-Файлы `.tmpl` Alertmanager не меняют JSON webhook. Измените шаблон шлюза,
-если он сейчас выводит только summary или всегда ставит зелёную галочку.
-`commonAnnotations` содержит только общие annotations: при группировке разных
-ошибок их descriptions могут отсутствовать там, поэтому обходите `alerts[]`.
+For webhook delivery to Pachca or a custom gateway, the gateway renders the
+message from `alerts[].status`, `alerts[].annotations` and `alerts[].generatorURL`.
+Alertmanager `.tmpl` files do not change webhook JSON. Update the gateway if it
+currently prints only summary or always adds a green check mark. Iterate over
+`alerts[]`: `commonAnnotations` contains only values shared by every alert, so
+individual descriptions may be absent there.
 
-Пример ожидаемого сообщения по метрикам:
+Expected metric alert message:
 
 ```text
-🔥 Активен [critical]
-happybirthday-bot: кэш дней рождения не наполнен
-Кластер: k8s-internal
-Экземпляр: 10.0.0.15:8080
-Ни одна выгрузка из KeyHub не завершилась успешно за 30 минут.
-Рассылка будет пропущена. Проверьте KEYHUB_SECRET_KEY и доступность KeyHub.
+🔥 Active [critical]
+happybirthday-bot: birthday cache has not been populated
+Cluster: k8s-internal
+Instance: 10.0.0.15:8080
+No KeyHub fetch has succeeded for 30 minutes. Sending will be skipped.
+Check KEYHUB_SECRET_KEY and KeyHub availability.
 ```
 
-Для ошибок Soika «Закрыт» означает завершение алерта, а не подтверждённое
-восстановление сервиса: resolve, mute, удаление и отключение канала тоже закрывают
-алерты. Они обновляются каждые 60 секунд и истекают через пять минут без
-обновления. Включение канала не отправляет старые issues. Подробнее о повторных
-попытках и смене шаблонов — в [жизненном цикле уведомлений](NOTIFICATIONS.md#alertmanager).
+For Soika issues, “Closed” means the alert ended, which can also result from
+mute, deletion or channel disablement. It does not establish service recovery.
 
-## VMRule: happybirthday-bot
+## VMRule example: happybirthday-bot
 
-Пример основан на метриках happybirthday-bot. До применения проверьте имена
-метрик, scrape label `job` и значения порогов в своём datasource. Здесь
-`job="k8s-internal-happybirthday-bot"` выбирает исходные ряды, а rule label
-`job: happybirthday-bot` задаёт имя сервиса для уведомлений. Если datasource
-содержит несколько кластеров с одинаковым job, добавьте их исходный cluster
-label в каждый селектор и в ключи агрегации/сопоставления.
+Check metric names, scrape labels and thresholds in your datasource before
+applying this example. The input selector uses
+`job="k8s-internal-happybirthday-bot"`; the rule label `job: happybirthday-bot`
+sets the service name for routing. If several clusters share the same scrape
+job, add their source cluster label to every selector and to aggregation and
+matching keys.
 
-VMRule должен попадать под `ruleSelector` и `ruleNamespaceSelector` вашего
-VMAlert; добавьте требуемые metadata labels. VMAlert должен читать нужный
-datasource и отправлять уведомления в тот же Alertmanager.
-[Документация VMRule](https://docs.victoriametrics.com/operator/resources/vmrule/),
-[выбор правил VMAlert](https://docs.victoriametrics.com/operator/resources/vmalert/).
+Your VMAlert must select this resource through `ruleSelector` and
+`ruleNamespaceSelector`; add any required metadata labels. It must query the
+appropriate datasource and notify the same Alertmanager. See the
+[VMRule documentation](https://docs.victoriametrics.com/operator/resources/vmrule/)
+and [VMAlert rule selection](https://docs.victoriametrics.com/operator/resources/vmalert/).
 
 ```yaml
 apiVersion: operator.victoriametrics.com/v1beta1
@@ -204,10 +259,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: под не отвечает на скрейп'
+            summary: 'happybirthday-bot: pod is not responding to scrapes'
             description: |-
-              Экземпляр {{ $labels.instance }} недоступен более 10 минут.
-              Проверьте состояние пода, порт, scrape-аннотации и /healthz.
+              Instance {{ $labels.instance }} has been unreachable for more than 10 minutes.
+              Check pod status, the port, scrape annotations and /healthz.
 
         - alert: HBBCacheNeverPopulated
           expr: hbb_cache_ready{job="k8s-internal-happybirthday-bot"} == 0
@@ -218,11 +273,11 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: кэш дней рождения не наполнен'
+            summary: 'happybirthday-bot: birthday cache has not been populated'
             description: |-
-              После старта {{ $labels.instance }} ни одна выгрузка из KeyHub не завершилась успешно.
-              Рассылка будет пропущена с исходом not_ready.
-              Проверьте KEYHUB_SECRET_KEY, KEYHUB_BASE_URL и доступность KeyHub.
+              No KeyHub fetch has succeeded since {{ $labels.instance }} started.
+              Sending will be skipped with outcome not_ready.
+              Check KEYHUB_SECRET_KEY, KEYHUB_BASE_URL and KeyHub availability.
 
         - alert: HBBKeyHubStale
           expr: |
@@ -236,10 +291,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: данные KeyHub устарели'
+            summary: 'happybirthday-bot: KeyHub data is stale'
             description: |-
-              Последняя успешная выгрузка на {{ $labels.instance }} была более 6 часов назад.
-              Новые и уволенные сотрудники не учитываются. Проверьте ошибки выгрузки и доступность KeyHub.
+              The last successful fetch on {{ $labels.instance }} was more than 6 hours ago.
+              New and departed employees are not reflected. Check fetch errors and KeyHub availability.
 
         - alert: HBBKeyHubFetchErrors
           expr: increase(hbb_keyhub_fetch_total{job="k8s-internal-happybirthday-bot",result="error"}[2h]) >= 2
@@ -249,10 +304,10 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: повторяющиеся ошибки выгрузки из KeyHub'
+            summary: 'happybirthday-bot: repeated KeyHub fetch failures'
             description: |-
-              За 2 часа выгрузка на {{ $labels.instance }} падала больше одного раза.
-              Прежний кэш сохраняется. Проверьте логи запросов к KeyHub.
+              Fetching on {{ $labels.instance }} failed at least twice in 2 hours.
+              The previous cache is retained. Inspect KeyHub request logs.
 
         - alert: HBBKeyHubUnauthorized
           expr: increase(hbb_keyhub_http_requests_total{job="k8s-internal-happybirthday-bot",code=~"401|403"}[1h]) > 0
@@ -263,10 +318,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: KeyHub отклоняет запросы ({{ $labels.code }})'
+            summary: 'happybirthday-bot: KeyHub rejects requests ({{ $labels.code }})'
             description: |-
-              KeyHub отвечает {{ $labels.code }} на {{ $labels.instance }}.
-              Проверьте KEYHUB_SECRET_KEY, KEYHUB_APP_ID и правила подписи запроса.
+              KeyHub returned {{ $labels.code }} on {{ $labels.instance }}.
+              Check KEYHUB_SECRET_KEY, KEYHUB_APP_ID and request signature rules.
 
         - alert: HBBKeyHubHTTPErrors
           expr: increase(hbb_keyhub_http_requests_total{job="k8s-internal-happybirthday-bot",code!~"200|401|403"}[1h]) > 0
@@ -276,10 +331,10 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: ошибки HTTP при обращении к KeyHub ({{ $labels.code }})'
+            summary: 'happybirthday-bot: KeyHub HTTP errors ({{ $labels.code }})'
             description: |-
-              За час были ошибки с кодом {{ $labels.code }} на {{ $labels.instance }}.
-              code="error" означает сетевую ошибку или таймаут. Проверьте KeyHub и сетевые политики.
+              Requests on {{ $labels.instance }} failed with code {{ $labels.code }} in the last hour.
+              code="error" means a network error or timeout. Check KeyHub and network policies.
 
         - alert: HBBKeyHubSlow
           expr: |
@@ -292,10 +347,10 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: выгрузка из KeyHub замедлилась'
+            summary: 'happybirthday-bot: KeyHub fetches are slow'
             description: |-
-              Средняя полная выгрузка за 6 часов на {{ $labels.instance }} превышает 30 секунд.
-              Возможен срыв обновления при лимите цикла 2 минуты. Проверьте задержки KeyHub.
+              The average full fetch duration over 6 hours on {{ $labels.instance }} exceeds 30 seconds.
+              Updates may exceed the 2-minute cycle timeout. Check KeyHub latency.
 
         - alert: HBBSendFailed
           expr: increase(hbb_pachca_send_total{job="k8s-internal-happybirthday-bot",result="error"}[15m]) > 0
@@ -305,11 +360,11 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: не удалось отправить поздравление в Пачку'
+            summary: 'happybirthday-bot: failed to send a birthday message to Pachca'
             description: |-
-              Отправка на {{ $labels.instance }} завершилась ошибкой, маркер дедупа не выставлен.
-              Повтор возможен при рестарте или в следующий SEND_AT; сегодняшнее поздравление может быть потеряно.
-              Проверьте ответ Пачки, токен и доступ бота к каналу.
+              Sending on {{ $labels.instance }} failed; the deduplication marker was not set.
+              A retry may occur on restart or at the next SEND_AT; today's message may be missed.
+              Check the Pachca response, token and bot channel permissions.
 
         - alert: HBBPachcaAuthError
           expr: increase(hbb_pachca_send_errors_total{job="k8s-internal-happybirthday-bot",kind="auth"}[24h]) > 0
@@ -319,10 +374,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: ошибка авторизации в Пачке'
+            summary: 'happybirthday-bot: Pachca authentication failed'
             description: |-
-              Пачка вернула ошибку авторизации.
-              Проверьте PACHCA_TOKEN и доступ бота к PACHCA_CHANNEL_ID.
+              Pachca returned an authentication error.
+              Check PACHCA_TOKEN and bot access to PACHCA_CHANNEL_ID.
 
         - alert: HBBRenderError
           expr: increase(hbb_congratulate_total{job="k8s-internal-happybirthday-bot",outcome="render_error"}[1h]) > 0
@@ -332,10 +387,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: не удалось отрендерить поздравление'
+            summary: 'happybirthday-bot: failed to render the birthday message'
             description: |-
-              Именинники есть, но сообщение не построено.
-              Проверьте phrases.yaml в ConfigMap и ошибку рендера в логах.
+              There are birthdays to announce, but the message could not be rendered.
+              Check phrases.yaml in the ConfigMap and the rendering error in logs.
 
         - alert: HBBSendSkippedNotReady
           expr: increase(hbb_congratulate_total{job="k8s-internal-happybirthday-bot",outcome="not_ready"}[1h]) > 0
@@ -345,10 +400,10 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: рассылка пропущена — кэш не готов'
+            summary: 'happybirthday-bot: sending skipped because the cache was not ready'
             description: |-
-              В момент рассылки кэш на {{ $labels.instance }} был пуст, сообщение не отправлено.
-              Проверьте ошибки выгрузки из KeyHub.
+              The birthday cache on {{ $labels.instance }} was empty at send time; no message was sent.
+              Check KeyHub fetch errors.
 
         - alert: HBBDailyRunMissing
           expr: |
@@ -362,10 +417,10 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: суточный цикл поздравлений не отрабатывал'
+            summary: 'happybirthday-bot: daily birthday cycle did not run'
             description: |-
-              За 26 часов нет ни одного исхода рассылки на {{ $labels.instance }}.
-              Под работает больше 26 часов. Проверьте планировщик, логи и SEND_AT/APP_TZ.
+              No send outcome has been recorded in 26 hours on {{ $labels.instance }}.
+              The pod is older than 26 hours. Check the scheduler, logs and SEND_AT/APP_TZ.
 
         - alert: HBBCacheEmpty
           expr: |
@@ -379,11 +434,11 @@ spec:
             severity: critical
             chat: service-general-status
           annotations:
-            summary: 'happybirthday-bot: кэш дней рождения пуст'
+            summary: 'happybirthday-bot: birthday cache is empty'
             description: |-
-              KeyHub отвечает успешно, но подходящих сотрудников нет ({{ $labels.instance }}).
-              Проверьте KEYHUB_BIRTHDAY_FIELD, KEYHUB_BIRTHDAY_FORMAT и KEYHUB_ACTIVE_ONLY.
-              Причины пропуска записей доступны в DEBUG-логах.
+              KeyHub requests succeed but no eligible employees remain ({{ $labels.instance }}).
+              Check KEYHUB_BIRTHDAY_FIELD, KEYHUB_BIRTHDAY_FORMAT and KEYHUB_ACTIVE_ONLY.
+              DEBUG logs contain reasons why records were skipped.
 
         - alert: HBBCachePeopleDropped
           expr: |
@@ -395,10 +450,10 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: в кэше стало заметно меньше сотрудников'
+            summary: 'happybirthday-bot: employee count in the cache dropped'
             description: |-
-              Число сотрудников на {{ $labels.instance }} упало более чем на 20% за сутки (сейчас {{ $value | printf "%.0f" }}).
-              Проверьте массовую блокировку учёток, фильтры и полноту выгрузки.
+              The employee count on {{ $labels.instance }} fell by more than 20% in a day (currently {{ $value | printf "%.0f" }}).
+              Check bulk account suspension, filters and fetch completeness.
 
         - alert: HBBStateWriteErrors
           expr: increase(hbb_state_write_errors_total{job="k8s-internal-happybirthday-bot"}[1h]) > 0
@@ -407,28 +462,27 @@ spec:
             cluster: k8s-internal
             severity: warning
           annotations:
-            summary: 'happybirthday-bot: не удалось сохранить маркер отправки'
+            summary: 'happybirthday-bot: failed to save the send marker'
             description: |-
-              Поздравление отправлено, но состояние в STATE_DIR не записано ({{ $labels.instance }}).
-              При рестарте возможен дубль. Проверьте заполненность, права и монтирование PVC.
+              The message was sent, but state could not be written to STATE_DIR ({{ $labels.instance }}).
+              Restarting may send a duplicate. Check PVC capacity, permissions and mounts.
 ```
 
-В отличие от исходного примера, селекторы ограничены job сервиса, cluster
-передаётся отдельным label, а HTTP warning исключает 401/403, для которых есть
-отдельный critical. Внутри VMRule разрешён синтаксис vmalert
-`{{ $labels.instance }}` / `{{ $value | printf "%.0f" }}`; он не подходит
-для шаблонов Soika.
+Selectors are scoped to this service, cluster is an explicit label, and the
+HTTP warning excludes 401/403 because they have a dedicated critical rule.
+VMRule annotations use vmalert syntax such as `{{ $labels.instance }}` and
+`{{ $value | printf "%.0f" }}`; these expressions do not work in Soika templates.
 
-`increase(...[1h]) > 0` означает ошибку в окне истории, а не текущую поломку:
-алерт может оставаться активным до выхода ошибки из окна. `for` требует,
-чтобы выражение оставалось истинным указанное время. Условия с `offset 24h`
-требуют истории. `up == 0` обнаруживает неуспешный скрейп существующей цели;
-для исчезнувшей из discovery цели требуется отдельное правило, например
-`absent(up{job="k8s-internal-happybirthday-bot"})` с подходящим `for`.
-Правило суточного цикла предполагает заранее созданные ряды счётчика;
-отсутствующие метрики требуют отдельного контроля.
+`increase(...[1h]) > 0` means an error occurred within the history window, not
+necessarily an ongoing failure. The alert may remain active until that error
+leaves the window. `for` requires the condition to remain true for that duration.
+`offset 24h` requires historical data. `up == 0` detects failed scrapes of an
+existing target; detect targets removed from discovery separately, for example
+with `absent(up{job="k8s-internal-happybirthday-bot"})` and a suitable `for`.
+The daily-cycle rule assumes counter series are initialized; missing metrics
+need separate monitoring.
 
-Перед применением проверьте выражения в datasource и шаблоны средствами своей
-версии vmalert. После применения проверьте загрузку правил в VMAlert, firing
-в Alertmanager, текст в чате и отдельное resolved-сообщение. При публикации YAML
-через Helm экранируйте внутренние `{{ ... }}`, если файл проходит через `tpl`.
+Before deployment, check expressions in the datasource and validate rules with
+your vmalert version. Verify rule loading, firing alerts in Alertmanager, readable
+chat output and a separate resolved message. Escape inner `{{ ... }}` when
+passing these files through Helm `tpl`.

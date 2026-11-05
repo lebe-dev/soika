@@ -5,8 +5,8 @@ use crate::{
 };
 use std::{collections::BTreeMap, time::Duration};
 
-/// Alerts are refreshed every minute, with enough overlap for transient failures.
-pub const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+/// Check due alerts and lifecycle changes independently of each project cadence.
+pub const REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const ALERT_TTL: i64 = 300;
 
 pub struct Alertmanager {
@@ -139,12 +139,19 @@ pub async fn notify(
         .alertmanager
         .project_config(&config, &project.slug)
         .await;
-    let alert = render_alert(
+    let mut alert = render_alert(
         &project_config,
         &variables(state, &org, project, issue, trigger),
         state.clock.now(),
     )?;
-    let pending = ActiveAlert {
+    let seconds = state
+        .notifications
+        .interval(Some(project.id))
+        .await?
+        .effective_interval_seconds;
+    alert.ends_at = state.clock.now() + chrono::Duration::seconds(alert_ttl(seconds));
+    let mut pending = ActiveAlert {
+        last_sent_at: None,
         issue_id: issue.id,
         endpoint: endpoint(&config),
         trigger: trigger.into(),
@@ -162,6 +169,8 @@ pub async fn notify(
         .alertmanager
         .send(&pending.endpoint, &pending.alert)
         .await?;
+    pending.last_sent_at = Some(state.clock.now());
+    state.notifications.save_alert(&pending).await?;
     tracing::info!(issue_id = %issue.id, project_id = %project.id, channel = "alertmanager", "notification delivered");
     Ok(())
 }
@@ -240,15 +249,42 @@ async fn reconcile(
         &variables(state, org, &project, &issue, &saved.trigger),
         state.clock.now(),
     )?;
-    if saved.endpoint != endpoint(config) || saved.alert.labels != alert.labels {
+    let seconds = state
+        .notifications
+        .interval(Some(project.id))
+        .await?
+        .effective_interval_seconds;
+    alert.ends_at = state.clock.now() + chrono::Duration::seconds(alert_ttl(seconds));
+    let identity_changed = saved.endpoint != endpoint(config) || saved.alert.labels != alert.labels;
+    // Resolve and configuration changes must not wait for a long refresh interval.
+    // Also extend short leases immediately when the interval is increased.
+    if !identity_changed
+        && saved
+            .last_sent_at
+            .is_some_and(|sent| state.clock.now() < sent + chrono::Duration::seconds(seconds))
+        && saved.alert.ends_at > state.clock.now() + chrono::Duration::seconds(seconds)
+    {
+        return Ok(());
+    }
+    if identity_changed {
         resolve(state, saved).await?;
     } else {
         alert.starts_at = saved.alert.starts_at;
     }
     saved.endpoint = endpoint(config);
     saved.alert = alert;
+    saved.last_sent_at = None;
     state.notifications.save_alert(saved).await?;
-    state.alertmanager.send(&saved.endpoint, &saved.alert).await
+    state
+        .alertmanager
+        .send(&saved.endpoint, &saved.alert)
+        .await?;
+    saved.last_sent_at = Some(state.clock.now());
+    state.notifications.save_alert(saved).await
+}
+
+fn alert_ttl(interval_seconds: i64) -> i64 {
+    ALERT_TTL.max(interval_seconds * 3)
 }
 
 /// Send a short-lived synthetic alert without creating an issue or refresh record.

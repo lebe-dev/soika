@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
   import { Input } from '$lib/components/ui/input';
+  import AlertmanagerIntervalControl from '$lib/components/alertmanager-interval-control.svelte';
   import InfoTip from '$lib/components/info-tip.svelte';
   import { toast } from '$lib/components/ui/sonner';
 
@@ -235,3 +236,11 @@
     {/if}
   </Card.Content>
 </Card.Root>
+
+{#if view.feature_enabled}
+  <AlertmanagerIntervalControl
+    interval={view.interval}
+    readonly={view.interval_source !== 'ui'}
+    managed={view.interval_source !== 'ui'}
+  />
+{/if}

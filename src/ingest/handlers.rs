@@ -192,6 +192,8 @@ fn failed_response(
 ///
 /// On success returns the resolved project and the decoded body. On failure
 /// returns the Sentry-compatible early [`Response`] the handler should send.
+// Like the API guards, this preamble returns a ready-to-send HTTP response.
+#[allow(clippy::result_large_err)]
 async fn authorize_and_decode<'a>(
     state: &AppState,
     project_id: &str,

@@ -13,6 +13,8 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct NotificationView {
     pub source: ManagementSource,
+    pub interval_source: ManagementSource,
+    pub interval: crate::domain::notifications::AlertmanagerInterval,
     pub feature_enabled: bool,
     pub alertmanager_skip_tls: bool,
     pub default_url: Option<String>,
@@ -24,6 +26,8 @@ pub async fn get(
     State(state): State<AppState>,
 ) -> Result<Json<NotificationView>, ApiError> {
     Ok(Json(NotificationView {
+        interval_source: state.config.management.project_source,
+        interval: state.notifications.interval(None).await?,
         source: if state.config.management.service_source == ManagementSource::Env {
             ManagementSource::Env
         } else {
@@ -107,4 +111,72 @@ pub async fn test_alert(
     crate::alertmanager::send_test(&state, request.locale).await?;
     tracing::info!(actor_id = %admin.0.id, channel = "alertmanager", "test notification delivered");
     Ok(Json(serde_json::json!({"ok": true})))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IntervalRequest {
+    pub interval_seconds: Option<i64>,
+}
+
+pub async fn update_interval(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Json(body): Json<IntervalRequest>,
+) -> Result<Json<crate::domain::notifications::AlertmanagerInterval>, ApiError> {
+    crate::config_sync::require_ui_management(&state, false)?;
+    state
+        .notifications
+        .set_interval(None, body.interval_seconds)
+        .await?;
+    Ok(Json(state.notifications.interval(None).await?))
+}
+
+pub async fn project_interval(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_member(&state, &user, project.id).await {
+        return response;
+    }
+    match state.notifications.interval(Some(project.id)).await {
+        Ok(view) => Json(view).into_response(),
+        Err(error) => ApiError(error).into_response(),
+    }
+}
+
+pub async fn update_project_interval(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<IntervalRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Err(error) = crate::config_sync::require_ui_management(&state, false) {
+        return ApiError(error).into_response();
+    }
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_admin(&state, &user, project.id).await {
+        return response;
+    }
+    if let Err(error) = state
+        .notifications
+        .set_interval(Some(project.id), body.interval_seconds)
+        .await
+    {
+        return ApiError(error).into_response();
+    }
+    match state.notifications.interval(Some(project.id)).await {
+        Ok(view) => Json(view).into_response(),
+        Err(error) => ApiError(error).into_response(),
+    }
 }

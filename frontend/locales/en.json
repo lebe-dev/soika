@@ -535,7 +535,7 @@
   "notifications_tab": "Notifications",
   "notifications_alertmanager_description": "Send issue alerts to Prometheus Alertmanager. Applies to every project.",
   "notifications_skip_tls_warning": "Warning: Alertmanager TLS certificate verification is disabled (ALERTMANAGER_SKIP_TLS=true).",
-  "notifications_lifecycle": "New issues and regressions fire an alert. Open alerts refresh every minute; resolving, muting or deleting an issue closes its alert within a minute. Existing issues are not sent when enabling the channel.",
+  "notifications_lifecycle": "New issues and regressions fire an alert. Open alerts refresh at the configured global or project interval; resolving, muting or deleting closes an alert on the next check (normally within 10 seconds). Existing issues are not sent when enabling the channel.",
   "managed_config_title_prefix": "Managed by",
   "managed_config_title_link": "deployment configuration",
   "deploy_config_title": "Deployment configuration",
@@ -599,5 +599,11 @@
   "invites_unavailable_yaml_teams": "Teams are managed in the configuration file, so invites are unavailable.",
   "add_a_teammate_to_give_access_to_this_team_s_projects": "Add a teammate to give access to this team’s projects.",
   "share_an_invite_link_to_give_access_to_this_team_s_projects": "Share an invite link to give access to this team’s projects.",
-  "team_members_managed_by_configuration": "Team members are managed in the configuration file."
+  "team_members_managed_by_configuration": "Team members are managed in the configuration file.",
+  "alertmanager_interval_title": "Alertmanager refresh interval",
+  "alertmanager_interval_help": "Seconds between refreshes of active alerts (10–86400). Alertmanager controls how often messages reach your chat.",
+  "alertmanager_interval_inherit": "Use global interval",
+  "alertmanager_interval_effective": "Effective interval: {seconds} seconds",
+  "alertmanager_interval_save": "Save interval",
+  "alertmanager_interval_yaml": "Intervals are managed through YAML (PROJECT_MANAGEMENT_SOURCE)."
 }

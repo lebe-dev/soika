@@ -13,7 +13,7 @@
 //! repository — only `events` rows are deleted.
 //!
 //! Outbound mail is sent inline from the ingest pipeline via [`crate::notify`];
-//! the scheduler also refreshes durable Alertmanager alerts every minute.
+//! the scheduler also checks durable Alertmanager alerts every ten seconds.
 
 use std::time::Duration;
 

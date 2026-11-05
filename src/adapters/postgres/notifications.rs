@@ -15,6 +15,54 @@ impl PgNotificationRepository {
 }
 #[async_trait]
 impl NotificationRepository for PgNotificationRepository {
+    async fn interval(
+        &self,
+        project_id: Option<crate::domain::Id>,
+    ) -> Result<crate::domain::notifications::AlertmanagerInterval> {
+        let global: i64 = sqlx::query_scalar(
+            "SELECT refresh_interval_seconds FROM notification_settings WHERE id = 1",
+        )
+        .fetch_one(&self.db)
+        .await?;
+        let seconds = if let Some(id) = project_id {
+            let value: i64 = sqlx::query_scalar(
+                "SELECT alertmanager_interval_seconds FROM projects WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_one(&self.db)
+            .await?;
+            (value != 0).then_some(value)
+        } else {
+            Some(global)
+        };
+        Ok(crate::domain::notifications::AlertmanagerInterval {
+            interval_seconds: seconds,
+            effective_interval_seconds: seconds.unwrap_or(global),
+        })
+    }
+    async fn set_interval(
+        &self,
+        project_id: Option<crate::domain::Id>,
+        seconds: Option<i64>,
+    ) -> Result<()> {
+        if let Some(seconds) = seconds {
+            crate::domain::notifications::validate_interval(seconds)?;
+        }
+        if project_id.is_none() && seconds.is_none() {
+            return Err(crate::Error::validation("global interval is required"));
+        }
+        retry_write(&WritePolicy::default(), "set Alertmanager interval", || async {
+            if let Some(id) = project_id {
+                sqlx::query("UPDATE projects SET alertmanager_interval_seconds = $1 WHERE id = $2")
+                    .bind(seconds.unwrap_or(0)).bind(id).execute(&self.db).await?;
+            } else {
+                sqlx::query("UPDATE notification_settings SET refresh_interval_seconds = $1 WHERE id = 1")
+                    .bind(seconds).execute(&self.db).await?;
+            }
+            Ok(())
+        }).await
+    }
+
     async fn find_alert(
         &self,
         issue_id: crate::domain::Id,

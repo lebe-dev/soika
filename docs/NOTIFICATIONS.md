@@ -47,7 +47,7 @@ channel in UI/YAML. This environment feature flag takes precedence over
 `alertmanager.enabled`. When false, **Admin → Notifications** displays a compact
 “Disabled in configuration” message; editing and preview API calls return `403`.
 Soika sends no Alertmanager requests, including refreshes and resolutions, while
-the flag is off. Previously sent alerts expire after their five-minute TTL;
+the flag is off. Previously sent alerts expire after their last lease (at least five minutes);
 saved records are retained and reconciled when the feature is enabled again.
 Disabling the channel through UI/YAML while the feature remains enabled still
 sends resolved payloads as described below. Configuration edits cannot enable
@@ -72,10 +72,12 @@ independently of Email and Webhooks. Enabling it does not send old issues.
 
 - A new issue or regression sends a firing alert, unless the project or issue is muted.
 - Soika stores the alert identity before delivery and refreshes tracked unresolved
-  alerts every 60 seconds. Each firing payload has `endsAt` five minutes ahead.
+  alerts at the global or per-project interval (60 seconds by default). Each firing
+  payload has `endsAt` at least five minutes ahead, or three intervals for longer
+  cadences. See [refresh interval configuration](ALERTMANAGER.md#global-and-per-project-refresh-intervals).
 - Resolving, muting or deleting the issue, muting/deleting/orphaning the project,
   or disabling the channel sends a resolved payload on the next refresh. Under
-  normal delivery this takes up to a minute. Auto-unmuting does not create a new
+  normal delivery this takes up to ten seconds. Auto-unmuting does not create a new
   alert by itself; a subsequent regression can create one.
 - Delivery failures are logged and retried on the next refresh, without failing
   ingestion. HTTP requests time out after five seconds. Saved identities survive
@@ -83,7 +85,7 @@ independently of Email and Webhooks. Enabling it does not send old issues.
 - Template or URL changes close each tracked alert at its original destination
   with its original labels, then send its replacement. Keep the old destination
   reachable during this transition, including when disabling the channel.
-- During an outage longer than five minutes, Alertmanager can expire an alert;
+- During an outage longer than the alert lease, Alertmanager can expire an alert;
   it can fire again after delivery recovers. Alertmanager controls grouping,
   silencing, repeat intervals and downstream receivers.
 
