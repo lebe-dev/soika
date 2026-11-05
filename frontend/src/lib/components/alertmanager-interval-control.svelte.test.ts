@@ -63,7 +63,7 @@ it('sends null to remove the project override when inheritance is selected', asy
 });
 it('disables interval controls when projects are managed through YAML', () => {
   render('project-id', true);
-  expect(target.textContent).toContain('PROJECT_MANAGEMENT_SOURCE');
+  expect(target.textContent).not.toContain('PROJECT_MANAGEMENT_SOURCE');
   expect(target.querySelector('button')).toBeNull();
   expect([...target.querySelectorAll('input')].every((input) => input.disabled)).toBe(true);
 });

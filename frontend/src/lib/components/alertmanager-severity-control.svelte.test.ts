@@ -62,7 +62,7 @@ it('locks the selector for YAML-managed projects', () => {
   render(true);
   expect(target.querySelector('select')!.disabled).toBe(true);
   expect(target.querySelector('button')).toBeNull();
-  expect(target.textContent).toContain('PROJECT_MANAGEMENT_SOURCE');
+  expect(target.textContent).not.toContain('PROJECT_MANAGEMENT_SOURCE');
 });
 
 it('saves an instance default when no project is selected', async () => {
