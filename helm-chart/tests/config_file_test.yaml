@@ -77,6 +77,12 @@ tests:
       - equal:
           path: data.ALERTMANAGER_DEFAULT_SEVERITY
           value: "critical"
+  - it: supplies the project test alert kind
+    template: configmap.yaml
+    asserts:
+      - equal:
+          path: data.ALERTMANAGER_TEST_ALERT_KIND
+          value: "SoikaIssueCritical"
   - it: verifies Alertmanager TLS certificates by default
     template: configmap.yaml
     asserts:

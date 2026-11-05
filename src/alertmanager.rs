@@ -413,6 +413,11 @@ pub async fn send_project_test(
             ),
         ),
     ]));
+    let mut config = config;
+    config.labels.insert(
+        "alertname".into(),
+        state.config.alertmanager_test_alert_kind.clone(),
+    );
     let mut alert = render_alert(&config, &vars, now)?;
     alert.labels.insert("test".into(), "true".into());
     state.alertmanager.send(&endpoint(&config), &alert).await

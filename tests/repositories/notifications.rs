@@ -1172,6 +1172,7 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
     assert_eq!(alert.labels["severity"], "warning");
     assert_eq!(alert.labels["chat"], "project-chat");
     assert_eq!(alert.labels["test"], "true");
+    assert_eq!(alert.labels["alertname"], "SoikaIssueCritical");
     assert_eq!(
         alert.annotations["summary"],
         format!("Test alert: {}", project.name)
@@ -1209,6 +1210,17 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
             .ends_with(&format!("/projects/{}", project.slug))
     );
     assert!(db.notifications.active("", 10).await.unwrap().is_empty());
+    Arc::make_mut(&mut db.config).alertmanager_test_alert_kind = "CustomProjectTest".into();
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", &path, body.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["alertname"],
+        "CustomProjectTest"
+    );
     receiver.fail.store(true, Ordering::SeqCst);
     assert_eq!(
         request(&db, InstanceRole::Manager, "POST", &path, body.clone())

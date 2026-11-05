@@ -199,6 +199,7 @@ state at startup, so no additional UI toggle is required.
 | --- | --- | --- |
 | `SERVICE_MANAGEMENT_SOURCE` | `"ui"` | Owns global defaults and channel settings: `ui` or `env` |
 | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `"60"` | Refresh cadence for projects without an override; range `10..86400` |
+| `ALERTMANAGER_TEST_ALERT_KIND` | `"SoikaIssueCritical"` | Overrides `alertname` for project test alerts in every management mode; does not change severity or regular alerts |
 | `ALERTMANAGER_DEFAULT_SEVERITY` | `"critical"` | Default class: `critical`, `warning`, `info`; empty/unset also selects `critical` in env mode |
 | `PROJECT_MANAGEMENT_SOURCE` | `"ui"` | Owns project overrides: `ui` or `yaml` |
 

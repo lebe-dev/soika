@@ -35,6 +35,11 @@ in env mode.
 
 Use **Send test alert** in the monitored project's **Settings** to verify its
 saved global and project labels, effective severity, and annotation templates.
+The test alert's `alertname` is set by `ALERTMANAGER_TEST_ALERT_KIND` (default
+`SoikaIssueCritical`, also when empty). This overrides the configured `alertname`
+template for project tests in every management mode; severity still follows the
+project settings. Regular issue alerts and the general admin connectivity test
+keep their existing alert names.
 Project admins can send tests when the feature and channel are enabled, including
 with configuration-managed settings. Sample event data is rendered with the real
 project and team identity; the link opens the project. The alert has `test=true`,

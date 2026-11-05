@@ -44,6 +44,9 @@ envs:
   # A project's alertmanager_severity takes precedence over this default.
   - name: ALERTMANAGER_DEFAULT_SEVERITY
     value: "critical" # Allowed: "critical" | "warning" | "info".
+  # Alertname for the test button in project Settings, in every management mode.
+  - name: ALERTMANAGER_TEST_ALERT_KIND
+    value: "SoikaIssueCritical"
   # Disable certificate verification only for Alertmanager HTTPS requests.
   - name: ALERTMANAGER_SKIP_TLS
     value: "false"

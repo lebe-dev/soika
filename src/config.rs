@@ -399,6 +399,8 @@ pub struct Config {
     pub webhooks_enabled: bool,
     /// Default Alertmanager base URL; UI/YAML can override it.
     pub alertmanager_url: Option<String>,
+    /// Alertname used by project test sends (`ALERTMANAGER_TEST_ALERT_KIND`).
+    pub alertmanager_test_alert_kind: String,
     /// Env-managed global defaults for project Alertmanager delivery.
     pub alertmanager_default_interval_seconds: i64,
     pub alertmanager_default_severity: Option<crate::domain::notifications::AlertSeverity>,
@@ -451,6 +453,10 @@ impl std::fmt::Debug for Config {
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
             .field("alertmanager_url", &self.alertmanager_url)
+            .field(
+                "alertmanager_test_alert_kind",
+                &self.alertmanager_test_alert_kind,
+            )
             .field(
                 "alertmanager_default_interval_seconds",
                 &self.alertmanager_default_interval_seconds,
@@ -511,6 +517,11 @@ impl Config {
         let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
         let notifications_alertmanager_enabled =
             parse_bool(&env_or("NOTIFICATIONS_ALERTMANAGER_ENABLED", "false"));
+        let alertmanager_test_alert_kind = std::env::var("ALERTMANAGER_TEST_ALERT_KIND")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "SoikaIssueCritical".into());
         let alertmanager_skip_tls = parse_bool(&env_or("ALERTMANAGER_SKIP_TLS", "false"));
         let alertmanager_url = std::env::var("ALERTMANAGER_URL")
             .ok()
@@ -573,6 +584,7 @@ impl Config {
             smtp_enabled,
             webhooks_enabled,
             alertmanager_url,
+            alertmanager_test_alert_kind,
             alertmanager_default_interval_seconds,
             alertmanager_default_severity,
             alertmanager_skip_tls,
@@ -1959,6 +1971,41 @@ mod tests {
 
         clear_oauth_env();
     }
+    #[test]
+    fn alertmanager_test_kind_uses_env_or_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let keys = ["SECRET_KEY", "ALERTMANAGER_TEST_ALERT_KIND"];
+        let previous = keys.map(|key| (key, std::env::var_os(key)));
+        unsafe {
+            std::env::set_var(keys[0], "test-secret");
+        }
+        for (value, expected) in [
+            (None, "SoikaIssueCritical"),
+            (Some(""), "SoikaIssueCritical"),
+            (Some("   "), "SoikaIssueCritical"),
+            (Some(" CustomTest "), "CustomTest"),
+        ] {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(keys[1], value),
+                    None => std::env::remove_var(keys[1]),
+                }
+            }
+            assert_eq!(
+                Config::from_env().unwrap().alertmanager_test_alert_kind,
+                expected
+            );
+        }
+        for (key, value) in previous {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
     #[test]
     fn alertmanager_environment_defaults_validate_interval_and_severity() {
         let _guard = ENV_LOCK.lock().unwrap();
