@@ -40,6 +40,89 @@ from `CONFIG_PATH`. Custom annotations require UI or the existing legacy YAML
 mode. See [notification settings and template variables](NOTIFICATIONS.md) and
 [deployment configuration](OPERATIONS.md#notifications).
 
+## Complete YAML example
+
+The repository's commented [config.example.yaml](../config.example.yaml) includes
+the global interval, project overrides, severity classes and routing labels.
+For a local binary, copy it into your configuration file:
+
+```sh
+cp config.example.yaml ./soika-config.yaml
+```
+
+Add these settings to the service environment (or `.env` for local development),
+replacing the Alertmanager and public Soika URLs:
+
+```dotenv
+NOTIFICATIONS_ALERTMANAGER_ENABLED=true
+ALERTMANAGER_URL=http://alertmanager.monitoring:9093
+BASE_URL=https://errors.example.com
+SERVICE_MANAGEMENT_SOURCE=env
+PROJECT_MANAGEMENT_SOURCE=yaml
+TEAM_MANAGEMENT_SOURCE=yaml
+CONFIG_PATH=./soika-config.yaml
+ALERTMANAGER_DEFAULT_LABELS=chat=service-general-status
+```
+
+`CONFIG_PATH` is resolved from the service's working directory. In a container,
+mount the file and set `CONFIG_PATH` to its path inside the container. Keep the
+deployment's existing secret key, database and other required settings.
+
+The following is a complete minimal alternative to the commented example file:
+
+```yaml
+version: 1
+alertmanager_interval_seconds: 300
+teams:
+  - name: Platform
+    members: []
+  - name: Web
+    members: []
+projects:
+  - slug: backend-api
+    name: Backend API
+    team: Platform
+    alertmanager_interval_seconds: 120
+    alertmanager_severity: critical
+  - slug: frontend
+    name: Frontend
+    team: Web
+    alertmanager_severity: warning
+```
+
+| Project | Refresh interval | Alertmanager severity |
+| --- | --- | --- |
+| `backend-api` | 120 seconds (project override) | `critical` |
+| `frontend` | 300 seconds (global value) | `warning` |
+
+`info` is also supported. Omit `alertmanager_severity` or set it to `null` to use
+the notification label template (Sentry event level by default); omit a project
+interval or set it to `null` to inherit the global interval.
+
+Restart Soika after editing YAML or environment variables. Env mode enables the
+channel from `NOTIFICATIONS_ALERTMANAGER_ENABLED` and uses `ALERTMANAGER_URL`;
+there is no additional UI channel toggle to enable. Configure an Alertmanager
+route for `chat="service-general-status"` as shown [below](#chat-formatting-and-status).
+Send a new SDK issue to each project to check the resulting labels. The admin
+test alert uses fixed test labels and does not exercise project overrides.
+
+YAML project/team management reconciles all projects and teams: entries missing
+from the file follow the configured orphan policies. Merge existing entities
+into your real configuration before enabling these sources; see
+[GitOps behavior](OPERATIONS.md#configuration-as-code-gitops).
+
+### The same settings through the UI
+
+Set `PROJECT_MANAGEMENT_SOURCE=ui` and `SERVICE_MANAGEMENT_SOURCE=ui`, keep the
+Alertmanager feature flag and URL above, and restart. Enable and save the channel
+in **Admin → Notifications**, then save a global refresh interval of `300`.
+In **backend-api → Settings**, disable **Use global interval**, save `120`, and
+select and save severity `critical`. In **frontend → Settings**, keep **Use global
+interval** enabled and select severity `warning`. These UI changes apply without
+a restart. Project admins can change their project settings; the global interval
+requires an instance Owner or Manager. Project settings in YAML are ignored in
+this mode. Team management can retain its existing source.
+
 ## Global and per-project refresh intervals
 
 Refresh cadence is owned by **`PROJECT_MANAGEMENT_SOURCE`**, independently of

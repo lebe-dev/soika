@@ -580,10 +580,13 @@ YAML-managed type are mandatory; empty sections must be explicit. Unknown fields
 duplicate keys/entities, invalid slugs, retention values and webhook URLs fail
 startup. Sections for UI-managed types are ignored. For local development use
 `CONFIG_PATH=deploy/config.yaml`. The repository root contains a commented
-`config.example.yaml` describing every field.
+[config.example.yaml](../config.example.yaml) describing every field. For a
+complete environment and YAML example enabling Alertmanager with different
+project intervals and severities, see [Alertmanager examples](ALERTMANAGER.md#complete-yaml-example).
 
 ```yaml
 version: 1
+alertmanager_interval_seconds: 300 # Global Alertmanager cadence; default 60 seconds.
 teams:
   - name: Platform
     members:
@@ -598,12 +601,22 @@ projects:
     team: Platform
     retention_events: 5000
     retention_days: 30
+    alertmanager_interval_seconds: 120 # Overrides the global cadence.
+    alertmanager_severity: critical # critical, warning, info; omit/null uses notification labels.
     webhook_url: ${BACKEND_WEBHOOK_URL}
 ```
 
 Members have role `admin` or `contributor`. A team must specify `members` or
 `sso_groups`; use `members: []` for an intentionally empty team. File projects
 require `slug`, `name` and `team`.
+
+Alertmanager intervals and project severity are owned by
+`PROJECT_MANAGEMENT_SOURCE`. With `yaml`, the root interval defaults to 60 seconds;
+omitting a project's interval makes it inherit the global value. Omitting
+`alertmanager_severity` restores the existing severity label template. With `ui`,
+these YAML settings are ignored; edit the global interval in **Admin → Notifications**
+and project overrides in **Project → Settings**. Enabling the Alertmanager channel
+is a separate setting; see the [complete setup](ALERTMANAGER.md#complete-yaml-example).
 
 The slug is the project's address in the web UI (`/projects/{slug}`), so the
 file enforces a strict rule: 1–48 characters from `a-z`, `0-9` and `-`, with no

@@ -1,4 +1,13 @@
 # Example declarative configuration for Soika.
+# Setup and ready-to-use Alertmanager examples: docs/ALERTMANAGER.md.
+# Example environment (copy/mount this file at CONFIG_PATH):
+# CONFIG_PATH=/etc/soika/config.yaml
+# PROJECT_MANAGEMENT_SOURCE=yaml
+# TEAM_MANAGEMENT_SOURCE=yaml
+# SERVICE_MANAGEMENT_SOURCE=env
+# NOTIFICATIONS_ALERTMANAGER_ENABLED=true
+# ALERTMANAGER_URL=http://alertmanager.monitoring:9093
+# BASE_URL=https://errors.example.com
 # The file is read once at startup from CONFIG_PATH (default /etc/soika/config.yaml);
 # restart the service to apply changes. Each section is used only when its
 # management source selects the file; sections owned by the UI are ignored.
@@ -7,6 +16,11 @@
 
 # Schema version; must be 1.
 version: 1
+
+# Global Alertmanager refresh interval in seconds (10..86400; default 60).
+# Read when PROJECT_MANAGEMENT_SOURCE=yaml, independently of notification
+# ownership. A project without its own interval inherits this value.
+alertmanager_interval_seconds: 300
 
 # Teams, read when TEAM_MANAGEMENT_SOURCE=yaml. Required in that mode
 # (use `teams: []` explicitly for none). Teams are matched by name: renaming
@@ -39,11 +53,22 @@ projects:
     team: Platform # Owning team; must exist in the file or in the UI.
     retention_events: 5000 # Max stored events (>= 1); default DEFAULT_EVENTS_RETENTION.
     retention_days: 30 # Max event age in days; 0 or omitted falls back to DEFAULT_RETENTION_DAYS.
+    # Refresh this project's active alerts every 120 seconds, overriding 300 above.
+    alertmanager_interval_seconds: 120
+    # Alertmanager class: critical, warning or info. Overrides the severity label
+    # from notification templates and project_labels; does not change event levels.
+    # Omit or set null to use the existing template ({{ level }} by default).
+    alertmanager_severity: critical
     # Outgoing webhook (http/https); omit to disable this channel.
     # webhook_url: ${BACKEND_WEBHOOK_URL}
   - slug: frontend
     name: Frontend
     team: Web
+    # No interval override: inherits the global 300 seconds.
+    alertmanager_severity: warning
+    # To remove overrides and restore defaults explicitly:
+    # alertmanager_interval_seconds: null
+    # alertmanager_severity: null
 
 # Notifications. With SERVICE_MANAGEMENT_SOURCE=env only
 # alertmanager.project_labels is read; with ui the section is ignored.
@@ -51,10 +76,13 @@ notifications:
   alertmanager:
     # Extra Alertmanager labels per project slug; they override default labels
     # with the same name. Values accept templates such as {{ level }}.
+    # An explicit projects[].alertmanager_severity takes precedence over severity
+    # from this map. Routing labels do not enable the channel: set
+    # NOTIFICATIONS_ALERTMANAGER_ENABLED=true and ALERTMANAGER_URL as documented.
     project_labels:
       backend-api:
         team: platform
-        severity: '{{ level }}'
+        chat: service-general-status
       frontend:
         team: web
 
