@@ -2,17 +2,12 @@
 
 Soika sends new issues and regressions directly to `/api/v2/alerts`, then
 periodically refreshes active alerts until they are resolved or muted.
-Alertmanager handles grouping, routing and delivery to chat. vmalert can send
-metric alerts from VMRule resources to the same Alertmanager:
+Alertmanager handles grouping, routing and delivery to chat:
 
 ```text
-Sentry SDK → Soika ───────────────────────────→ Alertmanager → receiver → chat
-Service metrics → VictoriaMetrics → vmalert ──→ Alertmanager
-                                      ↑ VMRule
+Sentry SDK → Soika → Alertmanager → receiver → chat
 ```
 
-VMRule resources monitor metrics; they do not process Soika issues. The `hbb_*`
-metrics below belong to happybirthday-bot and are not exported by Soika.
 The project [webhook](WEBHOOKS.md) is a separate delivery channel.
 
 ## Minimal setup
@@ -163,8 +158,8 @@ For example, with `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS=300` and
 ```yaml
 version: 1
 projects:
-  - slug: happybirthday-bot
-    name: happybirthday-bot
+  - slug: backend-api
+    name: Backend API
     team: platform
     alertmanager_interval_seconds: 120
     alertmanager_severity: critical
@@ -230,8 +225,8 @@ rather than enforcing a severity enum.
 ```yaml
 version: 1
 projects:
-  - slug: happybirthday-bot
-    name: happybirthday-bot
+  - slug: backend-api
+    name: Backend API
     team: platform
     alertmanager_severity: critical
   - slug: backend
@@ -267,18 +262,39 @@ Instance Owners and Managers can set the default with
 `GET /api/settings/notifications` includes `default_severity` and the global
 interval. In env mode these global write endpoints return `403`.
 
+## The `soika` notification group
+
+Use `soika` as the shared group label and three severity classes across services:
+
+| Group | Severity | Title template |
+| --- | --- | --- |
+| `soika` | `critical` | `{{ project_name }}: {{ title }}` |
+| `soika` | `warning` | `{{ project_name }}: {{ title }}` |
+| `soika` | `info` | `{{ project_name }}: {{ title }}` |
+
+Each issue produces an alert with its effective project severity; the three
+rows are classes, not three copies of every issue. All classes use the same
+annotation templates below. Alertmanager groups by `group`, `severity` and
+`project` so different services and severity classes remain separate.
+
+Soika currently sends these alerts directly to Alertmanager. It does not export
+issue metrics for vmalert. A Kubernetes `VMRule` named `soika` with three rules
+would require an additional datasource containing the issues and their severity
+and context. The configuration below applies to the existing direct integration.
+
 ## Short summaries, details and actions
 
-Soika's default summary is `{{ title }}`, which can contain a long HTTP error,
-URL and JSON. A receiver that prints only summary will show that raw line.
-Prefer a short service/problem summary, context and action in description,
-and a separate link to the issue or runbook.
+Use a shared title template for all three severity classes:
+`{{ project_name }}: {{ title }}`. Here `project_name` is the service's Soika
+project name and `title` is the issue title.
+Keep the error location, environment, release, event count and issue link in the
+description.
 
 For example, replace annotations in **Admin → Notifications** with:
 
 ```json
 {
-  "summary": "{{ project_name }}: application error",
+  "summary": "{{ project_name }}: {{ title }}",
   "description": "Error: {{ title }}\nLocation: {{ culprit }}\nEnvironment: {{ environment }}\nRelease: {{ release }}\nEvents: {{ event_count }}\nLast seen: {{ last_seen }}\nOpen the issue and inspect the latest event and stack trace.\nSoika: {{ issue_url }}",
   "issue_url": "{{ issue_url }}",
   "trigger": "{{ trigger }}"
@@ -290,6 +306,7 @@ Example routing labels:
 ```json
 {
   "alertname": "SoikaIssue",
+  "group": "soika",
   "project": "{{ project_slug }}",
   "job": "{{ project_slug }}",
   "severity": "{{ level }}",
@@ -297,16 +314,17 @@ Example routing labels:
 }
 ```
 
-Soika always adds `issue_id` and `project_id`. Its severity uses Sentry levels
-(`fatal`, `error`, `warning`, `info`, `debug`); the VMRule examples use `critical`
-and `warning`. Account for both in routes or select an explicit project severity
-as described above. Keep titles, counts and timestamps in annotations:
-changing a label creates a different alert identity.
+Soika always adds `issue_id` and `project_id`. Use the global and per-project
+severity settings above to select `critical`, `warning` or `info`. When both
+settings are cleared, the `{{ level }}` label template falls back to Sentry event
+levels (`fatal`, `error`, `warning`, `info`, `debug`), which do not match this
+three-class scheme.
+Keep titles, counts and timestamps in annotations: changing a label creates a
+different alert identity.
 
 Soika supports literal `{{ variable }}` substitution only, without conditions,
-filters or `$labels`. Templates apply across projects and cannot turn arbitrary
-logs into a diagnosis such as “KeyHub rejected the signature”. Metric rules can
-provide precise descriptions of known conditions, as shown below.
+filters or `$labels`. See [template variables](NOTIFICATIONS.md#templates-and-variables)
+for all available fields.
 
 ## Chat formatting and status
 
@@ -340,7 +358,7 @@ templates:
   - /etc/alertmanager/templates/*.tmpl
 route:
   receiver: fallback
-  group_by: [cluster, job, project, alertname]
+  group_by: [group, severity, project, alertname]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
@@ -372,316 +390,20 @@ currently prints only summary or always adds a green check mark. Iterate over
 `alerts[]`: `commonAnnotations` contains only values shared by every alert, so
 individual descriptions may be absent there.
 
-Expected metric alert message:
+Expected Soika issue message:
 
 ```text
 🔥 Active [critical]
-happybirthday-bot: birthday cache has not been populated
-Cluster: k8s-internal
-Instance: 10.0.0.15:8080
-No KeyHub fetch has succeeded for 30 minutes. Sending will be skipped.
-Check KEYHUB_SECRET_KEY and KeyHub availability.
+Backend API: ValueError: invalid order status
+Error: ValueError: invalid order status
+Location: app.checkout
+Environment: production
+Release: 1.0.0
+Events: 42
+Last seen: 2026-01-01T12:00:00Z
+Open the issue and inspect the latest event and stack trace.
+Soika: https://errors.example.com/projects/backend-api/issues/iss001
 ```
 
 For Soika issues, “Closed” means the alert ended, which can also result from
 mute, deletion or channel disablement. It does not establish service recovery.
-
-## VMRule example: happybirthday-bot
-
-Every description below ends with a link to the source Soika host. Replace
-`https://errors.example.com` with your public `BASE_URL` and
-`happybirthday-bot` with the actual Soika project slug before deploying.
-
-A metric alert does not carry a Soika issue/event ID, and can fire without any
-corresponding SDK event (for example, when a pod is down). The runnable examples
-therefore link to the project's issues. When a rule has a known matching issue,
-replace its final description line with a link copied from that issue:
-
-```text
-Soika: https://errors.example.com/projects/happybirthday-bot/issues/<issue_short_id>
-```
-
-Replace `<issue_short_id>` with the real public issue ID; this is a URL pattern,
-not a deployable link. The issue page opens its latest event and lets engineers
-navigate earlier events. Soika currently has no browser URL for selecting an
-individual event by ID. Do not invent an event URL or attach an unrelated issue.
-For alerts sent directly by Soika, `{{ issue_url }}` already identifies the
-correct issue; the Soika annotation example above appends it to the body.
-Keep these links in annotations so they do not change alert identity.
-
-
-Check metric names, scrape labels and thresholds in your datasource before
-applying this example. The input selector uses
-`job="k8s-internal-happybirthday-bot"`; the rule label `job: happybirthday-bot`
-sets the service name for routing. If several clusters share the same scrape
-job, add their source cluster label to every selector and to aggregation and
-matching keys.
-
-Your VMAlert must select this resource through `ruleSelector` and
-`ruleNamespaceSelector`; add any required metadata labels. It must query the
-appropriate datasource and notify the same Alertmanager. See the
-[VMRule documentation](https://docs.victoriametrics.com/operator/resources/vmrule/)
-and [VMAlert rule selection](https://docs.victoriametrics.com/operator/resources/vmalert/).
-
-```yaml
-apiVersion: operator.victoriametrics.com/v1beta1
-kind: VMRule
-metadata:
-  name: happybirthday-bot
-  namespace: monitoring
-spec:
-  groups:
-    - name: happybirthday-bot
-      interval: 60s
-      rules:
-        - alert: HBBDown
-          expr: up{job="k8s-internal-happybirthday-bot"} == 0
-          for: 10m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: pod is not responding to scrapes'
-            description: |-
-              Instance {{ $labels.instance }} has been unreachable for more than 10 minutes.
-              Check pod status, the port, scrape annotations and /healthz.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBCacheNeverPopulated
-          expr: hbb_cache_ready{job="k8s-internal-happybirthday-bot"} == 0
-          for: 30m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: birthday cache has not been populated'
-            description: |-
-              No KeyHub fetch has succeeded since {{ $labels.instance }} started.
-              Sending will be skipped with outcome not_ready.
-              Check KEYHUB_SECRET_KEY, KEYHUB_BASE_URL and KeyHub availability.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBKeyHubStale
-          expr: |
-            (time() - hbb_keyhub_last_success_timestamp_seconds{job="k8s-internal-happybirthday-bot"}) > 6 * 3600
-            and
-            hbb_keyhub_last_success_timestamp_seconds{job="k8s-internal-happybirthday-bot"} > 0
-          for: 15m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: KeyHub data is stale'
-            description: |-
-              The last successful fetch on {{ $labels.instance }} was more than 6 hours ago.
-              New and departed employees are not reflected. Check fetch errors and KeyHub availability.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBKeyHubFetchErrors
-          expr: increase(hbb_keyhub_fetch_total{job="k8s-internal-happybirthday-bot",result="error"}[2h]) >= 2
-          for: 5m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: repeated KeyHub fetch failures'
-            description: |-
-              Fetching on {{ $labels.instance }} failed at least twice in 2 hours.
-              The previous cache is retained. Inspect KeyHub request logs.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBKeyHubUnauthorized
-          expr: increase(hbb_keyhub_http_requests_total{job="k8s-internal-happybirthday-bot",code=~"401|403"}[1h]) > 0
-          for: 5m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: KeyHub rejects requests ({{ $labels.code }})'
-            description: |-
-              KeyHub returned {{ $labels.code }} on {{ $labels.instance }}.
-              Check KEYHUB_SECRET_KEY, KEYHUB_APP_ID and request signature rules.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBKeyHubHTTPErrors
-          expr: increase(hbb_keyhub_http_requests_total{job="k8s-internal-happybirthday-bot",code!~"200|401|403"}[1h]) > 0
-          for: 15m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: KeyHub HTTP errors ({{ $labels.code }})'
-            description: |-
-              Requests on {{ $labels.instance }} failed with code {{ $labels.code }} in the last hour.
-              code="error" means a network error or timeout. Check KeyHub and network policies.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBKeyHubSlow
-          expr: |
-            increase(hbb_keyhub_fetch_duration_seconds_sum{job="k8s-internal-happybirthday-bot"}[6h])
-            /
-            increase(hbb_keyhub_fetch_duration_seconds_count{job="k8s-internal-happybirthday-bot"}[6h]) > 30
-          for: 30m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: KeyHub fetches are slow'
-            description: |-
-              The average full fetch duration over 6 hours on {{ $labels.instance }} exceeds 30 seconds.
-              Updates may exceed the 2-minute cycle timeout. Check KeyHub latency.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBSendFailed
-          expr: increase(hbb_pachca_send_total{job="k8s-internal-happybirthday-bot",result="error"}[15m]) > 0
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: failed to send a birthday message to Pachca'
-            description: |-
-              Sending on {{ $labels.instance }} failed; the deduplication marker was not set.
-              A retry may occur on restart or at the next SEND_AT; today's message may be missed.
-              Check the Pachca response, token and bot channel permissions.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBPachcaAuthError
-          expr: increase(hbb_pachca_send_errors_total{job="k8s-internal-happybirthday-bot",kind="auth"}[24h]) > 0
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: Pachca authentication failed'
-            description: |-
-              Pachca returned an authentication error.
-              Check PACHCA_TOKEN and bot access to PACHCA_CHANNEL_ID.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBRenderError
-          expr: increase(hbb_congratulate_total{job="k8s-internal-happybirthday-bot",outcome="render_error"}[1h]) > 0
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: failed to render the birthday message'
-            description: |-
-              There are birthdays to announce, but the message could not be rendered.
-              Check phrases.yaml in the ConfigMap and the rendering error in logs.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBSendSkippedNotReady
-          expr: increase(hbb_congratulate_total{job="k8s-internal-happybirthday-bot",outcome="not_ready"}[1h]) > 0
-          for: 5m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: sending skipped because the cache was not ready'
-            description: |-
-              The birthday cache on {{ $labels.instance }} was empty at send time; no message was sent.
-              Check KeyHub fetch errors.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBDailyRunMissing
-          expr: |
-            sum by (instance) (increase(hbb_congratulate_total{job="k8s-internal-happybirthday-bot"}[26h])) == 0
-            and on (instance)
-            (time() - hbb_start_time_seconds{job="k8s-internal-happybirthday-bot"}) > 26 * 3600
-          for: 30m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: daily birthday cycle did not run'
-            description: |-
-              No send outcome has been recorded in 26 hours on {{ $labels.instance }}.
-              The pod is older than 26 hours. Check the scheduler, logs and SEND_AT/APP_TZ.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBCacheEmpty
-          expr: |
-            hbb_cache_ready{job="k8s-internal-happybirthday-bot"} == 1
-            and
-            hbb_cache_people{job="k8s-internal-happybirthday-bot"} == 0
-          for: 30m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: critical
-            chat: service-general-status
-          annotations:
-            summary: 'happybirthday-bot: birthday cache is empty'
-            description: |-
-              KeyHub requests succeed but no eligible employees remain ({{ $labels.instance }}).
-              Check KEYHUB_BIRTHDAY_FIELD, KEYHUB_BIRTHDAY_FORMAT and KEYHUB_ACTIVE_ONLY.
-              DEBUG logs contain reasons why records were skipped.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBCachePeopleDropped
-          expr: |
-            hbb_cache_people{job="k8s-internal-happybirthday-bot"}
-            < 0.8 * (hbb_cache_people{job="k8s-internal-happybirthday-bot"} offset 24h)
-          for: 30m
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: employee count in the cache dropped'
-            description: |-
-              The employee count on {{ $labels.instance }} fell by more than 20% in a day (currently {{ $value | printf "%.0f" }}).
-              Check bulk account suspension, filters and fetch completeness.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-
-        - alert: HBBStateWriteErrors
-          expr: increase(hbb_state_write_errors_total{job="k8s-internal-happybirthday-bot"}[1h]) > 0
-          labels:
-            job: happybirthday-bot
-            cluster: k8s-internal
-            severity: warning
-          annotations:
-            summary: 'happybirthday-bot: failed to save the send marker'
-            description: |-
-              The message was sent, but state could not be written to STATE_DIR ({{ $labels.instance }}).
-              Restarting may send a duplicate. Check PVC capacity, permissions and mounts.
-              Soika: https://errors.example.com/projects/happybirthday-bot
-```
-
-Selectors are scoped to this service, cluster is an explicit label, and the
-HTTP warning excludes 401/403 because they have a dedicated critical rule.
-VMRule annotations use vmalert syntax such as `{{ $labels.instance }}` and
-`{{ $value | printf "%.0f" }}`; these expressions do not work in Soika templates.
-
-`increase(...[1h]) > 0` means an error occurred within the history window, not
-necessarily an ongoing failure. The alert may remain active until that error
-leaves the window. `for` requires the condition to remain true for that duration.
-`offset 24h` requires historical data. `up == 0` detects failed scrapes of an
-existing target; detect targets removed from discovery separately, for example
-with `absent(up{job="k8s-internal-happybirthday-bot"})` and a suitable `for`.
-The daily-cycle rule assumes counter series are initialized; missing metrics
-need separate monitoring.
-
-Before deployment, check expressions in the datasource and validate rules with
-your vmalert version. Verify rule loading, firing alerts in Alertmanager, readable
-chat output and a separate resolved message. Escape inner `{{ ... }}` when
-passing these files through Helm `tpl`.
