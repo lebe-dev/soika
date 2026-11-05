@@ -29,10 +29,20 @@ impl Alertmanager {
     pub async fn set_project_labels(&self, labels: BTreeMap<String, BTreeMap<String, String>>) {
         *self.project_labels.write().await = labels;
     }
-    async fn project_config(&self, config: &AlertmanagerConfig, slug: &str) -> AlertmanagerConfig {
+    async fn project_config(
+        &self,
+        config: &AlertmanagerConfig,
+        slug: &str,
+        severity: Option<AlertSeverity>,
+    ) -> AlertmanagerConfig {
         let mut config = config.clone();
         if let Some(labels) = self.project_labels.read().await.get(slug) {
             config.labels.extend(labels.clone());
+        }
+        if let Some(severity) = severity {
+            config
+                .labels
+                .insert("severity".into(), severity.as_str().into());
         }
         config
     }
@@ -137,7 +147,11 @@ pub async fn notify(
     let org = state.settings.get().await?.org_name;
     let project_config = state
         .alertmanager
-        .project_config(&config, &project.slug)
+        .project_config(
+            &config,
+            &project.slug,
+            state.notifications.severity(project.id).await?,
+        )
         .await;
     let mut alert = render_alert(
         &project_config,
@@ -242,7 +256,11 @@ async fn reconcile(
     };
     let project_config = state
         .alertmanager
-        .project_config(config, &project.slug)
+        .project_config(
+            config,
+            &project.slug,
+            state.notifications.severity(project.id).await?,
+        )
         .await;
     let mut alert = render_alert(
         &project_config,

@@ -180,3 +180,65 @@ pub async fn update_project_interval(
         Err(error) => ApiError(error).into_response(),
     }
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeverityRequest {
+    pub severity: Option<crate::domain::notifications::AlertSeverity>,
+}
+
+pub async fn project_severity(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_member(&state, &user, project.id).await {
+        return response;
+    }
+    match state.notifications.severity(project.id).await {
+        Ok(severity) => Json(SeverityRequest { severity }).into_response(),
+        Err(error) => ApiError(error).into_response(),
+    }
+}
+
+pub async fn update_project_severity(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    body: Result<Json<SeverityRequest>, axum::extract::rejection::JsonRejection>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(_) => {
+            return ApiError(Error::validation(
+                "severity must be critical, warning, info or null",
+            ))
+            .into_response();
+        }
+    };
+    if let Err(error) = crate::config_sync::require_ui_management(&state, false) {
+        return ApiError(error).into_response();
+    }
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_admin(&state, &user, project.id).await {
+        return response;
+    }
+    if let Err(error) = state
+        .notifications
+        .set_severity(project.id, body.severity)
+        .await
+    {
+        return ApiError(error).into_response();
+    }
+    tracing::info!(actor_id = %user.id, project_id = %project.id, severity = ?body.severity, "project alert severity updated");
+    Json(body).into_response()
+}

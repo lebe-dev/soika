@@ -4,6 +4,15 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    async fn severity(
+        &self,
+        project_id: crate::domain::Id,
+    ) -> Result<Option<crate::domain::notifications::AlertSeverity>>;
+    async fn set_severity(
+        &self,
+        project_id: crate::domain::Id,
+        severity: Option<crate::domain::notifications::AlertSeverity>,
+    ) -> Result<()>;
     async fn interval(
         &self,
         project_id: Option<crate::domain::Id>,

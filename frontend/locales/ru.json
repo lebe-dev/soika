@@ -605,5 +605,10 @@
   "alertmanager_interval_inherit": "Использовать глобальный интервал",
   "alertmanager_interval_effective": "Действующий интервал: {seconds} секунд",
   "alertmanager_interval_save": "Сохранить интервал",
-  "alertmanager_interval_yaml": "Интервалы задаются через YAML (PROJECT_MANAGEMENT_SOURCE)."
+  "alertmanager_interval_yaml": "Интервалы задаются через YAML (PROJECT_MANAGEMENT_SOURCE).",
+  "alertmanager_severity_title": "Severity для Alertmanager",
+  "alertmanager_severity_help": "Класс всех алертов проекта. Переопределяет label severity, сохраняя исходный уровень события.",
+  "alertmanager_severity_default": "Из шаблона уведомлений (по умолчанию — уровень события)",
+  "alertmanager_severity_save": "Сохранить severity",
+  "alertmanager_severity_yaml": "Severity задаётся через YAML (PROJECT_MANAGEMENT_SOURCE)."
 }

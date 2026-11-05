@@ -246,3 +246,34 @@ pub fn validate_interval(seconds: i64) -> Result<()> {
     }
     Ok(())
 }
+
+/// Project alert classes. Event levels remain unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertSeverity {
+    Critical,
+    Warning,
+    Info,
+}
+impl AlertSeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Critical => "critical",
+            Self::Warning => "warning",
+            Self::Info => "info",
+        }
+    }
+}
+impl std::str::FromStr for AlertSeverity {
+    type Err = Error;
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "critical" => Ok(Self::Critical),
+            "warning" => Ok(Self::Warning),
+            "info" => Ok(Self::Info),
+            _ => Err(Error::validation(
+                "severity must be critical, warning or info",
+            )),
+        }
+    }
+}

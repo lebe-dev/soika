@@ -87,3 +87,28 @@ fn alertmanager_intervals_follow_project_yaml_ownership() {
     );
     assert!(parse(&text.replace("seconds: 120", "seconds: 0"), &settings).is_err());
 }
+
+#[test]
+fn project_alertmanager_severity_follows_yaml_ownership_and_rejects_unknown_classes() {
+    let mut settings = ManagementSettings::default();
+    let yaml = "version: 1\nprojects:\n  - {slug: api, name: API, team: platform, alertmanager_severity: critical}\n";
+    assert!(parse(yaml, &settings).unwrap().projects.is_none());
+    settings.project_source = ManagementSource::Yaml;
+    let file = parse(yaml, &settings).unwrap();
+    assert_eq!(
+        file.projects.unwrap()[0]
+            .alertmanager_severity
+            .unwrap()
+            .as_str(),
+        "critical"
+    );
+    assert!(parse(&yaml.replace("critical", "urgent"), &settings).is_err());
+    assert!(
+        parse(&yaml.replace("critical", "null"), &settings)
+            .unwrap()
+            .projects
+            .unwrap()[0]
+            .alertmanager_severity
+            .is_none()
+    );
+}

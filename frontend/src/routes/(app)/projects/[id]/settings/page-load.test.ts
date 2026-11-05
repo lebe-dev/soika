@@ -5,6 +5,7 @@ vi.mock('$lib/api', async () => {
   return {
     ...actual,
     notifications: {
+      projectSeverity: vi.fn().mockResolvedValue({ severity: null }),
       projectInterval: vi
         .fn()
         .mockResolvedValue({ interval_seconds: null, effective_interval_seconds: 60 })

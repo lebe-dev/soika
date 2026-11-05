@@ -690,3 +690,43 @@ async fn sync_alertmanager_intervals_and_reset_overrides() {
         "UI values survive startup synchronization"
     );
 }
+
+#[tokio::test]
+async fn sync_project_alertmanager_severity_and_clear_override() {
+    use soika::domain::notifications::AlertSeverity;
+    let db = test_db().await;
+    let mut file = desired();
+    file.projects.as_mut().unwrap()[0].alertmanager_severity = Some(AlertSeverity::Warning);
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    let project = db.projects.find_by_slug("api").await.unwrap().unwrap();
+    assert_eq!(
+        db.notifications.severity(project.id).await.unwrap(),
+        Some(AlertSeverity::Warning)
+    );
+    assert_eq!(
+        db.config_sync
+            .apply(&file, &settings(), 1000)
+            .await
+            .unwrap()
+            .unchanged,
+        2
+    );
+    file.projects.as_mut().unwrap()[0].alertmanager_severity = Some(AlertSeverity::Critical);
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.notifications.severity(project.id).await.unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+    file.projects.as_mut().unwrap()[0].alertmanager_severity = None;
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(db.notifications.severity(project.id).await.unwrap(), None);
+}

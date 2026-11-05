@@ -57,6 +57,7 @@ pub struct ConfigFile {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectConfig {
+    pub alertmanager_severity: Option<super::notifications::AlertSeverity>,
     pub alertmanager_interval_seconds: Option<i64>,
     pub slug: String,
     pub name: String,

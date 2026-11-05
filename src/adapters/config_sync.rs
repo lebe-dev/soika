@@ -285,13 +285,17 @@ where
                 .ok_or_else(|| {
                     Error::validation(format!("project {} references an unknown team", p.slug))
                 })?;
-        let existing = sqlx::query::<DB>(DB::sql("SELECT id, name, team_id, retention_events, retention_days, webhook_url, alertmanager_interval_seconds, orphaned_at FROM \
+        let existing = sqlx::query::<DB>(DB::sql("SELECT id, name, team_id, retention_events, retention_days, webhook_url, alertmanager_interval_seconds, alertmanager_severity, orphaned_at FROM \
             projects WHERE slug = ?"))
             .bind(p.slug.clone())
             .fetch_optional(&mut **tx).await?;
         let events = p.retention_events.unwrap_or(retention);
         let days = p.retention_days.unwrap_or(0);
         let interval = p.alertmanager_interval_seconds.unwrap_or(0);
+        let severity = p
+            .alertmanager_severity
+            .map_or("", |value| value.as_str())
+            .to_string();
         if interval != 0 {
             crate::domain::notifications::validate_interval(interval)?;
         }
@@ -303,17 +307,19 @@ where
                 || row.try_get::<i64, _>("retention_events")? != events
                 || row.try_get::<i64, _>("retention_days")? != days
                 || row.try_get::<Option<String>, _>("webhook_url")? != p.webhook_url
-                || row.try_get::<i64, _>("alertmanager_interval_seconds")? != interval;
+                || row.try_get::<i64, _>("alertmanager_interval_seconds")? != interval
+                || row.try_get::<String, _>("alertmanager_severity")? != severity;
             let action = plan_present(true, orphaned.is_some(), changed);
             if action != SyncActionKind::Unchanged {
                 sqlx::query::<DB>(DB::sql("UPDATE projects SET name = ?, team_id = ?, retention_events = ?, retention_days = ?, \
-            webhook_url = ?, alertmanager_interval_seconds = ?, orphaned_at = NULL, updated_at = ? WHERE id = ?"))
+            webhook_url = ?, alertmanager_interval_seconds = ?, alertmanager_severity = ?, orphaned_at = NULL, updated_at = ? WHERE id = ?"))
                     .bind(p.name.clone())
                     .bind(team_id.clone())
                     .bind(events)
                     .bind(days)
                     .bind(p.webhook_url.clone())
                     .bind(interval)
+                    .bind(severity.clone())
                     .bind(now.clone())
                     .bind(id.clone())
                     .execute(&mut **tx).await?;
@@ -324,7 +330,7 @@ where
             let short_id = crate::adapters::short_id::generate_short_id();
             let dsn = Id::new_v4().simple().to_string();
             sqlx::query::<DB>(DB::sql("INSERT INTO projects(id, short_id, team_id, name, slug, dsn_public_key, retention_events, \
-            retention_days, webhook_url, alertmanager_interval_seconds, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
+            retention_days, webhook_url, alertmanager_interval_seconds, alertmanager_severity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
                 .bind(id.clone())
                 .bind(short_id.clone())
                 .bind(team_id.clone())
@@ -335,6 +341,7 @@ where
                 .bind(days)
                 .bind(p.webhook_url.clone())
                 .bind(interval)
+                .bind(severity.clone())
                 .bind(now.clone())
                 .bind(now.clone())
                 .execute(&mut **tx).await?;

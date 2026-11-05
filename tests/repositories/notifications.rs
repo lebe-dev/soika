@@ -915,3 +915,112 @@ async fn project_interval_api_overrides_inherits_and_enforces_project_access() {
     let (status, _) = request(&db, InstanceRole::Owner, "GET", &uri, serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn project_severity_overrides_labels_and_closes_the_previous_alert_identity() {
+    use soika::domain::notifications::AlertSeverity;
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(receiver.snapshot()[0].labels["severity"], "error");
+    db.alertmanager
+        .set_project_labels(std::collections::BTreeMap::from([(
+            project.slug.clone(),
+            std::collections::BTreeMap::from([("severity".into(), "info".into())]),
+        )]))
+        .await;
+    db.notifications
+        .set_severity(project.id, Some(AlertSeverity::Critical))
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    let alerts = receiver.snapshot();
+    assert_eq!(alerts.len(), 3);
+    assert_eq!(alerts[1].labels["severity"], "error");
+    assert!(alerts[1].ends_at <= db.clock.now());
+    assert_eq!(alerts[2].labels["severity"], "critical");
+    db.notifications
+        .set_severity(project.id, None)
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    let alerts = receiver.snapshot();
+    assert_eq!(alerts[3].labels["severity"], "critical");
+    assert!(alerts[3].ends_at <= db.clock.now());
+    assert_eq!(
+        alerts[4].labels["severity"], "info",
+        "clearing restores the legacy project label"
+    );
+}
+
+#[tokio::test]
+async fn project_severity_api_validates_classes_and_honors_project_ownership() {
+    let mut db = notification_db().await;
+    let project_id = seed_project(&db).await;
+    let project = db.projects.find_by_id(project_id).await.unwrap().unwrap();
+    let uri = format!("/api/projects/{}/alertmanager-severity", project.slug);
+    for severity in ["critical", "warning", "info"] {
+        let (status, view) = request(
+            &db,
+            InstanceRole::Owner,
+            "PUT",
+            &uri,
+            serde_json::json!({"severity": severity}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(view["severity"], severity);
+    }
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        &uri,
+        serde_json::json!({"severity": "urgent"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "PUT",
+        &uri,
+        serde_json::json!({"severity": "critical"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "GET",
+        &uri,
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, view) = request(
+        &db,
+        InstanceRole::Manager,
+        "PUT",
+        &uri,
+        serde_json::json!({"severity": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(view["severity"].is_null());
+    Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        &uri,
+        serde_json::json!({"severity": "info"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(&db, InstanceRole::Owner, "GET", &uri, serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+}

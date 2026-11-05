@@ -15,7 +15,7 @@ process stops are not retried.
 
 ## Alertmanager
 
-For a setup walkthrough, readable messages and VMRule examples, see
+For a setup walkthrough, project severity classes, readable messages and VMRule examples, see
 [Alertmanager integration](ALERTMANAGER.md).
 
 This channel sends an array of alerts to the Prometheus Alertmanager
@@ -123,7 +123,9 @@ notifications:
         team: web
 ```
 
-Project labels override defaults with the same name. They are loaded at startup;
+Project labels override defaults with the same name. An explicit project
+`alertmanager_severity` overrides the severity label from either map; it follows
+`PROJECT_MANAGEMENT_SOURCE=ui|yaml`. See [project severity](ALERTMANAGER.md#per-project-severity). They are loaded at startup;
 restart to apply changes. A missing configuration file leaves project labels empty
 when projects and teams are managed in the UI. The `notifications` section's other
 fields are ignored in env mode.

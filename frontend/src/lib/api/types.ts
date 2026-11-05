@@ -565,6 +565,10 @@ export interface AlertmanagerConfig {
 export interface NotificationConfig {
   alertmanager: AlertmanagerConfig;
 }
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+export interface ProjectAlertSeverity {
+  severity: AlertSeverity | null;
+}
 export interface AlertmanagerInterval {
   interval_seconds: number | null;
   effective_interval_seconds: number;

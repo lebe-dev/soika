@@ -605,5 +605,10 @@
   "alertmanager_interval_inherit": "Use global interval",
   "alertmanager_interval_effective": "Effective interval: {seconds} seconds",
   "alertmanager_interval_save": "Save interval",
-  "alertmanager_interval_yaml": "Intervals are managed through YAML (PROJECT_MANAGEMENT_SOURCE)."
+  "alertmanager_interval_yaml": "Intervals are managed through YAML (PROJECT_MANAGEMENT_SOURCE).",
+  "alertmanager_severity_title": "Alertmanager severity",
+  "alertmanager_severity_help": "Classify all alerts from this project. This overrides the severity label without changing the original event level.",
+  "alertmanager_severity_default": "Use notification template (event level by default)",
+  "alertmanager_severity_save": "Save severity",
+  "alertmanager_severity_yaml": "Severity is managed through YAML (PROJECT_MANAGEMENT_SOURCE)."
 }

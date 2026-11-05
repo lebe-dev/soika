@@ -15,6 +15,41 @@ impl PgNotificationRepository {
 }
 #[async_trait]
 impl NotificationRepository for PgNotificationRepository {
+    async fn severity(
+        &self,
+        project_id: crate::domain::Id,
+    ) -> Result<Option<crate::domain::notifications::AlertSeverity>> {
+        let value: String =
+            sqlx::query_scalar("SELECT alertmanager_severity FROM projects WHERE id = $1")
+                .bind(project_id)
+                .fetch_one(&self.db)
+                .await?;
+        if value.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(value.parse()?))
+    }
+    async fn set_severity(
+        &self,
+        project_id: crate::domain::Id,
+        severity: Option<crate::domain::notifications::AlertSeverity>,
+    ) -> Result<()> {
+        let value = severity.map_or("", |value| value.as_str());
+        retry_write(
+            &WritePolicy::default(),
+            "set project alert severity",
+            || async {
+                sqlx::query("UPDATE projects SET alertmanager_severity = $1 WHERE id = $2")
+                    .bind(value)
+                    .bind(project_id)
+                    .execute(&self.db)
+                    .await?;
+                Ok(())
+            },
+        )
+        .await
+    }
+
     async fn interval(
         &self,
         project_id: Option<crate::domain::Id>,

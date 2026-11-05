@@ -6,6 +6,8 @@
 import { http, type Fetch } from './client';
 import type {
   AlertmanagerInterval,
+  ProjectAlertSeverity,
+  AlertSeverity,
   NotificationConfig,
   NotificationView,
   AlertmanagerAlert,
@@ -192,6 +194,10 @@ export const teams = {
 };
 
 export const notifications = {
+  projectSeverity: (id: string, ctx?: Ctx) =>
+    http.get<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, { fetch: ctx?.fetch }),
+  setProjectSeverity: (id: string, severity: AlertSeverity | null) =>
+    http.put<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, { body: { severity } }),
   projectInterval: (id: string, ctx?: Ctx) =>
     http.get<AlertmanagerInterval>(`/projects/${id}/alertmanager-interval`, { fetch: ctx?.fetch }),
   setProjectInterval: (id: string, seconds: number | null) =>

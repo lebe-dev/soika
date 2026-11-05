@@ -64,6 +64,11 @@ pub fn build(state: AppState) -> Router {
                 .delete(api::projects::delete),
         )
         .route(
+            "/projects/{id}/alertmanager-severity",
+            get(api::notifications::project_severity)
+                .put(api::notifications::update_project_severity),
+        )
+        .route(
             "/projects/{id}/alertmanager-interval",
             get(api::notifications::project_interval)
                 .put(api::notifications::update_project_interval),
