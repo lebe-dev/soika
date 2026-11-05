@@ -193,7 +193,11 @@
 
 <div class="reveal space-y-6">
   <div>
-    <BackLink href={`/projects/${projectId}`} label={$t('issues')} />
+    <BackLink
+      href={`/projects/${projectId}`}
+      label={$t('issues')}
+      highlighted={issue.status === 'resolved'}
+    />
   </div>
 
   <!-- Hero: severity rail, level, title, culprit, actions -->

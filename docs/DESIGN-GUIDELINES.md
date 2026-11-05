@@ -113,6 +113,9 @@ Rules:
   `SegmentedControl` pushed right with `sm:ml-auto`); then the content.
 - **Detail page** (project, team, profile): `EntityHeader` with back link,
   tile avatar, title and stat pills; underline tabs for sub-sections.
+- **Resolved issue / event detail**: highlight the "‹ Issues" back link in
+  the primary color to guide the next step back to the issue list. Reopening
+  the issue restores the muted link color.
 - **Project cards** (dashboard): identity row (avatar, name, mono slug,
   favourite) and a hairline-separated footer that carries the one number that
   matters — the unresolved count in large tabular digits, or a green dot with
