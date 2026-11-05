@@ -351,3 +351,69 @@ pub async fn send_test(state: &AppState, locale: crate::domain::Locale) -> Resul
     };
     state.alertmanager.send(&endpoint(&config), &alert).await
 }
+
+/// Send a synthetic alert through the project's real routing configuration.
+/// No issue or lifecycle record is created; the alert expires after five minutes.
+pub async fn send_project_test(
+    state: &AppState,
+    project: &Project,
+    locale: crate::domain::Locale,
+) -> Result<()> {
+    if !state.config.notifications_alertmanager_enabled {
+        return Err(Error::Forbidden("Alertmanager feature is disabled".into()));
+    }
+    let config = state
+        .notifications
+        .get()
+        .await?
+        .effective(state.config.alertmanager_url.as_deref())?
+        .alertmanager;
+    if !config.enabled {
+        return Err(Error::Forbidden(
+            "Alertmanager integration is disabled".into(),
+        ));
+    }
+    let config = state
+        .alertmanager
+        .project_config(
+            &config,
+            &project.slug,
+            state
+                .notifications
+                .severity(Some(project.id))
+                .await?
+                .or(state.notifications.severity(None).await?),
+        )
+        .await;
+    let now = state.clock.now();
+    let title = match locale {
+        crate::domain::Locale::En => format!("Test alert: {}", project.name),
+        crate::domain::Locale::Ru => format!("Тестовый алерт: {}", project.name),
+    };
+    let mut vars = sample_variables();
+    vars.extend(BTreeMap::from([
+        ("project_name".into(), project.name.clone()),
+        ("project_slug".into(), project.slug.clone()),
+        ("project_id".into(), project.id.to_string()),
+        ("team_id".into(), project.team_id.to_string()),
+        ("org_name".into(), state.settings.get().await?.org_name),
+        ("issue_id".into(), format!("test-{}", project.id)),
+        ("issue_short_id".into(), "test".into()),
+        ("title".into(), title),
+        ("trigger".into(), "test".into()),
+        ("event_count".into(), "1".into()),
+        ("first_seen".into(), now.to_rfc3339()),
+        ("last_seen".into(), now.to_rfc3339()),
+        (
+            "issue_url".into(),
+            format!(
+                "{}/projects/{}",
+                state.config.base_url.trim_end_matches('/'),
+                project.slug
+            ),
+        ),
+    ]));
+    let mut alert = render_alert(&config, &vars, now)?;
+    alert.labels.insert("test".into(), "true".into());
+    state.alertmanager.send(&endpoint(&config), &alert).await
+}

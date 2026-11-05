@@ -194,6 +194,10 @@ export const teams = {
 };
 
 export const notifications = {
+  projectTestStatus: (id: string, ctx?: Ctx) =>
+    http.get<{ enabled: boolean }>(`/projects/${id}/alertmanager-test`, { fetch: ctx?.fetch }),
+  projectTest: (id: string, locale: 'en' | 'ru') =>
+    http.post<{ ok: boolean }>(`/projects/${id}/alertmanager-test`, { body: { locale } }),
   setDefaultSeverity: (severity: AlertSeverity | null) =>
     http.put<ProjectAlertSeverity>('/settings/notifications/severity', { body: { severity } }),
   projectSeverity: (id: string, ctx?: Ctx) =>

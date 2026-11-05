@@ -4,13 +4,16 @@ import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, parent, fetch }) => {
   const { user, config } = await parent();
-  const [muteRules, alertmanagerInterval, alertmanagerSeverity] = await Promise.all([
-    projects.muteRules(params.id, { fetch }),
-    notifications.projectInterval(params.id, { fetch }),
-    notifications.projectSeverity(params.id, { fetch })
-  ]);
+  const [muteRules, alertmanagerInterval, alertmanagerSeverity, alertmanagerTest] =
+    await Promise.all([
+      projects.muteRules(params.id, { fetch }),
+      notifications.projectInterval(params.id, { fetch }),
+      notifications.projectSeverity(params.id, { fetch }),
+      notifications.projectTestStatus(params.id, { fetch })
+    ]);
   const canMove = user?.instance_role === 'owner' || user?.instance_role === 'manager';
   return {
+    alertmanagerTest,
     alertmanagerSeverity,
     alertmanagerInterval,
     muteRules,

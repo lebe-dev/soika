@@ -28,7 +28,6 @@
   import Avatar from '$lib/components/avatar.svelte';
   import TeamList from '$lib/components/team-list.svelte';
   import NotificationsPanel from '$lib/components/notifications-panel.svelte';
-  import AlertmanagerTest from '$lib/components/alertmanager-test.svelte';
   import AuthenticationPanel from '$lib/components/authentication-panel.svelte';
   import ManagementCard from '$lib/components/management-card.svelte';
   import ManagedConfigBanner from '$lib/components/managed-config-banner.svelte';
@@ -357,9 +356,6 @@
             management={data.settings.management}
             invitesEnabled={data.telemetry?.invites_enabled}
           />{/if}
-        {#if data.notifications}
-          <AlertmanagerTest view={data.notifications} />
-        {/if}
         <Card.Root>
           <Card.Header>
             <Card.Title>{$t('organization')}</Card.Title>

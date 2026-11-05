@@ -9,6 +9,7 @@ use soika::{
     alertmanager,
     domain::{config_file::ManagementSource, notifications::*},
 };
+use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -1133,5 +1134,117 @@ async fn initial_ui_default_severity_is_critical_and_can_be_changed() {
         db.notifications.severity(None).await.unwrap(),
         Some(AlertSeverity::Warning),
         "UI choice survives synchronization"
+    );
+}
+
+#[tokio::test]
+async fn notifications_project_test_uses_project_context_and_enforces_gates() {
+    let mut db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, _) = setup(&db, &receiver.url).await;
+    let path = format!("/api/projects/{}/alertmanager-test", project.slug);
+    let body = serde_json::json!({"locale": "en"});
+    db.notifications
+        .set_severity(Some(project.id), Some(AlertSeverity::Warning))
+        .await
+        .unwrap();
+    db.alertmanager
+        .set_project_labels(BTreeMap::from([(
+            project.slug.clone(),
+            BTreeMap::from([("chat".into(), "project-chat".into())]),
+        )]))
+        .await;
+    assert_eq!(
+        request(&db, InstanceRole::Member, "POST", &path, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", &path, body.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let alert = receiver.snapshot().pop().unwrap();
+    assert_eq!(alert.labels["project_id"], project.id.to_string());
+    assert_eq!(alert.labels["project"], project.slug);
+    assert_eq!(alert.labels["severity"], "warning");
+    assert_eq!(alert.labels["chat"], "project-chat");
+    assert_eq!(alert.labels["test"], "true");
+    assert_eq!(
+        alert.annotations["summary"],
+        format!("Test alert: {}", project.name)
+    );
+    assert_eq!(alert.annotations["trigger"], "test");
+    db.notifications
+        .set_severity(None, Some(AlertSeverity::Info))
+        .await
+        .unwrap();
+    db.notifications
+        .set_severity(Some(project.id), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            &db,
+            InstanceRole::Manager,
+            "POST",
+            &path,
+            serde_json::json!({"locale": "ru"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let inherited = receiver.snapshot().pop().unwrap();
+    assert_eq!(inherited.labels["severity"], "info");
+    assert_eq!(
+        inherited.annotations["summary"],
+        format!("Тестовый алерт: {}", project.name)
+    );
+    assert!(
+        alert
+            .generator_url
+            .ends_with(&format!("/projects/{}", project.slug))
+    );
+    assert!(db.notifications.active("", 10).await.unwrap().is_empty());
+    receiver.fail.store(true, Ordering::SeqCst);
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", &path, body.clone())
+            .await
+            .0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    receiver.fail.store(false, Ordering::SeqCst);
+    let mut config = db.notifications.get().await.unwrap();
+    config.alertmanager.enabled = false;
+    db.notifications.set(&config).await.unwrap();
+    assert_eq!(
+        request(
+            &db,
+            InstanceRole::Manager,
+            "GET",
+            &path,
+            serde_json::Value::Null
+        )
+        .await
+        .1["enabled"],
+        false
+    );
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", &path, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    config.alertmanager.enabled = true;
+    db.notifications.set(&config).await.unwrap();
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = false;
+    assert_eq!(
+        request(&db, InstanceRole::Manager, "POST", &path, body)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
     );
 }

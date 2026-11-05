@@ -566,6 +566,7 @@
   "notifications_test_sending": "Sending…",
   "notifications_test_sent": "Alertmanager accepted the test alert",
   "notifications_test_failed": "Failed to send test alert",
+  "notifications_project_test_help": "Send a test alert using this project’s saved labels, severity and annotation templates. Sample event data is used; no issue is created. The alert expires after five minutes.",
   "notifications_test_help": "Uses the saved endpoint and fixed test text in your interface language. In UI mode, enter and save the URL before testing. The alert expires after five minutes.",
   "tip_projects": "Where projects are created and edited: in the interface or in the configuration file. Projects defined in the file are read-only in the interface.",
   "tip_teams": "Where teams and their members are managed: in the interface or in the configuration file.",

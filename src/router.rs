@@ -81,6 +81,11 @@ pub fn build(state: AppState) -> Router {
             "/settings/notifications/interval",
             axum::routing::put(api::notifications::update_interval),
         )
+        .route(
+            "/projects/{id}/alertmanager-test",
+            get(api::notifications::project_test_status)
+                .post(api::notifications::project_test_alert),
+        )
         .route("/projects/{id}/team", patch(api::projects::change_team))
         .route("/projects/{id}/issues", get(api::projects::list_issues))
         .route("/projects/{id}/dsn", get(api::projects::dsn))

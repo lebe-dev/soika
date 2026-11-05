@@ -11,6 +11,7 @@
   import { NativeSelect } from '$lib/components/ui/native-select';
   import { toast } from '$lib/components/ui/sonner';
   import TagMuteRuleDialog from '$lib/components/tag-mute-rule-dialog.svelte';
+  import AlertmanagerTest from '$lib/components/alertmanager-test.svelte';
   import AlertmanagerSeverityControl from '$lib/components/alertmanager-severity-control.svelte';
   import AlertmanagerIntervalControl from '$lib/components/alertmanager-interval-control.svelte';
   import PageTitle from '$lib/components/page-title.svelte';
@@ -223,6 +224,10 @@
           projectId={project.id}
           readonly={!canEdit}
           managed={projectsManaged}
+        />
+        <AlertmanagerTest
+          projectId={project.id}
+          enabled={data.alertmanagerTest.enabled && isAdmin}
         />
       </Card.Root>
     {/key}

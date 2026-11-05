@@ -269,3 +269,47 @@ pub async fn update_default_severity(
         .await?;
     Ok(Json(body))
 }
+
+pub async fn project_test_status(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_member(&state, &user, project.id).await {
+        return response;
+    }
+    match state.notifications.get().await {
+        Ok(config) => Json(serde_json::json!({
+            "enabled": state.config.notifications_alertmanager_enabled && config.alertmanager.enabled
+        })).into_response(),
+        Err(error) => ApiError(error).into_response(),
+    }
+}
+
+pub async fn project_test_alert(
+    crate::api::projects::CurrentUser(user): crate::api::projects::CurrentUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(request): Json<TestAlertRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let project = match crate::api::projects::resolve_project(&state, &id).await {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = crate::api::projects::require_admin(&state, &user, project.id).await {
+        return response;
+    }
+    match crate::alertmanager::send_project_test(&state, &project, request.locale).await {
+        Ok(()) => {
+            tracing::info!(actor_id = %user.id, project_id = %project.id, "project test notification delivered");
+            Json(serde_json::json!({"ok": true})).into_response()
+        }
+        Err(error) => ApiError(error).into_response(),
+    }
+}
