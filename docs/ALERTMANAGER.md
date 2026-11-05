@@ -33,7 +33,10 @@ severity, labels and annotations in the same screen; saved UI changes apply
 without a restart. Environment defaults for interval and severity apply only
 in env mode.
 
-Use **Send test alert** to check connectivity, then send a new SDK issue to
+Use **Send test alert** in **Admin → Service settings** to check connectivity.
+The button is available when the Alertmanager feature and saved channel are
+enabled, including when configuration manages the settings. Test sending is
+also available in **Admin → Notifications**. Then send a new SDK issue to
 verify actual project labels, severity and annotations. The test alert uses
 fixed test values. Enabling the channel does not send existing issues
 retroactively.
