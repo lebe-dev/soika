@@ -574,7 +574,8 @@ export interface AlertmanagerInterval {
   effective_interval_seconds: number;
 }
 export interface NotificationView {
-  interval_source: 'ui' | 'yaml';
+  interval_source: 'ui' | 'env';
+  default_severity: AlertSeverity | null;
   interval: AlertmanagerInterval;
   alertmanager_skip_tls: boolean;
   feature_enabled: boolean;

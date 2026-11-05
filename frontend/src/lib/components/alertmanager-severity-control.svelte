@@ -21,7 +21,7 @@
     managed = false
   }: {
     view: ProjectAlertSeverity;
-    projectId: string;
+    projectId?: string;
     readonly?: boolean;
     managed?: boolean;
   } = $props();
@@ -35,7 +35,9 @@
     saving = true;
     error = '';
     try {
-      view = await notifications.setProjectSeverity(projectId, severity || null);
+      view = projectId
+        ? await notifications.setProjectSeverity(projectId, severity || null)
+        : await notifications.setDefaultSeverity(severity || null);
       severity = view.severity ?? '';
       toast.success($t('notifications_saved'));
       await invalidateAll();
@@ -50,18 +52,34 @@
 
 <Card.Root>
   <Card.Header>
-    <Card.Title>{$t('alertmanager_severity_title')}</Card.Title>
-    <Card.Description>{$t('alertmanager_severity_help')}</Card.Description>
+    <Card.Title
+      >{$t(
+        projectId ? 'alertmanager_severity_title' : 'alertmanager_default_severity_title'
+      )}</Card.Title
+    >
+    <Card.Description
+      >{$t(
+        projectId ? 'alertmanager_severity_help' : 'alertmanager_default_severity_help'
+      )}</Card.Description
+    >
   </Card.Header>
   <Card.Content>
     <form onsubmit={save} class="space-y-3">
       {#if managed}<p class="text-muted-foreground text-sm">
-          {$t('alertmanager_severity_yaml')}
+          {$t(projectId ? 'alertmanager_severity_yaml' : 'alertmanager_defaults_env')}
         </p>{/if}
       <label class="block space-y-2 text-sm">
-        <span>{$t('alertmanager_severity_title')}</span>
+        <span
+          >{$t(
+            projectId ? 'alertmanager_severity_title' : 'alertmanager_default_severity_title'
+          )}</span
+        >
         <NativeSelect bind:value={severity} disabled={readonly || saving}>
-          <option value="">{$t('alertmanager_severity_default')}</option>
+          <option value=""
+            >{$t(
+              projectId ? 'alertmanager_severity_default' : 'alertmanager_default_severity_template'
+            )}</option
+          >
           <option value="critical">critical</option>
           <option value="warning">warning</option>
           <option value="info">info</option>

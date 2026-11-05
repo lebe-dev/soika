@@ -194,6 +194,8 @@ export const teams = {
 };
 
 export const notifications = {
+  setDefaultSeverity: (severity: AlertSeverity | null) =>
+    http.put<ProjectAlertSeverity>('/settings/notifications/severity', { body: { severity } }),
   projectSeverity: (id: string, ctx?: Ctx) =>
     http.get<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, { fetch: ctx?.fetch }),
   setProjectSeverity: (id: string, severity: AlertSeverity | null) =>

@@ -375,6 +375,8 @@ mod tests {
             retention_cron: "0 */15 * * * *".to_string(),
             notifications_alertmanager_enabled: false,
             alertmanager_url: None,
+            alertmanager_default_interval_seconds: 60,
+            alertmanager_default_severity: None,
             alertmanager_skip_tls: false,
             webhooks_enabled: false,
             smtp_enabled: false,

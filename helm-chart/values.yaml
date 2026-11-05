@@ -27,12 +27,21 @@ envs:
     value: "ui"
   # ALLOW_INVITES=true enables team invite links (default false); ignored when teams are managed by YAML.
   # In env mode: ORGANIZATION_NAME, ALLOW_SIGNUP, DEFAULT_TEAM_IDS and
-  # Alertmanager envs control settings; admin edits and test alerts are blocked.
+  # Alertmanager envs control settings; admin edits are blocked, test alerts remain available.
   # DEFAULT_TEAM_IDS is a comma-separated list of existing team UUIDs (default empty).
-  # Default URL; an explicit URL in UI/YAML takes precedence.
+  # Default URL; an explicit URL saved in the UI takes precedence.
   # Base URL only, e.g. https://somehost.com/ or https://somehost.com/alertmanager/.
   # Soika appends /api/v2/alerts automatically; do not include that endpoint.
   - name: ALERTMANAGER_URL
+    value: ""
+  # Global delivery defaults follow SERVICE_MANAGEMENT_SOURCE, not project ownership.
+  # Env mode applies these on startup; UI mode preserves defaults saved in the admin panel.
+  # Refresh cadence in seconds: 10..86400. Projects can override it in UI/YAML.
+  - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
+    value: "60"
+  # critical, warning or info; empty uses the notification severity label template.
+  # A project's alertmanager_severity takes precedence over this default.
+  - name: ALERTMANAGER_DEFAULT_SEVERITY
     value: ""
   # Disable certificate verification only for Alertmanager HTTPS requests.
   - name: ALERTMANAGER_SKIP_TLS
@@ -232,28 +241,22 @@ configFile:
     version: 1
     projects: []
     teams: []
-    # Alertmanager values support literal {{ variable }} placeholders.
-    # Legacy YAML notification management uses NOTIFICATION_MANAGEMENT_SOURCE=yaml
-    # with SERVICE_MANAGEMENT_SOURCE omitted; env mode reads only project_labels.
+    # Only project overrides belong in this file. Global defaults belong in envs
+    # (SERVICE_MANAGEMENT_SOURCE=env) or Admin -> Notifications (ui).
+    # Example project entry (requires an existing or file-defined Platform team):
+    # projects:
+    #   - slug: api
+    #     name: API
+    #     team: Platform
+    #     alertmanager_interval_seconds: 120
+    #     alertmanager_severity: critical
+    # Omit/null project values to inherit the global defaults.
     notifications:
       alertmanager:
-        # In env mode, project labels override ALERTMANAGER_DEFAULT_LABELS by slug.
+        # In env mode, extra labels are keyed by project slug. An explicit
+        # project severity, then the global default severity, override this map.
+        # Values support literal {{ variable }} placeholders; Helm does not use tpl.
+        project_labels: {}
         # project_labels:
         #   api:
         #     team: platform
-        enabled: false
-        # Base URL only; Soika appends /api/v2/alerts automatically.
-        # Empty uses ALERTMANAGER_URL from the environment.
-        url: ""
-        labels:
-          alertname: SoikaIssue
-          project: "{{ project_slug }}"
-          severity: "{{ level }}"
-        annotations:
-          summary: "{{ title }}"
-          description: "{{ culprit }}"
-          issue_url: "{{ issue_url }}"
-          trigger: "{{ trigger }}"
-          environment: "{{ environment }}"
-          release: "{{ release }}"
-          event_count: "{{ event_count }}"

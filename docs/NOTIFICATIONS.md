@@ -102,6 +102,11 @@ section is ignored. Preview renders sample data without sending an alert.
 Set `SERVICE_MANAGEMENT_SOURCE=env` to use environment variables instead.
 At startup, `NOTIFICATIONS_ALERTMANAGER_ENABLED` sets the channel enabled state,
 `ALERTMANAGER_URL` sets its URL and `ORGANIZATION_NAME` sets the organization name.
+`ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` sets the global refresh interval (default
+`60`, range `10..86400`) and `ALERTMANAGER_DEFAULT_SEVERITY` sets the default class
+(`critical`, `warning`, `info`, or empty for the label template). Both defaults
+follow service ownership and are editable in **Admin → Notifications** in UI mode.
+YAML contains only project overrides; see [global and project defaults](ALERTMANAGER.md#global-and-per-project-refresh-intervals).
 `ALERTMANAGER_DEFAULT_LABELS` adds or overrides labels using comma-separated `name=value`
 pairs, for example `team=platform,environment=production`. Values support the same
 templates as the UI, such as `service={{ project_slug }}`. Whitespace around names
@@ -123,8 +128,9 @@ notifications:
         team: web
 ```
 
-Project labels override defaults with the same name. An explicit project
-`alertmanager_severity` overrides the severity label from either map; it follows
+Project labels override defaults with the same name. The global `ALERTMANAGER_DEFAULT_SEVERITY` (or admin default) overrides
+the severity label from either map. An explicit project
+`alertmanager_severity` takes precedence over that global default; it follows
 `PROJECT_MANAGEMENT_SOURCE=ui|yaml`. See [project severity](ALERTMANAGER.md#per-project-severity). They are loaded at startup;
 restart to apply changes. A missing configuration file leaves project labels empty
 when projects and teams are managed in the UI. The `notifications` section's other

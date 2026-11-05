@@ -614,7 +614,10 @@ async fn notification_feature_disabled_allows_startup_without_effective_url() {
 async fn sync_alertmanager_intervals_and_reset_overrides() {
     let db = test_db().await;
     let mut file = desired();
-    file.alertmanager_interval_seconds = Some(300);
+    db.notifications
+        .set_interval(None, Some(300))
+        .await
+        .unwrap();
     file.projects.as_mut().unwrap()[0].alertmanager_interval_seconds = Some(120);
     db.config_sync
         .apply(&file, &settings(), 1000)
@@ -651,7 +654,6 @@ async fn sync_alertmanager_intervals_and_reset_overrides() {
     let inherited = db.notifications.interval(Some(project.id)).await.unwrap();
     assert_eq!(inherited.interval_seconds, None);
     assert_eq!(inherited.effective_interval_seconds, 300);
-    file.alertmanager_interval_seconds = None;
     db.config_sync
         .apply(&file, &settings(), 1000)
         .await
@@ -662,7 +664,7 @@ async fn sync_alertmanager_intervals_and_reset_overrides() {
             .await
             .unwrap()
             .effective_interval_seconds,
-        60
+        300
     );
     db.notifications
         .set_interval(None, Some(900))
@@ -703,7 +705,7 @@ async fn sync_project_alertmanager_severity_and_clear_override() {
         .unwrap();
     let project = db.projects.find_by_slug("api").await.unwrap().unwrap();
     assert_eq!(
-        db.notifications.severity(project.id).await.unwrap(),
+        db.notifications.severity(Some(project.id)).await.unwrap(),
         Some(AlertSeverity::Warning)
     );
     assert_eq!(
@@ -720,7 +722,7 @@ async fn sync_project_alertmanager_severity_and_clear_override() {
         .await
         .unwrap();
     assert_eq!(
-        db.notifications.severity(project.id).await.unwrap(),
+        db.notifications.severity(Some(project.id)).await.unwrap(),
         Some(AlertSeverity::Critical)
     );
     file.projects.as_mut().unwrap()[0].alertmanager_severity = None;
@@ -728,5 +730,58 @@ async fn sync_project_alertmanager_severity_and_clear_override() {
         .apply(&file, &settings(), 1000)
         .await
         .unwrap();
-    assert_eq!(db.notifications.severity(project.id).await.unwrap(), None);
+    assert_eq!(
+        db.notifications.severity(Some(project.id)).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn alertmanager_defaults_use_service_ownership_independently_of_project_sources() {
+    use soika::domain::notifications::AlertSeverity;
+    let mut db = test_db().await;
+    db.notifications
+        .set_interval(None, Some(900))
+        .await
+        .unwrap();
+    db.notifications
+        .set_severity(None, Some(AlertSeverity::Info))
+        .await
+        .unwrap();
+    {
+        let config = std::sync::Arc::make_mut(&mut db.config);
+        config.alertmanager_default_interval_seconds = 300;
+        config.alertmanager_default_severity = Some(AlertSeverity::Warning);
+    }
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.notifications
+            .interval(None)
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        900,
+        "UI values survive restart"
+    );
+    assert_eq!(
+        db.notifications.severity(None).await.unwrap(),
+        Some(AlertSeverity::Info)
+    );
+    let mut db = db;
+    std::sync::Arc::make_mut(&mut db.config)
+        .management
+        .service_source = ManagementSource::Env;
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.notifications
+            .interval(None)
+            .await
+            .unwrap()
+            .effective_interval_seconds,
+        300
+    );
+    assert_eq!(
+        db.notifications.severity(None).await.unwrap(),
+        Some(AlertSeverity::Warning)
+    );
 }

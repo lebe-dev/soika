@@ -783,7 +783,7 @@ async fn notification_intervals_throttle_refresh_and_close_without_waiting() {
 }
 
 #[tokio::test]
-async fn notification_interval_api_uses_project_ownership_and_validates_bounds() {
+async fn notification_interval_api_uses_service_ownership_and_validates_bounds() {
     let mut db = notification_db().await;
     let (status, _) = request(
         &db,
@@ -833,9 +833,10 @@ async fn notification_interval_api_uses_project_ownership_and_validates_bounds()
     .await;
     assert_eq!(
         status,
-        StatusCode::OK,
-        "service ownership does not govern intervals"
+        StatusCode::FORBIDDEN,
+        "global interval is env-managed"
     );
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Ui;
     Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
     let (status, _) = request(
         &db,
@@ -845,7 +846,11 @@ async fn notification_interval_api_uses_project_ownership_and_validates_bounds()
         serde_json::json!({"interval_seconds": 60}),
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "YAML project ownership does not lock global defaults"
+    );
 }
 
 #[tokio::test]
@@ -933,7 +938,7 @@ async fn project_severity_overrides_labels_and_closes_the_previous_alert_identit
         )]))
         .await;
     db.notifications
-        .set_severity(project.id, Some(AlertSeverity::Critical))
+        .set_severity(Some(project.id), Some(AlertSeverity::Critical))
         .await
         .unwrap();
     alertmanager::refresh(&db).await.unwrap();
@@ -943,7 +948,7 @@ async fn project_severity_overrides_labels_and_closes_the_previous_alert_identit
     assert!(alerts[1].ends_at <= db.clock.now());
     assert_eq!(alerts[2].labels["severity"], "critical");
     db.notifications
-        .set_severity(project.id, None)
+        .set_severity(Some(project.id), None)
         .await
         .unwrap();
     alertmanager::refresh(&db).await.unwrap();
@@ -1023,4 +1028,80 @@ async fn project_severity_api_validates_classes_and_honors_project_ownership() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _) = request(&db, InstanceRole::Owner, "GET", &uri, serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn global_alertmanager_severity_is_inherited_and_project_override_wins() {
+    use soika::domain::notifications::AlertSeverity;
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    db.notifications
+        .set_severity(None, Some(AlertSeverity::Warning))
+        .await
+        .unwrap();
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(receiver.snapshot()[0].labels["severity"], "warning");
+    db.notifications
+        .set_severity(Some(project.id), Some(AlertSeverity::Critical))
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot()[2].labels["severity"], "critical");
+    db.notifications
+        .set_severity(Some(project.id), None)
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot()[4].labels["severity"], "warning");
+    db.notifications.set_severity(None, None).await.unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot()[6].labels["severity"], "error");
+}
+
+#[tokio::test]
+async fn default_severity_api_follows_service_ownership() {
+    let mut db = notification_db().await;
+    Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
+    let uri = "/api/settings/notifications/severity";
+    let (status, view) = request(
+        &db,
+        InstanceRole::Manager,
+        "PUT",
+        uri,
+        serde_json::json!({"severity": "info"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["severity"], "info");
+    let (status, _) = request(
+        &db,
+        InstanceRole::Member,
+        "PUT",
+        uri,
+        serde_json::json!({"severity": "critical"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        uri,
+        serde_json::json!({"severity": "urgent"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        uri,
+        serde_json::json!({"severity": "critical"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }

@@ -43,7 +43,8 @@ mode. See [notification settings and template variables](NOTIFICATIONS.md) and
 ## Complete YAML example
 
 The repository's commented [config.example.yaml](../config.example.yaml) includes
-the global interval, project overrides, severity classes and routing labels.
+environment variables for global defaults, project overrides, severity classes
+and routing labels.
 For a local binary, copy it into your configuration file:
 
 ```sh
@@ -58,6 +59,8 @@ NOTIFICATIONS_ALERTMANAGER_ENABLED=true
 ALERTMANAGER_URL=http://alertmanager.monitoring:9093
 BASE_URL=https://errors.example.com
 SERVICE_MANAGEMENT_SOURCE=env
+ALERTMANAGER_DEFAULT_INTERVAL_SECONDS=300
+ALERTMANAGER_DEFAULT_SEVERITY=warning
 PROJECT_MANAGEMENT_SOURCE=yaml
 TEAM_MANAGEMENT_SOURCE=yaml
 CONFIG_PATH=./soika-config.yaml
@@ -72,7 +75,6 @@ The following is a complete minimal alternative to the commented example file:
 
 ```yaml
 version: 1
-alertmanager_interval_seconds: 300
 teams:
   - name: Platform
     members: []
@@ -95,8 +97,9 @@ projects:
 | `backend-api` | 120 seconds (project override) | `critical` |
 | `frontend` | 300 seconds (global value) | `warning` |
 
-`info` is also supported. Omit `alertmanager_severity` or set it to `null` to use
-the notification label template (Sentry event level by default); omit a project
+`info` is also supported. Omit `alertmanager_severity` or set it to `null` to inherit
+the global severity; when that is unset, the notification label template applies
+(Sentry event level by default). Omit a project
 interval or set it to `null` to inherit the global interval.
 
 Restart Soika after editing YAML or environment variables. Env mode enables the
@@ -115,7 +118,8 @@ into your real configuration before enabling these sources; see
 
 Set `PROJECT_MANAGEMENT_SOURCE=ui` and `SERVICE_MANAGEMENT_SOURCE=ui`, keep the
 Alertmanager feature flag and URL above, and restart. Enable and save the channel
-in **Admin → Notifications**, then save a global refresh interval of `300`.
+in **Admin → Notifications**, then save a global refresh interval of `300` and
+default severity `warning`.
 In **backend-api → Settings**, disable **Use global interval**, save `120`, and
 select and save severity `critical`. In **frontend → Settings**, keep **Use global
 interval** enabled and select severity `warning`. These UI changes apply without
@@ -125,23 +129,36 @@ this mode. Team management can retain its existing source.
 
 ## Global and per-project refresh intervals
 
-Refresh cadence is owned by **`PROJECT_MANAGEMENT_SOURCE`**, independently of
-`SERVICE_MANAGEMENT_SOURCE` and the notification channel's configuration source.
-Intervals are integer seconds from **10 to 86400**, with a global default of
+Global defaults are owned by **`SERVICE_MANAGEMENT_SOURCE=ui|env`**.
+Project overrides are owned separately by **`PROJECT_MANAGEMENT_SOURCE=ui|yaml`**.
+Intervals are integer seconds from **10 to 86400**, with a built-in default of
 **60 seconds**. A project without an override inherits the global value.
 
-- With `PROJECT_MANAGEMENT_SOURCE=ui` (default), Owners and Managers edit the
-  global interval in **Admin → Notifications → Alertmanager refresh interval**.
-  Project admins edit the override in **Project → Settings**; select **Use global
-  interval** to remove it. Changes are persisted and take effect without restart.
-- With `PROJECT_MANAGEMENT_SOURCE=yaml`, both controls are read-only. Set the
-  global value at the root of `CONFIG_PATH` and overrides in project entries,
-  then restart Soika. An omitted global value resets to 60; an omitted or null
-  project value removes the override.
+| Setting | Environment mode (`SERVICE_MANAGEMENT_SOURCE=env`) | UI mode (`SERVICE_MANAGEMENT_SOURCE=ui`) |
+| --- | --- | --- |
+| Global refresh interval | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` (default `60`) | Admin → Notifications → Alertmanager refresh interval |
+| Global severity | `ALERTMANAGER_DEFAULT_SEVERITY` (`critical`, `warning`, `info`, or empty) | Admin → Notifications → Default Alertmanager severity |
+
+In env mode, restart Soika to apply changes; both global controls are read-only.
+In UI mode, saved defaults persist in the database across restarts and environment
+values for these defaults are ignored. Switching from env to UI preserves the
+last applied defaults as editable values. Switching to env replaces saved
+defaults on startup. A fresh installation in UI mode starts with 60 seconds and
+no default severity.
+
+Project admins edit interval and severity overrides in **Project → Settings**
+when `PROJECT_MANAGEMENT_SOURCE=ui`. UI edits take effect without restart.
+With `PROJECT_MANAGEMENT_SOURCE=yaml`, edit only project entries in `CONFIG_PATH`
+and restart. Omitted or null project values inherit the global defaults.
+Global defaults never belong in the YAML file: remove the former root
+`alertmanager_interval_seconds` field and set `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS`
+instead. The old root field is rejected as unknown, including in UI mode.
+
+For example, with `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS=300` and
+`ALERTMANAGER_DEFAULT_SEVERITY=warning` in env mode:
 
 ```yaml
 version: 1
-alertmanager_interval_seconds: 300
 projects:
   - slug: happybirthday-bot
     name: happybirthday-bot
@@ -187,7 +204,8 @@ PUT /api/projects/{id}/alertmanager-interval
 ```
 
 Responses include `interval_seconds` (null for an inheriting project) and
-`effective_interval_seconds`. The global value cannot be null.
+`effective_interval_seconds`. The global value cannot be null. The global PUT
+requires UI service management; the project PUT requires UI project management.
 
 ## Per-project severity
 
@@ -211,11 +229,13 @@ projects:
     alertmanager_severity: warning
 ```
 
-An explicit project severity overrides `severity` from both the channel labels
-and `notifications.alertmanager.project_labels`. It applies to new alerts and
+An explicit project severity overrides the global default, then `severity` from
+both the channel labels and `notifications.alertmanager.project_labels`. It applies to new alerts and
 refreshes without changing Sentry event levels or affecting email and webhooks.
-Selecting **Use notification template** in the UI, or omitting/clearing the YAML
-field, restores the existing labels (by default `{{ level }}`). Changing severity
+Selecting **Use global default** in the project UI, or omitting/clearing the YAML
+field, restores the global default severity. If the global default is unset, the
+existing label templates apply (by default `{{ level }}`). Clearing the global
+default in the admin UI also restores that template fallback. Changing severity
 resolves tracked alerts with their original labels and sends their replacements
 on the next check, independently of the refresh interval.
 
@@ -223,12 +243,18 @@ on the next check, independently of the refresh interval.
 GET /api/projects/{id}/alertmanager-severity
 PUT /api/projects/{id}/alertmanager-severity
     {"severity": "critical"}   # Project admin
-    {"severity": null}         # Restore the notification template
+    {"severity": null}         # Inherit the global severity
 ```
 
 GET requires project access; PUT follows `PROJECT_MANAGEMENT_SOURCE` and accepts
-only `critical`, `warning`, `info` or null. The global channel configuration and
-its management source do not control this project setting.
+only `critical`, `warning`, `info` or null. The service management source controls
+the global default, while project management controls only the project override.
+
+Instance Owners and Managers can set the default with
+`PUT /api/settings/notifications/severity` and the same JSON body when
+`SERVICE_MANAGEMENT_SOURCE=ui`; `null` clears the global default.
+`GET /api/settings/notifications` includes `default_severity` and the global
+interval. In env mode these global write endpoints return `403`.
 
 ## Short summaries, details and actions
 

@@ -17,13 +17,18 @@ impl PgNotificationRepository {
 impl NotificationRepository for PgNotificationRepository {
     async fn severity(
         &self,
-        project_id: crate::domain::Id,
+        project_id: Option<crate::domain::Id>,
     ) -> Result<Option<crate::domain::notifications::AlertSeverity>> {
-        let value: String =
+        let value: String = if let Some(id) = project_id {
             sqlx::query_scalar("SELECT alertmanager_severity FROM projects WHERE id = $1")
-                .bind(project_id)
+                .bind(id)
                 .fetch_one(&self.db)
-                .await?;
+                .await?
+        } else {
+            sqlx::query_scalar("SELECT default_severity FROM notification_settings WHERE id = 1")
+                .fetch_one(&self.db)
+                .await?
+        };
         if value.is_empty() {
             return Ok(None);
         }
@@ -31,7 +36,7 @@ impl NotificationRepository for PgNotificationRepository {
     }
     async fn set_severity(
         &self,
-        project_id: crate::domain::Id,
+        project_id: Option<crate::domain::Id>,
         severity: Option<crate::domain::notifications::AlertSeverity>,
     ) -> Result<()> {
         let value = severity.map_or("", |value| value.as_str());
@@ -39,11 +44,20 @@ impl NotificationRepository for PgNotificationRepository {
             &WritePolicy::default(),
             "set project alert severity",
             || async {
-                sqlx::query("UPDATE projects SET alertmanager_severity = $1 WHERE id = $2")
+                if let Some(id) = project_id {
+                    sqlx::query("UPDATE projects SET alertmanager_severity = $1 WHERE id = $2")
+                        .bind(value)
+                        .bind(id)
+                        .execute(&self.db)
+                        .await?;
+                } else {
+                    sqlx::query(
+                        "UPDATE notification_settings SET default_severity = $1 WHERE id = 1",
+                    )
                     .bind(value)
-                    .bind(project_id)
                     .execute(&self.db)
                     .await?;
+                }
                 Ok(())
             },
         )

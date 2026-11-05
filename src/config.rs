@@ -399,6 +399,9 @@ pub struct Config {
     pub webhooks_enabled: bool,
     /// Default Alertmanager base URL; UI/YAML can override it.
     pub alertmanager_url: Option<String>,
+    /// Env-managed global defaults for project Alertmanager delivery.
+    pub alertmanager_default_interval_seconds: i64,
+    pub alertmanager_default_severity: Option<crate::domain::notifications::AlertSeverity>,
     /// Disable TLS certificate verification for Alertmanager (default false).
     pub alertmanager_skip_tls: bool,
     /// Global Alertmanager feature gate (`NOTIFICATIONS_ALERTMANAGER_ENABLED`, default false).
@@ -448,6 +451,14 @@ impl std::fmt::Debug for Config {
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
             .field("alertmanager_url", &self.alertmanager_url)
+            .field(
+                "alertmanager_default_interval_seconds",
+                &self.alertmanager_default_interval_seconds,
+            )
+            .field(
+                "alertmanager_default_severity",
+                &self.alertmanager_default_severity,
+            )
             .field("alertmanager_skip_tls", &self.alertmanager_skip_tls)
             .field(
                 "notifications_alertmanager_enabled",
@@ -512,6 +523,19 @@ impl Config {
             }
             .validate()?;
         }
+        let alertmanager_default_interval_seconds =
+            env_or("ALERTMANAGER_DEFAULT_INTERVAL_SECONDS", "60")
+                .parse::<i64>()
+                .map_err(|_| {
+                    Error::validation("ALERTMANAGER_DEFAULT_INTERVAL_SECONDS must be an integer")
+                })?;
+        crate::domain::notifications::validate_interval(alertmanager_default_interval_seconds)?;
+        let alertmanager_default_severity = std::env::var("ALERTMANAGER_DEFAULT_SEVERITY")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse())
+            .transpose()?;
         let smtp = Self::smtp_from_env()?;
         let oidc = Self::oidc_from_env(&base_url)?;
         let passkey = Self::passkey_from_env(&base_url, &organization_name)?;
@@ -548,6 +572,8 @@ impl Config {
             smtp_enabled,
             webhooks_enabled,
             alertmanager_url,
+            alertmanager_default_interval_seconds,
+            alertmanager_default_severity,
             alertmanager_skip_tls,
             notifications_alertmanager_enabled,
             smtp,
@@ -1931,5 +1957,52 @@ mod tests {
         assert_eq!(oidc.allowed_email_domains, vec!["example.com", "itkey.com"]);
 
         clear_oauth_env();
+    }
+    #[test]
+    fn alertmanager_environment_defaults_validate_interval_and_severity() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let keys = [
+            "SECRET_KEY",
+            "ALERTMANAGER_DEFAULT_INTERVAL_SECONDS",
+            "ALERTMANAGER_DEFAULT_SEVERITY",
+        ];
+        let previous = keys.map(|key| (key, std::env::var_os(key)));
+        unsafe {
+            std::env::set_var("SECRET_KEY", "test-secret");
+            std::env::remove_var(keys[1]);
+            std::env::remove_var(keys[2]);
+        }
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.alertmanager_default_interval_seconds, 60);
+        assert_eq!(config.alertmanager_default_severity, None);
+        unsafe {
+            std::env::set_var(keys[1], "300");
+            std::env::set_var(keys[2], "warning");
+        }
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.alertmanager_default_interval_seconds, 300);
+        assert_eq!(
+            config.alertmanager_default_severity.unwrap().as_str(),
+            "warning"
+        );
+        for value in ["0", "9", "86401", "oops"] {
+            unsafe {
+                std::env::set_var(keys[1], value);
+            }
+            assert!(Config::from_env().is_err());
+        }
+        unsafe {
+            std::env::set_var(keys[1], "60");
+            std::env::set_var(keys[2], "urgent");
+        }
+        assert!(Config::from_env().is_err());
+        for (key, value) in previous {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
     }
 }

@@ -75,16 +75,6 @@ where
         .fetch_all(&mut **tx)
         .await?;
         validate_plan(desired, settings, &existing_teams, &existing_projects)?;
-        if settings.project_source == ManagementSource::Yaml {
-            let seconds = desired.alertmanager_interval_seconds.unwrap_or(60);
-            crate::domain::notifications::validate_interval(seconds)?;
-            sqlx::query::<DB>(DB::sql(
-                "UPDATE notification_settings SET refresh_interval_seconds = ? WHERE id = 1",
-            ))
-            .bind(seconds)
-            .execute(&mut **tx)
-            .await?;
-        }
         if settings.notification_source == ManagementSource::Yaml
             && let Some(notifications) = &desired.notifications
         {

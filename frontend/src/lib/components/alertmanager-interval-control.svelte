@@ -13,12 +13,14 @@
     interval,
     projectId,
     readonly = false,
-    managed = false
+    managed = false,
+    managedBy = 'yaml'
   }: {
     interval: AlertmanagerInterval;
     projectId?: string;
     readonly?: boolean;
     managed?: boolean;
+    managedBy?: 'yaml' | 'env';
   } = $props();
   let seconds = $state<number | undefined>(untrack(() => interval.effective_interval_seconds));
   let inherit = $state(untrack(() => Boolean(projectId && interval.interval_seconds === null)));
@@ -55,7 +57,7 @@
   <Card.Content>
     <form onsubmit={save} class="space-y-3">
       {#if managed}<p class="text-muted-foreground text-sm">
-          {$t('alertmanager_interval_yaml')}
+          {$t(managedBy === 'env' ? 'alertmanager_defaults_env' : 'alertmanager_interval_yaml')}
         </p>{/if}
       {#if projectId}
         <label class="flex items-center gap-2 text-sm">

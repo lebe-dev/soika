@@ -14,6 +14,7 @@ use serde::Serialize;
 pub struct NotificationView {
     pub source: ManagementSource,
     pub interval_source: ManagementSource,
+    pub default_severity: Option<crate::domain::notifications::AlertSeverity>,
     pub interval: crate::domain::notifications::AlertmanagerInterval,
     pub feature_enabled: bool,
     pub alertmanager_skip_tls: bool,
@@ -26,7 +27,8 @@ pub async fn get(
     State(state): State<AppState>,
 ) -> Result<Json<NotificationView>, ApiError> {
     Ok(Json(NotificationView {
-        interval_source: state.config.management.project_source,
+        interval_source: state.config.management.service_source,
+        default_severity: state.notifications.severity(None).await?,
         interval: state.notifications.interval(None).await?,
         source: if state.config.management.service_source == ManagementSource::Env {
             ManagementSource::Env
@@ -124,7 +126,7 @@ pub async fn update_interval(
     State(state): State<AppState>,
     Json(body): Json<IntervalRequest>,
 ) -> Result<Json<crate::domain::notifications::AlertmanagerInterval>, ApiError> {
-    crate::config_sync::require_ui_management(&state, false)?;
+    require_ui_defaults(&state)?;
     state
         .notifications
         .set_interval(None, body.interval_seconds)
@@ -200,7 +202,7 @@ pub async fn project_severity(
     if let Err(response) = crate::api::projects::require_member(&state, &user, project.id).await {
         return response;
     }
-    match state.notifications.severity(project.id).await {
+    match state.notifications.severity(Some(project.id)).await {
         Ok(severity) => Json(SeverityRequest { severity }).into_response(),
         Err(error) => ApiError(error).into_response(),
     }
@@ -234,11 +236,36 @@ pub async fn update_project_severity(
     }
     if let Err(error) = state
         .notifications
-        .set_severity(project.id, body.severity)
+        .set_severity(Some(project.id), body.severity)
         .await
     {
         return ApiError(error).into_response();
     }
     tracing::info!(actor_id = %user.id, project_id = %project.id, severity = ?body.severity, "project alert severity updated");
     Json(body).into_response()
+}
+
+fn require_ui_defaults(state: &AppState) -> Result<(), ApiError> {
+    if state.config.management.service_source != ManagementSource::Ui {
+        return Err(Error::Forbidden(
+            "Alertmanager defaults are managed through environment variables".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub async fn update_default_severity(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    body: Result<Json<SeverityRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<SeverityRequest>, ApiError> {
+    require_ui_defaults(&state)?;
+    let Json(body) =
+        body.map_err(|_| Error::validation("severity must be critical, warning, info or null"))?;
+    state
+        .notifications
+        .set_severity(None, body.severity)
+        .await?;
+    Ok(Json(body))
 }

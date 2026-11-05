@@ -211,11 +211,12 @@ annotation templates. Choose UI or environment ownership with
 `SERVICE_MANAGEMENT_SOURCE=ui|env` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 For readable messages, receiver templates and VictoriaMetrics rule examples, see
-[Alertmanager integration](ALERTMANAGER.md). Global and per-project refresh
-intervals follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`, independently of the channel
-configuration source; the default is 60 seconds. Per-project Alertmanager severity
-(`critical`, `warning`, `info`, or the existing notification template) follows
-the same project management source. See [severity configuration](ALERTMANAGER.md#per-project-severity).
+[Alertmanager integration](ALERTMANAGER.md). Global defaults follow
+`SERVICE_MANAGEMENT_SOURCE=ui|env`: use `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS`
+(default `60`) and `ALERTMANAGER_DEFAULT_SEVERITY` (`critical`, `warning`, `info`,
+or empty for the notification template) in env mode, or **Admin → Notifications**
+in UI mode. Project overrides follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`.
+See [severity configuration](ALERTMANAGER.md#per-project-severity).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
 `SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,
@@ -586,7 +587,6 @@ project intervals and severities, see [Alertmanager examples](ALERTMANAGER.md#co
 
 ```yaml
 version: 1
-alertmanager_interval_seconds: 300 # Global Alertmanager cadence; default 60 seconds.
 teams:
   - name: Platform
     members:
@@ -602,7 +602,7 @@ projects:
     retention_events: 5000
     retention_days: 30
     alertmanager_interval_seconds: 120 # Overrides the global cadence.
-    alertmanager_severity: critical # critical, warning, info; omit/null uses notification labels.
+    alertmanager_severity: critical # critical, warning, info; omit/null inherits the global default.
     webhook_url: ${BACKEND_WEBHOOK_URL}
 ```
 
@@ -610,13 +610,14 @@ Members have role `admin` or `contributor`. A team must specify `members` or
 `sso_groups`; use `members: []` for an intentionally empty team. File projects
 require `slug`, `name` and `team`.
 
-Alertmanager intervals and project severity are owned by
-`PROJECT_MANAGEMENT_SOURCE`. With `yaml`, the root interval defaults to 60 seconds;
-omitting a project's interval makes it inherit the global value. Omitting
-`alertmanager_severity` restores the existing severity label template. With `ui`,
-these YAML settings are ignored; edit the global interval in **Admin → Notifications**
-and project overrides in **Project → Settings**. Enabling the Alertmanager channel
-is a separate setting; see the [complete setup](ALERTMANAGER.md#complete-yaml-example).
+Only project Alertmanager overrides are owned by `PROJECT_MANAGEMENT_SOURCE`.
+Omitting a project's interval or severity inherits the global default. The global
+interval and severity belong in `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` and
+`ALERTMANAGER_DEFAULT_SEVERITY` with `SERVICE_MANAGEMENT_SOURCE=env`, or in
+**Admin → Notifications** with `SERVICE_MANAGEMENT_SOURCE=ui`; they are never
+read from YAML. With UI project management, edit overrides in **Project → Settings**.
+Enabling the Alertmanager channel is separate; see the
+[complete setup](ALERTMANAGER.md#complete-yaml-example).
 
 The slug is the project's address in the web UI (`/projects/{slug}`), so the
 file enforces a strict rule: 1–48 characters from `a-z`, `0-9` and `-`, with no

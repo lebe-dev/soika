@@ -49,18 +49,17 @@ tests:
       - notEqual:
           path: spec.template.metadata.annotations["checksum/config-file"]
           value: 71cd42bb7870679becceb4ceda9f74f4545d03e8b701de23fd2c154f7834398a
-  - it: preserves literal notification templates
+  - it: preserves literal project label templates
     template: config-file-configmap.yaml
     set:
-      configFile.content.notifications.alertmanager.enabled: true
-      configFile.content.notifications.alertmanager.url: http://alertmanager.monitoring:9093
+      configFile.content.notifications.alertmanager.project_labels.api.team: "{{ project_slug }}"
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: '\{\{ title \}\}'
+          pattern: '\{\{ project_slug \}\}'
       - matchRegex:
           path: data["config.yaml"]
-          pattern: 'url: http://alertmanager.monitoring:9093'
+          pattern: 'project_labels:'
   - it: disables the Alertmanager feature by default
     template: configmap.yaml
     asserts:

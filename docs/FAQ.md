@@ -20,6 +20,8 @@ from the environment:
 | Alertmanager channel enabled | `NOTIFICATIONS_ALERTMANAGER_ENABLED` | `false` |
 | Skip Alertmanager TLS certificate verification | `ALERTMANAGER_SKIP_TLS` | `false` |
 | Alertmanager URL | `ALERTMANAGER_URL` | Empty |
+| Default Alertmanager refresh interval | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `60` seconds |
+| Default Alertmanager severity | `ALERTMANAGER_DEFAULT_SEVERITY` | Empty (notification label template) |
 | Additional default Alertmanager labels | `ALERTMANAGER_DEFAULT_LABELS` | Empty |
 
 `DEFAULT_TEAM_IDS` accepts comma-separated UUIDs of existing teams. It affects

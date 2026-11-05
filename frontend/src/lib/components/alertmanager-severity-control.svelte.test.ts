@@ -7,7 +7,7 @@ import Control from './alertmanager-severity-control.svelte';
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn() }));
 vi.mock('$lib/api', async () => {
   const actual = await vi.importActual<typeof import('$lib/api')>('$lib/api');
-  return { ...actual, notifications: { setProjectSeverity: vi.fn() } };
+  return { ...actual, notifications: { setProjectSeverity: vi.fn(), setDefaultSeverity: vi.fn() } };
 });
 vi.mock('$lib/report', () => ({ reportUnexpected: vi.fn() }));
 vi.mock('$lib/components/ui/sonner', () => ({ toast: { success: vi.fn() } }));
@@ -23,11 +23,16 @@ afterEach(async () => {
   await unmount(component);
   target.remove();
 });
-function render(readonly = false) {
+function render(readonly = false, global = false) {
   flushSync(() => {
     component = mount(Control, {
       target,
-      props: { view: { severity: 'warning' }, projectId: 'api', readonly, managed: readonly }
+      props: {
+        view: { severity: 'warning' },
+        projectId: global ? undefined : 'api',
+        readonly,
+        managed: readonly
+      }
     });
   });
 }
@@ -42,7 +47,7 @@ it('saves the selected project alert class', async () => {
     expect(notifications.setProjectSeverity).toHaveBeenCalledWith('api', 'critical')
   );
 });
-it('clears the project override to use the existing notification template', async () => {
+it('clears the project override to inherit the global default', async () => {
   vi.mocked(notifications.setProjectSeverity).mockResolvedValue({ severity: null });
   render();
   const select = target.querySelector('select')!;
@@ -58,4 +63,19 @@ it('locks the selector for YAML-managed projects', () => {
   expect(target.querySelector('select')!.disabled).toBe(true);
   expect(target.querySelector('button')).toBeNull();
   expect(target.textContent).toContain('PROJECT_MANAGEMENT_SOURCE');
+});
+
+it('saves an instance default when no project is selected', async () => {
+  vi.mocked(notifications.setDefaultSeverity).mockResolvedValue({ severity: 'info' });
+  render(false, true);
+  const select = target.querySelector('select')!;
+  select.value = 'info';
+  flushSync(() => select.dispatchEvent(new Event('change', { bubbles: true })));
+  target.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  await vi.waitFor(() => expect(notifications.setDefaultSeverity).toHaveBeenCalledWith('info'));
+});
+it('shows environment ownership for the instance default', () => {
+  render(true, true);
+  expect(target.textContent).toContain('SERVICE_MANAGEMENT_SOURCE');
+  expect(target.querySelector('select')!.disabled).toBe(true);
 });

@@ -46,7 +46,6 @@ impl Default for ManagementSettings {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
-    pub alertmanager_interval_seconds: Option<i64>,
     pub version: u32,
     pub notifications: Option<super::notifications::NotificationConfig>,
     pub projects: Option<Vec<ProjectConfig>>,
@@ -110,9 +109,6 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
     let mut file: ConfigFile = serde_yaml_ng::from_value(value).map_err(|_| {
         Error::validation("invalid configuration YAML (unknown field or invalid value)")
     })?;
-    if let Some(seconds) = file.alertmanager_interval_seconds {
-        super::notifications::validate_interval(seconds)?;
-    }
     file.alertmanager_project_labels = project_labels;
     for (slug, labels) in &file.alertmanager_project_labels {
         if let Err(reason) = super::validate_slug(slug) {
@@ -382,9 +378,6 @@ pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &Manageme
         }
         if settings.project_source == ManagementSource::Ui {
             map.remove(serde_yaml_ng::Value::String("projects".into()));
-            map.remove(serde_yaml_ng::Value::String(
-                "alertmanager_interval_seconds".into(),
-            ));
         }
         if settings.team_source == ManagementSource::Ui {
             map.remove(serde_yaml_ng::Value::String("teams".into()));

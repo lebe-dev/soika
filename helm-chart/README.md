@@ -189,28 +189,31 @@ SSO-вход. Без OAuth новые пользователи не смогут
 
 ## Notifications
 
-В **Admin → Notifications** находятся Email/SMTP, Webhooks проектов и Alertmanager.
-Для доступности Alertmanager установите `NOTIFICATIONS_ALERTMANAGER_ENABLED=true`
-в `envs` (по умолчанию `false`). При выключенном флаге UI коротко сообщает об
-отключении в конфигурации; отправка, продление и закрытие алертов заблокированы.
-Открытые алерты истекут по TTL; записи в БД сохранятся до включения флага.
-По умолчанию `SERVICE_MANAGEMENT_SOURCE=ui`: URL Alertmanager и шаблоны
-labels/annotations сохраняются через UI в БД. `ALERTMANAGER_URL` в `envs` задаёт
-адрес по умолчанию: пустой URL в UI/YAML использует его, явно указанный URL
-имеет приоритет. Изменение переменной окружения применяется после rollout.
-В режиме `ui` после установки глобального флага включите канал кнопкой
-**Enable Alertmanager** и сохраните изменения: флаг разрешает интеграцию,
-но не меняет сохранённое состояние канала. При включённом канале доступна
-отправка тестового алерта с фиксированным текстом на языке интерфейса.
-В режиме `env` настройки и тестовая отправка заблокированы в UI и API;
-форма помечена «Настраивается через переменные окружения». Имя организации
-берётся из `ORGANIZATION_NAME` и недоступно для изменения даже администраторам.
-При старте настройки уведомлений в БД заменяются значениями окружения:
-`NOTIFICATIONS_ALERTMANAGER_ENABLED` включает канал, `ALERTMANAGER_URL` задаёт
-адрес, шаблоны используются встроенные. Изменения применяются после rollout.
-Значения `yaml` и `yml` для `SERVICE_MANAGEMENT_SOURCE` больше не поддерживаются.
+Set `NOTIFICATIONS_ALERTMANAGER_ENABLED="true"` to enable the Alertmanager feature
+(default `"false"`). `ALERTMANAGER_URL` is a base URL: Soika appends `/api/v2/alerts`.
+With `SERVICE_MANAGEMENT_SOURCE=ui` (default), enable and save the channel in
+**Admin → Notifications**. In env mode, the feature flag also sets the channel
+state at startup, so no additional UI toggle is required.
 
-Пример режима `env` (список `envs` заменяется целиком):
+| Variable | Chart default | Behavior |
+| --- | --- | --- |
+| `SERVICE_MANAGEMENT_SOURCE` | `"ui"` | Owns global defaults and channel settings: `ui` or `env` |
+| `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `"60"` | Refresh cadence for projects without an override; range `10..86400` |
+| `ALERTMANAGER_DEFAULT_SEVERITY` | `""` | Default class: `critical`, `warning`, `info`; empty uses the notification label template |
+| `PROJECT_MANAGEMENT_SOURCE` | `"ui"` | Owns project overrides: `ui` or `yaml` |
+
+In env mode, global defaults are applied on startup and read-only in the admin
+panel. In UI mode, Owners and Managers edit them in **Admin → Notifications**;
+saved values survive restarts and the environment defaults are ignored. Project
+admins manage overrides in **Project → Settings** when projects are UI-managed,
+or in `configFile.content.projects` with YAML project management. An explicit
+project severity overrides the global default, then notification label templates.
+
+### Environment defaults with YAML project overrides
+
+Helm replaces the complete `envs` list. The following example includes the base
+application settings; keep your existing persistent `SECRET_KEY` configuration
+and any additional application variables when adapting it:
 
 ```yaml
 envs:
@@ -222,35 +225,59 @@ envs:
     value: "https://errors.example.com"
   - name: SERVICE_MANAGEMENT_SOURCE
     value: "env"
-  - name: ORGANIZATION_NAME
-    value: "My organization"
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "true"
   - name: ALERTMANAGER_URL
     value: "http://alertmanager.monitoring:9093"
+  - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
+    value: "300"
+  - name: ALERTMANAGER_DEFAULT_SEVERITY
+    value: "warning"
+  - name: PROJECT_MANAGEMENT_SOURCE
+    value: "yaml"
+  - name: TEAM_MANAGEMENT_SOURCE
+    value: "yaml"
+  - name: CONFIG_PATH
+    value: "/etc/soika/config.yaml"
+configFile:
+  content:
+    version: 1
+    teams:
+      - name: Platform
+        members: []
+    projects:
+      - slug: api
+        name: API
+        team: Platform
+        alertmanager_interval_seconds: 120
+        alertmanager_severity: critical
+      - slug: frontend
+        name: Frontend
+        team: Platform
+        # Inherits 300 seconds and warning from env defaults.
 ```
 
-Секция `configFile.content.notifications` в режимах `ui` и `env` игнорируется.
-Для совместимости старый `NOTIFICATION_MANAGEMENT_SOURCE=yaml` работает,
-если `SERVICE_MANAGEMENT_SOURCE` отсутствует; только этот режим использует
-секцию уведомлений YAML.
+Global defaults never belong in `configFile.content`. Remove the former root
+`alertmanager_interval_seconds` field: it is now rejected by Soika. Only the
+project field remains valid. Omit or set project overrides to null to inherit
+the defaults. YAML management reconciles all projects and teams according to
+orphan policies; include existing entities in your real configuration.
 
-Helm передаёт `{{ variable }}` буквально, без `tpl`. Изменение содержимого
-`configFile` меняет checksum и вызывает rollout; для `existingConfigMap`
-после обновления внешнего ConfigMap перезапустите Deployment самостоятельно.
-Режим уведомлений не зависит от источника проектов и команд. В YAML-режиме
-настройки в UI доступны только для чтения. По умолчанию канал выключен.
+Changes to `envs` or `configFile.content` change the Deployment checksum and
+trigger a rollout. When using `configFile.existingConfigMap`, restart the
+Deployment after updating the external ConfigMap. Helm passes notification
+placeholders such as `{{ project_slug }}` literally, without `tpl`.
 
-Soika отправляет алерты через `/api/v2/alerts`, продлевает открытые каждую минуту
-и закрывает их при resolve/mute/удалении. Старые ошибки при включении не отправляются.
-SMTP и Webhooks сохраняют настройки `SMTP_*` и `WEBHOOKS_ENABLED`.
-Список переменных и поведение доставки описаны в [Notifications](../docs/NOTIFICATIONS.md).
+Soika checks alert lifecycle changes every ten seconds and refreshes active
+alerts at their effective interval. Resolved, muted or deleted issues close their
+alerts on the next check. Enabling the channel does not send old issues.
+**Send test alert** remains available in every management mode when the feature
+flag is enabled; its fixed labels do not test project overrides.
 
-В режиме `SERVICE_MANAGEMENT_SOURCE=env` все общие настройки сервиса недоступны
-для изменения через UI/API: имя организации (`ORGANIZATION_NAME`), регистрация
-(`ALLOW_SIGNUP`), команды новых пользователей (`DEFAULT_TEAM_IDS`, UUID через запятую;
-по умолчанию пусто) и уведомления. Команды должны существовать к моменту запуска.
-Mute, управление пользователями, проектами и командами сохраняют текущие правила доступа.
+SMTP and project webhooks retain `SMTP_*` and `WEBHOOKS_ENABLED`. Legacy
+notification YAML compatibility is described in [Notifications](../docs/NOTIFICATIONS.md).
+See [Alertmanager setup and message examples](../docs/ALERTMANAGER.md) for
+routing, refresh semantics, severity precedence and VMRule examples.
 
 ## TLS Alertmanager и host aliases
 

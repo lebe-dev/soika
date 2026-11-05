@@ -18,6 +18,7 @@ let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const view: NotificationView = {
   interval_source: 'ui',
+  default_severity: null,
   interval: { interval_seconds: 60, effective_interval_seconds: 60 },
   feature_enabled: true,
   alertmanager_skip_tls: false,

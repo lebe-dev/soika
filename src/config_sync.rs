@@ -132,6 +132,17 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         }
     }
     if settings.service_source == ManagementSource::Env {
+        state
+            .notifications
+            .set_interval(
+                None,
+                Some(state.config.alertmanager_default_interval_seconds),
+            )
+            .await?;
+        state
+            .notifications
+            .set_severity(None, state.config.alertmanager_default_severity)
+            .await?;
         let mut notifications = crate::domain::notifications::NotificationConfig::default();
         notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;
         notifications.alertmanager.url = state.config.alertmanager_url.clone().unwrap_or_default();

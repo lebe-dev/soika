@@ -150,7 +150,11 @@ pub async fn notify(
         .project_config(
             &config,
             &project.slug,
-            state.notifications.severity(project.id).await?,
+            state
+                .notifications
+                .severity(Some(project.id))
+                .await?
+                .or(state.notifications.severity(None).await?),
         )
         .await;
     let mut alert = render_alert(
@@ -259,7 +263,11 @@ async fn reconcile(
         .project_config(
             config,
             &project.slug,
-            state.notifications.severity(project.id).await?,
+            state
+                .notifications
+                .severity(Some(project.id))
+                .await?
+                .or(state.notifications.severity(None).await?),
         )
         .await;
     let mut alert = render_alert(

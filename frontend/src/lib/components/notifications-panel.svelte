@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
   import { Input } from '$lib/components/ui/input';
+  import AlertmanagerSeverityControl from '$lib/components/alertmanager-severity-control.svelte';
   import AlertmanagerIntervalControl from '$lib/components/alertmanager-interval-control.svelte';
   import InfoTip from '$lib/components/info-tip.svelte';
   import { toast } from '$lib/components/ui/sonner';
@@ -240,6 +241,12 @@
 {#if view.feature_enabled}
   <AlertmanagerIntervalControl
     interval={view.interval}
+    readonly={view.interval_source !== 'ui'}
+    managed={view.interval_source !== 'ui'}
+    managedBy="env"
+  />
+  <AlertmanagerSeverityControl
+    view={{ severity: view.default_severity }}
     readonly={view.interval_source !== 'ui'}
     managed={view.interval_source !== 'ui'}
   />

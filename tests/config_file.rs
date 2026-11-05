@@ -71,16 +71,15 @@ fn env_project_labels_are_validated_even_for_ui_projects() {
 #[test]
 fn alertmanager_intervals_follow_project_yaml_ownership() {
     let mut settings = ManagementSettings::default();
-    let invalid = "version: 1\nalertmanager_interval_seconds: 0\nprojects: []\n";
+    let invalid = "version: 1\nalertmanager_interval_seconds: 300\nprojects: []\n";
     assert!(
-        parse(invalid, &settings).is_ok(),
-        "UI-owned values are ignored"
+        parse(invalid, &settings).is_err(),
+        "global defaults do not belong in YAML"
     );
     settings.project_source = ManagementSource::Yaml;
     assert!(parse(invalid, &settings).is_err());
-    let text = "version: 1\nalertmanager_interval_seconds: 300\nprojects:\n  - {slug: api, name: API, team: platform, alertmanager_interval_seconds: 120}\n";
+    let text = "version: 1\nprojects:\n  - {slug: api, name: API, team: platform, alertmanager_interval_seconds: 120}\n";
     let file = parse(text, &settings).unwrap();
-    assert_eq!(file.alertmanager_interval_seconds, Some(300));
     assert_eq!(
         file.projects.unwrap()[0].alertmanager_interval_seconds,
         Some(120)

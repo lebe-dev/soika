@@ -608,7 +608,11 @@
   "alertmanager_interval_yaml": "Intervals are managed through YAML (PROJECT_MANAGEMENT_SOURCE).",
   "alertmanager_severity_title": "Alertmanager severity",
   "alertmanager_severity_help": "Classify all alerts from this project. This overrides the severity label without changing the original event level.",
-  "alertmanager_severity_default": "Use notification template (event level by default)",
+  "alertmanager_severity_default": "Use global default",
   "alertmanager_severity_save": "Save severity",
-  "alertmanager_severity_yaml": "Severity is managed through YAML (PROJECT_MANAGEMENT_SOURCE)."
+  "alertmanager_severity_yaml": "Severity is managed through YAML (PROJECT_MANAGEMENT_SOURCE).",
+  "alertmanager_default_severity_title": "Default Alertmanager severity",
+  "alertmanager_default_severity_help": "Used for projects without an explicit severity. If unset, the notification label template applies.",
+  "alertmanager_default_severity_template": "Use notification template (event level by default)",
+  "alertmanager_defaults_env": "Global defaults are managed through environment variables (SERVICE_MANAGEMENT_SOURCE)."
 }
