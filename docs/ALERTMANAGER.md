@@ -277,16 +277,24 @@ rows are classes, not three copies of every issue. All classes use the same
 annotation templates below. Alertmanager groups by `group`, `severity` and
 `project` so different services and severity classes remain separate.
 
-Soika currently sends these alerts directly to Alertmanager. It does not export
-issue metrics for vmalert. A Kubernetes `VMRule` named `soika` with three rules
-would require an additional datasource containing the issues and their severity
-and context. The configuration below applies to the existing direct integration.
+Soika sends issue metadata in each alert's labels and annotations directly to
+Alertmanager. Alertmanager reads those fields when rendering notifications;
+no issue metrics are needed. This uses notification templates and three routing
+branches in Alertmanager. A Kubernetes `VMRule` is consumed by vmalert, which
+evaluates its expressions and sends the resulting alerts to Alertmanager;
+Alertmanager does not load VMRule resources or apply their annotations to
+incoming Soika alerts. See the [VMRule documentation](https://docs.victoriametrics.com/operator/resources/vmrule/)
+and [Alertmanager template reference](https://prometheus.io/docs/alerting/latest/notifications/).
 
 ## Short summaries, details and actions
 
 Use a shared title template for all three severity classes:
 `{{ project_name }}: {{ title }}`. Here `project_name` is the service's Soika
-project name and `title` is the issue title.
+project name and `title` is the issue title. Send these as separate
+`service_name` and `issue_title` annotations so Alertmanager can compose the
+chat title per alert. These annotation names are custom keys; their values use
+Soika's supported variables. The `summary` also carries the full title for
+receivers that display it directly.
 Keep the error location, environment, release, event count and issue link in the
 description.
 
@@ -294,6 +302,8 @@ For example, replace annotations in **Admin → Notifications** with:
 
 ```json
 {
+  "service_name": "{{ project_name }}",
+  "issue_title": "{{ title }}",
   "summary": "{{ project_name }}: {{ title }}",
   "description": "Error: {{ title }}\nLocation: {{ culprit }}\nEnvironment: {{ environment }}\nRelease: {{ release }}\nEvents: {{ event_count }}\nLast seen: {{ last_seen }}\nOpen the issue and inspect the latest event and stack trace.\nSoika: {{ issue_url }}",
   "issue_url": "{{ issue_url }}",
@@ -337,10 +347,18 @@ that individual alert. See the
 Example `/etc/alertmanager/templates/readable.tmpl`:
 
 ```gotemplate
+{{ define "soika.title" -}}
+{{ .Annotations.service_name }}: {{ .Annotations.issue_title }}
+{{- end }}
+
+{{ define "readable.title" -}}
+{{ range .Alerts }}{{ template "soika.title" . }}{{ "\n" }}{{ end }}
+{{- end }}
+
 {{ define "readable.message" }}
 {{ range .Alerts }}
 {{ if eq .Status "firing" }}🔥 Active{{ else }}✅ Closed{{ end }} [{{ .Labels.severity }}]
-{{ .Annotations.summary }}
+{{ template "soika.title" . }}
 {{ with .Labels.cluster }}Cluster: {{ . }}{{ end }}
 {{ with .Labels.instance }}Instance: {{ . }}{{ end }}
 {{ with .Annotations.description }}{{ . }}{{ end }}
@@ -365,7 +383,12 @@ route:
   routes:
     - receiver: service-general-status
       matchers:
+        - 'group="soika"'
         - 'chat="service-general-status"'
+      routes:
+        - matchers: ['severity="critical"']
+        - matchers: ['severity="warning"']
+        - matchers: ['severity="info"']
 receivers:
   - name: fallback
     # Add your receiver for alerts without a matching chat label.
@@ -374,9 +397,14 @@ receivers:
       - api_url_file: /etc/alertmanager/secrets/slack-webhook-url
         channel: '#service-general-status'
         send_resolved: true
-        title: 'Service notifications'
+        title: '{{ template "readable.title" . }}'
         text: '{{ template "readable.message" . }}'
 ```
+
+The three severity routes inherit the parent receiver and timing settings.
+Set a different `receiver` on a branch when a class needs a separate destination.
+`readable.title` and `readable.message` iterate over `.Alerts`, so each issue's
+metadata is read separately even when several issues share a notification group.
 
 Merge this into your Alertmanager configuration. The example fallback drops
 messages until you add an integration. `chat` is a custom label: it needs a route
