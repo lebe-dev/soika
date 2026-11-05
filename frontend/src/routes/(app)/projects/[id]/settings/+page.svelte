@@ -487,7 +487,7 @@
   .configuration-managed :global(:disabled) {
     pointer-events: auto;
   }
-  .configuration-managed:has(:disabled:hover) .configuration-notice {
+  .configuration-managed:has(:global(:disabled:hover)) .configuration-notice {
     color: var(--primary);
     animation: configuration-glow 1s ease-in-out infinite alternate;
   }
@@ -500,7 +500,7 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .configuration-managed:has(:disabled:hover) .configuration-notice {
+    .configuration-managed:has(:global(:disabled:hover)) .configuration-notice {
       animation: none;
     }
   }
