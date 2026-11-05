@@ -277,8 +277,8 @@ flag is enabled; its fixed labels do not test project overrides.
 
 SMTP and project webhooks retain `SMTP_*` and `WEBHOOKS_ENABLED`. Legacy
 notification YAML compatibility is described in [Notifications](../docs/NOTIFICATIONS.md).
-See [Alertmanager setup and message examples](../docs/ALERTMANAGER.md) for
-routing, refresh semantics, severity precedence and VMRule examples.
+See [Soika Alertmanager setup and VMRule examples](../docs/ALERTMANAGER.md) for
+connection settings, refresh intervals and project severity overrides.
 
 ## TLS Alertmanager и host aliases
 
