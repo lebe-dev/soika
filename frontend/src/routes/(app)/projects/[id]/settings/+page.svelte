@@ -204,12 +204,12 @@
 </script>
 
 <PageTitle title={`${project.name} · ${$t('settings')}`} />
-<div class:configuration-managed={projectsManaged}>
+<div class="flex flex-col gap-6" class:configuration-managed={projectsManaged}>
   {#if projectsManaged}<p class="configuration-notice text-muted-foreground text-sm">
       {$t('managed_by_configuration')}
     </p>{/if}
 
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6">
     {#key project.id}
       <Card.Root>
         <AlertmanagerIntervalControl
