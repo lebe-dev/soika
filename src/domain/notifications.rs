@@ -256,6 +256,14 @@ pub enum AlertSeverity {
     Info,
 }
 impl AlertSeverity {
+    pub fn alert_name(self) -> &'static str {
+        match self {
+            Self::Critical => "SoikaIssueCritical",
+            Self::Warning => "SoikaIssueWarning",
+            Self::Info => "SoikaIssueInfo",
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Critical => "critical",

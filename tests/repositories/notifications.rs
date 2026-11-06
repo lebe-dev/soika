@@ -1033,6 +1033,51 @@ async fn project_severity_api_validates_classes_and_honors_project_ownership() {
 }
 
 #[tokio::test]
+async fn severity_selects_alert_name_and_resolves_previous_identity() {
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    let mut config = db.notifications.get().await.unwrap();
+    config
+        .alertmanager
+        .labels
+        .insert("alertname".into(), "SoikaIssue".into());
+    db.notifications.set(&config).await.unwrap();
+
+    for (index, (severity, name)) in [
+        (AlertSeverity::Critical, "SoikaIssueCritical"),
+        (AlertSeverity::Warning, "SoikaIssueWarning"),
+        (AlertSeverity::Info, "SoikaIssueInfo"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        db.notifications
+            .set_severity(Some(project.id), Some(severity))
+            .await
+            .unwrap();
+        if index == 0 {
+            alertmanager::notify(&db, &project, &issue, "new_issue")
+                .await
+                .unwrap();
+        } else {
+            let previous = receiver.snapshot().last().unwrap().clone();
+            alertmanager::refresh(&db).await.unwrap();
+            let alerts = receiver.snapshot();
+            let resolved = &alerts[alerts.len() - 2];
+            assert_eq!(resolved.labels, previous.labels);
+            assert!(resolved.ends_at <= db.clock.now());
+        }
+        let alerts = receiver.snapshot();
+        assert_eq!(alerts.len(), index * 2 + 1);
+        let alert = alerts.last().unwrap();
+        assert_eq!(alert.labels["severity"], severity.as_str());
+        assert_eq!(alert.labels["alertname"], name);
+        assert!(alert.ends_at > db.clock.now());
+    }
+}
+
+#[tokio::test]
 async fn global_alertmanager_severity_is_inherited_and_project_override_wins() {
     use soika::domain::notifications::AlertSeverity;
     let db = notification_db().await;
@@ -1046,6 +1091,10 @@ async fn global_alertmanager_severity_is_inherited_and_project_override_wins() {
         .await
         .unwrap();
     assert_eq!(receiver.snapshot()[0].labels["severity"], "warning");
+    assert_eq!(
+        receiver.snapshot()[0].labels["alertname"],
+        "SoikaIssueWarning"
+    );
     db.notifications
         .set_severity(Some(project.id), Some(AlertSeverity::Critical))
         .await

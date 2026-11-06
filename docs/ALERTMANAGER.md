@@ -38,8 +38,7 @@ saved global and project labels, effective severity, and annotation templates.
 The test alert's `alertname` is set by `ALERTMANAGER_TEST_ALERT_KIND` (default
 `SoikaIssueCritical`, also when empty). This overrides the configured `alertname`
 template for project tests in every management mode; severity still follows the
-project settings. Regular issue alerts and the general admin connectivity test
-keep their existing alert names.
+project settings. The general admin connectivity test uses `SoikaTestAlert`.
 Project admins can send tests when the feature and channel are enabled, including
 with configuration-managed settings. Sample event data is rendered with the real
 project and team identity; the link opens the project. The alert has `test=true`,
@@ -122,8 +121,18 @@ Project admins can select a class in **Project → Settings** when
 value inherits the global default. A project override takes precedence over the
 global default and notification label templates.
 
+For regular issue alerts, the effective class also sets `alertname`, overriding
+the configured label template (including an existing `SoikaIssue` value):
+
+| Severity | Alert name |
+| --- | --- |
+| `critical` | `SoikaIssueCritical` |
+| `warning` | `SoikaIssueWarning` |
+| `info` | `SoikaIssueInfo` |
+
 If the global default is cleared in the UI and the project has no override,
-the notification severity template applies (`{{ level }}` by default).
+the notification severity template applies (`{{ level }}` by default), and
+the configured `alertname` template is used.
 For exactly three classes, keep an explicit global default or project override.
 Changing severity resolves the old alert identity and sends a replacement.
 

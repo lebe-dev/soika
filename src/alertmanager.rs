@@ -42,6 +42,9 @@ impl Alertmanager {
         if let Some(severity) = severity {
             config
                 .labels
+                .insert("alertname".into(), severity.alert_name().into());
+            config
+                .labels
                 .insert("severity".into(), severity.as_str().into());
         }
         config
