@@ -61,7 +61,12 @@
         </p>{/if}
       {#if projectId}
         <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" bind:checked={inherit} disabled={readonly || saving} />
+          <input
+            type="checkbox"
+            bind:checked={inherit}
+            data-managed-readonly={readonly || undefined}
+            disabled={readonly || saving}
+          />
           {$t('alertmanager_interval_inherit')}
         </label>
       {/if}
@@ -73,6 +78,7 @@
           max={86400}
           step={1}
           bind:value={seconds}
+          data-managed-readonly={readonly || undefined}
           disabled={readonly || saving || inherit}
           required
         />

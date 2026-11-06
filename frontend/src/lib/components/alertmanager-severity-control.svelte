@@ -74,7 +74,11 @@
             projectId ? 'alertmanager_severity_title' : 'alertmanager_default_severity_title'
           )}</span
         >
-        <NativeSelect bind:value={severity} disabled={readonly || saving}>
+        <NativeSelect
+          bind:value={severity}
+          data-managed-readonly={readonly || undefined}
+          disabled={readonly || saving}
+        >
           <option value=""
             >{$t(
               projectId ? 'alertmanager_severity_default' : 'alertmanager_default_severity_template'

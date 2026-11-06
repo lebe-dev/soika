@@ -268,3 +268,24 @@ it('shows alert name save errors without losing edits', async () => {
   await vi.waitFor(() => expect(input.closest('form')!.textContent).toContain('Database busy'));
   expect(input.value).toBe('CustomInfo');
 });
+
+it.each(['env', 'yaml'] as const)(
+  'marks every configuration-locked control in %s mode',
+  (source) => {
+    render({ ...view, source, interval_source: 'env' });
+    const controls = [...target.querySelectorAll('input, textarea, select, button')];
+    const locked = controls.filter((control) => control.matches(':disabled'));
+    expect(locked.length).toBeGreaterThan(8);
+    for (const control of locked) {
+      expect(control.closest('[data-managed-readonly]')).not.toBeNull();
+    }
+    for (const control of controls.filter((control) => !control.matches(':disabled'))) {
+      expect(control.closest('[data-managed-readonly]')).toBeNull();
+    }
+  }
+);
+
+it('does not mark controls disabled by unchanged UI values as configuration-managed', () => {
+  render();
+  expect(target.querySelector('[data-managed-readonly]')).toBeNull();
+});

@@ -133,6 +133,10 @@ Rules:
   variable names in the UI. Keep managed controls visible and disabled. When
   hovering over one, highlight the page-level notice with a subtle pulsing
   primary colour; respect `prefers-reduced-motion` by disabling the animation.
+  In admin, mark every configuration-locked control or its enclosing group with
+  `data-managed-readonly`, including inputs, selects, checkboxes and buttons.
+  Keep disabled controls hoverable; temporary saving, validation, permission or
+  inheritance states alone must not highlight the notice.
   Keep the notice readable without hover and do not rely on colour alone to
   explain why controls are disabled.
 - **Severity**: a small dot plus a mono label. Only `error`/`fatal` are red and

@@ -371,6 +371,7 @@
                 id="org-name"
                 bind:value={orgName}
                 class="max-w-sm"
+                data-managed-readonly={serviceEnv || undefined}
                 disabled={saving || serviceEnv}
               />
             </div>
@@ -397,6 +398,9 @@
               <Button
                 variant={allowSignup ? 'default' : 'outline'}
                 size="sm"
+                data-managed-readonly={serviceEnv ||
+                  data.telemetry?.team_management_source === 'yaml' ||
+                  undefined}
                 disabled={saving || serviceEnv || data.telemetry?.team_management_source === 'yaml'}
                 aria-pressed={allowSignup}
                 onclick={() => (allowSignup = !allowSignup)}
@@ -432,7 +436,11 @@
         {/if}
 
         <div class="flex items-center gap-2">
-          <Button onclick={save} disabled={serviceEnv || !dirty || saving}>
+          <Button
+            onclick={save}
+            data-managed-readonly={serviceEnv || undefined}
+            disabled={serviceEnv || !dirty || saving}
+          >
             {saving ? $t('saving') : $t('save_changes')}
           </Button>
           <Button variant="ghost" onclick={reset} disabled={!dirty || saving}>{$t('reset')}</Button>
@@ -605,6 +613,15 @@
     transition: border-color 250ms ease;
   }
 
+  /* Disabled buttons normally suppress pointer hit testing. Keep managed controls
+     hoverable so their configuration notice can explain the disabled state. */
+  .admin-tabs :global([data-managed-readonly]:disabled),
+  .admin-tabs :global([data-managed-readonly] :disabled) {
+    pointer-events: auto;
+  }
+
+  .admin-tabs:has(:global([data-managed-readonly]:disabled:hover)),
+  .admin-tabs:has(:global([data-managed-readonly] :disabled:hover)),
   .admin-tabs:has(:global([data-managed-readonly] label:hover)),
   .admin-tabs:has(:global([data-slot='badge'][data-variant='disabled']:hover)),
   .admin-tabs:has(:global([data-slot='badge'][data-variant='enabled']:hover)) {

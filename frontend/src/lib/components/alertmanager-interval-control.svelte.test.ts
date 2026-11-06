@@ -67,3 +67,15 @@ it('disables interval controls when projects are managed through YAML', () => {
   expect(target.querySelector('button')).toBeNull();
   expect([...target.querySelectorAll('input')].every((input) => input.disabled)).toBe(true);
 });
+
+it('marks both managed interval controls, including the inheritance checkbox', () => {
+  render('project-id', true);
+  for (const input of target.querySelectorAll('input')) {
+    expect(input.hasAttribute('data-managed-readonly')).toBe(true);
+  }
+});
+it('does not mark an inherited interval as configuration-managed', () => {
+  render('project-id');
+  expect(target.querySelector('input[type="number"]:disabled')).not.toBeNull();
+  expect(target.querySelector('[data-managed-readonly]')).toBeNull();
+});

@@ -147,6 +147,7 @@
           variant={enabled ? 'default' : 'outline'}
           size="sm"
           aria-pressed={enabled}
+          data-managed-readonly={readonly || undefined}
           disabled={readonly || saving}
           onclick={() => (enabled = !enabled)}>{enabled ? $t('enabled') : $t('disabled')}</Button
         >
@@ -163,6 +164,7 @@
           type="url"
           placeholder={view.default_url || 'http://alertmanager:9093'}
           bind:value={url}
+          data-managed-readonly={readonly || undefined}
           disabled={readonly || saving}
         />
       </div>
@@ -183,6 +185,7 @@
             class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
             spellcheck="false"
             bind:value={labels}
+            data-managed-readonly={readonly || undefined}
             disabled={readonly || saving}
           ></textarea>
         </div>
@@ -198,6 +201,7 @@
             class="bg-background min-h-56 w-full rounded-md border p-3 font-mono text-sm"
             spellcheck="false"
             bind:value={annotations}
+            data-managed-readonly={readonly || undefined}
             disabled={readonly || saving}
           ></textarea>
         </div>
