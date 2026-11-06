@@ -130,6 +130,20 @@ the configured label template (including an existing `SoikaIssue` value):
 | `warning` | `SoikaIssueWarning` |
 | `info` | `SoikaIssueInfo` |
 
+Override these names with environment variables (in every management mode):
+
+```dotenv
+ALERTMANAGER_SEVERITY_CRITICAL=SoikaIssueCritical
+ALERTMANAGER_SEVERITY_WARNING=SoikaIssueWarning
+ALERTMANAGER_SEVERITY_INFO=SoikaIssueInfo
+```
+
+Unset, empty or whitespace-only values use the defaults above; surrounding
+whitespace is trimmed. Restart Soika after changing these variables. Tracked
+alerts with changed names are resolved and replaced on the next reconciliation.
+These variables do not change severity values or test alert names;
+`ALERTMANAGER_TEST_ALERT_KIND` controls project test names independently.
+
 If the global default is cleared in the UI and the project has no override,
 the notification severity template applies (`{{ level }}` by default), and
 the configured `alertname` template is used.

@@ -732,6 +732,9 @@ mod tests {
             // independently of SMTP configuration.
             notifications_alertmanager_enabled: false,
             alertmanager_url: None,
+            alertmanager_severity_critical: "SoikaIssueCritical".into(),
+            alertmanager_severity_warning: "SoikaIssueWarning".into(),
+            alertmanager_severity_info: "SoikaIssueInfo".into(),
             alertmanager_test_alert_kind: "SoikaIssueCritical".into(),
             alertmanager_default_interval_seconds: 60,
             alertmanager_default_severity: None,

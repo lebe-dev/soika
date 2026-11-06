@@ -1078,6 +1078,48 @@ async fn severity_selects_alert_name_and_resolves_previous_identity() {
 }
 
 #[tokio::test]
+async fn configured_severity_names_apply_to_delivery_and_refresh() {
+    let mut db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    let config = Arc::make_mut(&mut db.config);
+    config.alertmanager_severity_critical = "CustomCritical".into();
+    config.alertmanager_severity_warning = "CustomWarning".into();
+    config.alertmanager_severity_info = "CustomInfo".into();
+    // The global critical default is inherited for the initial send.
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(receiver.snapshot()[0].labels["alertname"], "CustomCritical");
+    for (severity, name) in [
+        (AlertSeverity::Warning, "CustomWarning"),
+        (AlertSeverity::Info, "CustomInfo"),
+    ] {
+        db.notifications
+            .set_severity(Some(project.id), Some(severity))
+            .await
+            .unwrap();
+        let previous = receiver.snapshot().last().unwrap().clone();
+        alertmanager::refresh(&db).await.unwrap();
+        let alerts = receiver.snapshot();
+        let resolved = &alerts[alerts.len() - 2];
+        assert_eq!(resolved.labels, previous.labels);
+        assert!(resolved.ends_at <= db.clock.now());
+        let alert = alerts.last().unwrap();
+        assert_eq!(alert.labels["alertname"], name);
+        assert_eq!(alert.labels["severity"], severity.as_str());
+    }
+    // Project test names remain independent of severity name overrides.
+    alertmanager::send_project_test(&db, &project, soika::domain::Locale::En)
+        .await
+        .unwrap();
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["alertname"],
+        "SoikaIssueCritical"
+    );
+}
+
+#[tokio::test]
 async fn global_alertmanager_severity_is_inherited_and_project_override_wins() {
     use soika::domain::notifications::AlertSeverity;
     let db = notification_db().await;

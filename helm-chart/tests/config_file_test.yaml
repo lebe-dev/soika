@@ -77,6 +77,18 @@ tests:
       - equal:
           path: data.ALERTMANAGER_DEFAULT_SEVERITY
           value: "critical"
+  - it: supplies severity alert names
+    template: configmap.yaml
+    asserts:
+      - equal:
+          path: data.ALERTMANAGER_SEVERITY_CRITICAL
+          value: "SoikaIssueCritical"
+      - equal:
+          path: data.ALERTMANAGER_SEVERITY_WARNING
+          value: "SoikaIssueWarning"
+      - equal:
+          path: data.ALERTMANAGER_SEVERITY_INFO
+          value: "SoikaIssueInfo"
   - it: supplies the project test alert kind
     template: configmap.yaml
     asserts:

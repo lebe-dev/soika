@@ -33,6 +33,7 @@ impl Alertmanager {
         &self,
         config: &AlertmanagerConfig,
         slug: &str,
+        runtime: &crate::config::Config,
         severity: Option<AlertSeverity>,
     ) -> AlertmanagerConfig {
         let mut config = config.clone();
@@ -40,9 +41,14 @@ impl Alertmanager {
             config.labels.extend(labels.clone());
         }
         if let Some(severity) = severity {
-            config
-                .labels
-                .insert("alertname".into(), severity.alert_name().into());
+            config.labels.insert(
+                "alertname".into(),
+                match severity {
+                    AlertSeverity::Critical => runtime.alertmanager_severity_critical.clone(),
+                    AlertSeverity::Warning => runtime.alertmanager_severity_warning.clone(),
+                    AlertSeverity::Info => runtime.alertmanager_severity_info.clone(),
+                },
+            );
             config
                 .labels
                 .insert("severity".into(), severity.as_str().into());
@@ -153,6 +159,7 @@ pub async fn notify(
         .project_config(
             &config,
             &project.slug,
+            &state.config,
             state
                 .notifications
                 .severity(Some(project.id))
@@ -266,6 +273,7 @@ async fn reconcile(
         .project_config(
             config,
             &project.slug,
+            &state.config,
             state
                 .notifications
                 .severity(Some(project.id))
@@ -381,6 +389,7 @@ pub async fn send_project_test(
         .project_config(
             &config,
             &project.slug,
+            &state.config,
             state
                 .notifications
                 .severity(Some(project.id))

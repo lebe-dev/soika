@@ -44,6 +44,13 @@ envs:
   # A project's alertmanager_severity takes precedence over this default.
   - name: ALERTMANAGER_DEFAULT_SEVERITY
     value: "critical" # Allowed: "critical" | "warning" | "info".
+  # Names for regular issue alerts, in every management mode.
+  - name: ALERTMANAGER_SEVERITY_CRITICAL
+    value: "SoikaIssueCritical"
+  - name: ALERTMANAGER_SEVERITY_WARNING
+    value: "SoikaIssueWarning"
+  - name: ALERTMANAGER_SEVERITY_INFO
+    value: "SoikaIssueInfo"
   # Alertname for the test button in project Settings, in every management mode.
   - name: ALERTMANAGER_TEST_ALERT_KIND
     value: "SoikaIssueCritical"

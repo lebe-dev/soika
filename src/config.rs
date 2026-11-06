@@ -399,6 +399,10 @@ pub struct Config {
     pub webhooks_enabled: bool,
     /// Default Alertmanager base URL; UI/YAML can override it.
     pub alertmanager_url: Option<String>,
+    /// Names for severity-based issue alerts, in every management mode.
+    pub alertmanager_severity_critical: String,
+    pub alertmanager_severity_warning: String,
+    pub alertmanager_severity_info: String,
     /// Alertname used by project test sends (`ALERTMANAGER_TEST_ALERT_KIND`).
     pub alertmanager_test_alert_kind: String,
     /// Env-managed global defaults for project Alertmanager delivery.
@@ -453,6 +457,18 @@ impl std::fmt::Debug for Config {
             .field("smtp_enabled", &self.smtp_enabled)
             .field("webhooks_enabled", &self.webhooks_enabled)
             .field("alertmanager_url", &self.alertmanager_url)
+            .field(
+                "alertmanager_severity_critical",
+                &self.alertmanager_severity_critical,
+            )
+            .field(
+                "alertmanager_severity_warning",
+                &self.alertmanager_severity_warning,
+            )
+            .field(
+                "alertmanager_severity_info",
+                &self.alertmanager_severity_info,
+            )
             .field(
                 "alertmanager_test_alert_kind",
                 &self.alertmanager_test_alert_kind,
@@ -517,6 +533,20 @@ impl Config {
         let webhooks_enabled = parse_bool(&env_or("WEBHOOKS_ENABLED", "false"));
         let notifications_alertmanager_enabled =
             parse_bool(&env_or("NOTIFICATIONS_ALERTMANAGER_ENABLED", "false"));
+        let severity_name = |key: &str, severity: crate::domain::notifications::AlertSeverity| {
+            std::env::var(key)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| severity.alert_name().into())
+        };
+        use crate::domain::notifications::AlertSeverity;
+        let alertmanager_severity_critical =
+            severity_name("ALERTMANAGER_SEVERITY_CRITICAL", AlertSeverity::Critical);
+        let alertmanager_severity_warning =
+            severity_name("ALERTMANAGER_SEVERITY_WARNING", AlertSeverity::Warning);
+        let alertmanager_severity_info =
+            severity_name("ALERTMANAGER_SEVERITY_INFO", AlertSeverity::Info);
         let alertmanager_test_alert_kind = std::env::var("ALERTMANAGER_TEST_ALERT_KIND")
             .ok()
             .map(|value| value.trim().to_string())
@@ -584,6 +614,9 @@ impl Config {
             smtp_enabled,
             webhooks_enabled,
             alertmanager_url,
+            alertmanager_severity_critical,
+            alertmanager_severity_warning,
+            alertmanager_severity_info,
             alertmanager_test_alert_kind,
             alertmanager_default_interval_seconds,
             alertmanager_default_severity,
@@ -1971,6 +2004,54 @@ mod tests {
 
         clear_oauth_env();
     }
+    #[test]
+    fn alertmanager_severity_names_use_env_or_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let keys = [
+            "SECRET_KEY",
+            "ALERTMANAGER_SEVERITY_CRITICAL",
+            "ALERTMANAGER_SEVERITY_WARNING",
+            "ALERTMANAGER_SEVERITY_INFO",
+        ];
+        let previous = keys.map(|key| (key, std::env::var_os(key)));
+        unsafe {
+            std::env::set_var(keys[0], "test-secret");
+        }
+        for value in [None, Some(""), Some("   "), Some(" CustomAlert ")] {
+            for key in &keys[1..] {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+            let config = Config::from_env().unwrap();
+            for (actual, default) in [
+                (config.alertmanager_severity_critical, "SoikaIssueCritical"),
+                (config.alertmanager_severity_warning, "SoikaIssueWarning"),
+                (config.alertmanager_severity_info, "SoikaIssueInfo"),
+            ] {
+                assert_eq!(
+                    actual,
+                    if value == Some(" CustomAlert ") {
+                        "CustomAlert"
+                    } else {
+                        default
+                    }
+                );
+            }
+        }
+        for (key, value) in previous {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
     #[test]
     fn alertmanager_test_kind_uses_env_or_default() {
         let _guard = ENV_LOCK.lock().unwrap();
