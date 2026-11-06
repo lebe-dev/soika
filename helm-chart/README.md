@@ -6,7 +6,7 @@ scheduler, ingestion rate limiter, and login lockout are per process. Configure
 `strategy` to change the Kubernetes Deployment strategy. A rolling update can
 briefly run multiple processes; use `maxSurge: 0` to avoid overlap. The application runs
 the selected database's migrations at startup; no migration Job is needed.
-Chart version: `0.3.6`. Default application image: `tinyops/soika:0.10.1`.
+Chart version: `0.3.6`. Default application image: `tinyops/soika:0.10.2`.
 
 ## Publishing
 
