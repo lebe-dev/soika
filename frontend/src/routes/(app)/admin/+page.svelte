@@ -430,6 +430,7 @@
                 variant="outline"
               >
                 {$t('deploy_config_view')}
+                <ExternalLink class="size-4" />
               </Button>
             </Card.Content>
           </Card.Root>
