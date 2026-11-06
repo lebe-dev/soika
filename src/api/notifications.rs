@@ -13,6 +13,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct NotificationView {
     pub source: ManagementSource,
+    pub names: crate::domain::notifications::AlertmanagerNames,
     pub interval_source: ManagementSource,
     pub default_severity: Option<crate::domain::notifications::AlertSeverity>,
     pub interval: crate::domain::notifications::AlertmanagerInterval,
@@ -27,6 +28,7 @@ pub async fn get(
     State(state): State<AppState>,
 ) -> Result<Json<NotificationView>, ApiError> {
     Ok(Json(NotificationView {
+        names: crate::alertmanager::effective_names(&state).await?,
         interval_source: state.config.management.service_source,
         default_severity: state.notifications.severity(None).await?,
         interval: state.notifications.interval(None).await?,
@@ -66,7 +68,18 @@ pub async fn preview(
     Json(config): Json<NotificationConfig>,
 ) -> Result<Json<crate::domain::notifications::AlertmanagerAlert>, ApiError> {
     require_feature(&state)?;
-    let config = config.effective(state.config.alertmanager_url.as_deref())?;
+    let mut config = config.effective(state.config.alertmanager_url.as_deref())?;
+    if let Some(severity) = state.notifications.severity(None).await? {
+        let names = crate::alertmanager::effective_names(&state).await?;
+        config
+            .alertmanager
+            .labels
+            .insert("alertname".into(), names.for_severity(severity).into());
+        config
+            .alertmanager
+            .labels
+            .insert("severity".into(), severity.as_str().into());
+    }
     Ok(Json(crate::alertmanager::render_alert(
         &config.alertmanager,
         &sample_variables(),
@@ -253,6 +266,19 @@ fn require_ui_defaults(state: &AppState) -> Result<(), ApiError> {
         .into());
     }
     Ok(())
+}
+
+pub async fn update_names(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    Json(names): Json<crate::domain::notifications::AlertmanagerNames>,
+) -> Result<Json<crate::domain::notifications::AlertmanagerNames>, ApiError> {
+    require_feature(&state)?;
+    require_ui_defaults(&state)?;
+    let names = names.normalized()?;
+    state.notifications.set_names(&names).await?;
+    tracing::info!(actor_id = %admin.0.id, "Alertmanager alert names updated");
+    Ok(Json(names))
 }
 
 pub async fn update_default_severity(

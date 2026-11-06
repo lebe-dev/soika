@@ -1078,11 +1078,12 @@ async fn severity_selects_alert_name_and_resolves_previous_identity() {
 }
 
 #[tokio::test]
-async fn configured_severity_names_apply_to_delivery_and_refresh() {
+async fn env_severity_names_apply_to_delivery_and_refresh() {
     let mut db = notification_db().await;
     let receiver = Receiver::start().await;
     let (project, issue) = setup(&db, &receiver.url).await;
     let config = Arc::make_mut(&mut db.config);
+    config.management.service_source = ManagementSource::Env;
     config.alertmanager_severity_critical = "CustomCritical".into();
     config.alertmanager_severity_warning = "CustomWarning".into();
     config.alertmanager_severity_info = "CustomInfo".into();
@@ -1116,6 +1117,119 @@ async fn configured_severity_names_apply_to_delivery_and_refresh() {
     assert_eq!(
         receiver.snapshot().last().unwrap().labels["alertname"],
         "SoikaIssueCritical"
+    );
+}
+
+#[tokio::test]
+async fn alert_names_api_uses_service_ownership_and_updates_live_alerts() {
+    let mut db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    let uri = "/api/settings/notifications/names";
+    let body = serde_json::json!({
+        "critical": " CustomCritical ", "warning": "CustomWarning",
+        "info": "CustomInfo", "project_test": "CustomTest"
+    });
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(
+        request(&db, InstanceRole::Member, "PUT", uri, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    // Label-template ownership does not prevent editing service-owned names.
+    Arc::make_mut(&mut db.config).management.notification_source = ManagementSource::Yaml;
+    let (status, saved) = request(&db, InstanceRole::Manager, "PUT", uri, body.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["critical"], "CustomCritical");
+    assert_eq!(
+        serde_json::to_value(db.notifications.names().await.unwrap()).unwrap(),
+        saved
+    );
+    let (_, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "GET",
+        "/api/settings/notifications",
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(view["names"], saved);
+    let (status, preview) = request(
+        &db,
+        InstanceRole::Owner,
+        "POST",
+        "/api/settings/notifications/preview",
+        serde_json::to_value(db.notifications.get().await.unwrap()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["labels"]["alertname"], "CustomCritical");
+
+    for (severity, name) in [
+        (AlertSeverity::Critical, "CustomCritical"),
+        (AlertSeverity::Warning, "CustomWarning"),
+        (AlertSeverity::Info, "CustomInfo"),
+    ] {
+        db.notifications
+            .set_severity(Some(project.id), Some(severity))
+            .await
+            .unwrap();
+        let previous = receiver.snapshot().last().unwrap().clone();
+        alertmanager::refresh(&db).await.unwrap();
+        let alerts = receiver.snapshot();
+        assert_eq!(alerts[alerts.len() - 2].labels, previous.labels);
+        assert!(alerts[alerts.len() - 2].ends_at <= db.clock.now());
+        assert_eq!(alerts.last().unwrap().labels["alertname"], name);
+    }
+    alertmanager::send_project_test(&db, &project, soika::domain::Locale::En)
+        .await
+        .unwrap();
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["alertname"],
+        "CustomTest"
+    );
+    for key in ["critical", "warning", "info", "project_test"] {
+        let mut invalid = body.clone();
+        invalid[key] = serde_json::json!("   ");
+        assert_eq!(
+            request(&db, InstanceRole::Owner, "PUT", uri, invalid)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(db.notifications.names().await.unwrap()).unwrap(),
+        saved
+    );
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "PUT", uri, body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "GET",
+        "/api/settings/notifications",
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(view["names"]["critical"], "SoikaIssueCritical");
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Ui;
+    assert_eq!(
+        serde_json::to_value(alertmanager::effective_names(&db).await.unwrap()).unwrap(),
+        saved
+    );
+    Arc::make_mut(&mut db.config).notifications_alertmanager_enabled = false;
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "PUT", uri, body).await.0,
+        StatusCode::FORBIDDEN
     );
 }
 
@@ -1301,7 +1415,9 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
             .ends_with(&format!("/projects/{}", project.slug))
     );
     assert!(db.notifications.active("", 10).await.unwrap().is_empty());
-    Arc::make_mut(&mut db.config).alertmanager_test_alert_kind = "CustomProjectTest".into();
+    let mut names = db.notifications.names().await.unwrap();
+    names.project_test = "CustomProjectTest".into();
+    db.notifications.set_names(&names).await.unwrap();
     assert_eq!(
         request(&db, InstanceRole::Manager, "POST", &path, body.clone())
             .await

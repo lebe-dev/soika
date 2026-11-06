@@ -5,6 +5,7 @@
 
 import { http, type Fetch } from './client';
 import type {
+  AlertmanagerNames,
   AlertmanagerInterval,
   ProjectAlertSeverity,
   AlertSeverity,
@@ -194,6 +195,8 @@ export const teams = {
 };
 
 export const notifications = {
+  setNames: (body: AlertmanagerNames) =>
+    http.put<AlertmanagerNames>('/settings/notifications/names', { body }),
   projectTestStatus: (id: string, ctx?: Ctx) =>
     http.get<{ enabled: boolean }>(`/projects/${id}/alertmanager-test`, { fetch: ctx?.fetch }),
   projectTest: (id: string, locale: 'en' | 'ru') =>

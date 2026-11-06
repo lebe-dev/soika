@@ -4,6 +4,11 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    async fn names(&self) -> Result<crate::domain::notifications::AlertmanagerNames>;
+    async fn set_names(
+        &self,
+        names: &crate::domain::notifications::AlertmanagerNames,
+    ) -> Result<()>;
     async fn severity(
         &self,
         project_id: Option<crate::domain::Id>,

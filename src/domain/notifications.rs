@@ -23,6 +23,49 @@ pub const VARIABLES: &[&str] = &[
     "trigger",
 ];
 
+/// Service-owned names for issue alerts and the project test button.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AlertmanagerNames {
+    pub critical: String,
+    pub warning: String,
+    pub info: String,
+    pub project_test: String,
+}
+impl Default for AlertmanagerNames {
+    fn default() -> Self {
+        Self {
+            critical: AlertSeverity::Critical.alert_name().into(),
+            warning: AlertSeverity::Warning.alert_name().into(),
+            info: AlertSeverity::Info.alert_name().into(),
+            project_test: "SoikaIssueCritical".into(),
+        }
+    }
+}
+impl AlertmanagerNames {
+    pub fn for_severity(&self, severity: AlertSeverity) -> &str {
+        match severity {
+            AlertSeverity::Critical => &self.critical,
+            AlertSeverity::Warning => &self.warning,
+            AlertSeverity::Info => &self.info,
+        }
+    }
+    pub fn normalized(mut self) -> Result<Self> {
+        for value in [
+            &mut self.critical,
+            &mut self.warning,
+            &mut self.info,
+            &mut self.project_test,
+        ] {
+            *value = value.trim().to_string();
+            if value.is_empty() {
+                return Err(Error::validation("alert names must not be empty"));
+            }
+        }
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NotificationConfig {

@@ -35,10 +35,10 @@ in env mode.
 
 Use **Send test alert** in the monitored project's **Settings** to verify its
 saved global and project labels, effective severity, and annotation templates.
-The test alert's `alertname` is set by `ALERTMANAGER_TEST_ALERT_KIND` (default
+The test alert's `alertname` uses the saved **Project test alert name** in UI
+service management mode, or `ALERTMANAGER_TEST_ALERT_KIND` in env mode (default
 `SoikaIssueCritical`, also when empty). This overrides the configured `alertname`
-template for project tests in every management mode; severity still follows the
-project settings. The general admin connectivity test uses `SoikaTestAlert`.
+template; severity still follows the project settings. The general admin connectivity test uses `SoikaTestAlert`.
 Project admins can send tests when the feature and channel are enabled, including
 with configuration-managed settings. Sample event data is rendered with the real
 project and team identity; the link opens the project. The alert has `test=true`,
@@ -130,7 +130,15 @@ the configured label template (including an existing `SoikaIssue` value):
 | `warning` | `SoikaIssueWarning` |
 | `info` | `SoikaIssueInfo` |
 
-Override these names with environment variables (in every management mode):
+With `SERVICE_MANAGEMENT_SOURCE=ui`, edit **Admin → Notifications → Alert names**.
+Owners and Managers can save names for all three classes and project test alerts.
+Names must not be blank; surrounding whitespace is trimmed. Changes persist in
+the database and apply without a restart, independently of label-template ownership.
+The defaults above apply until edited. Environment name overrides are ignored
+in UI mode. Switching to env mode preserves the saved UI names for later use.
+
+With `SERVICE_MANAGEMENT_SOURCE=env`, set the names through environment variables.
+The admin panel displays these names as read-only:
 
 ```dotenv
 ALERTMANAGER_SEVERITY_CRITICAL=SoikaIssueCritical
@@ -141,8 +149,8 @@ ALERTMANAGER_SEVERITY_INFO=SoikaIssueInfo
 Unset, empty or whitespace-only values use the defaults above; surrounding
 whitespace is trimmed. Restart Soika after changing these variables. Tracked
 alerts with changed names are resolved and replaced on the next reconciliation.
-These variables do not change severity values or test alert names;
-`ALERTMANAGER_TEST_ALERT_KIND` controls project test names independently.
+These three variables do not change severity values or test alert names;
+`ALERTMANAGER_TEST_ALERT_KIND` controls project test names independently in env mode.
 
 If the global default is cleared in the UI and the project has no override,
 the notification severity template applies (`{{ level }}` by default), and

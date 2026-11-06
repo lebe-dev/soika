@@ -33,7 +33,7 @@ impl Alertmanager {
         &self,
         config: &AlertmanagerConfig,
         slug: &str,
-        runtime: &crate::config::Config,
+        names: &AlertmanagerNames,
         severity: Option<AlertSeverity>,
     ) -> AlertmanagerConfig {
         let mut config = config.clone();
@@ -41,20 +41,28 @@ impl Alertmanager {
             config.labels.extend(labels.clone());
         }
         if let Some(severity) = severity {
-            config.labels.insert(
-                "alertname".into(),
-                match severity {
-                    AlertSeverity::Critical => runtime.alertmanager_severity_critical.clone(),
-                    AlertSeverity::Warning => runtime.alertmanager_severity_warning.clone(),
-                    AlertSeverity::Info => runtime.alertmanager_severity_info.clone(),
-                },
-            );
+            config
+                .labels
+                .insert("alertname".into(), names.for_severity(severity).into());
             config
                 .labels
                 .insert("severity".into(), severity.as_str().into());
         }
         config
     }
+}
+
+/// Name ownership follows service management, independently of label templates.
+pub async fn effective_names(state: &AppState) -> Result<AlertmanagerNames> {
+    if state.config.management.service_source == crate::domain::config_file::ManagementSource::Env {
+        return Ok(AlertmanagerNames {
+            critical: state.config.alertmanager_severity_critical.clone(),
+            warning: state.config.alertmanager_severity_warning.clone(),
+            info: state.config.alertmanager_severity_info.clone(),
+            project_test: state.config.alertmanager_test_alert_kind.clone(),
+        });
+    }
+    state.notifications.names().await
 }
 
 pub fn endpoint(config: &AlertmanagerConfig) -> String {
@@ -159,7 +167,7 @@ pub async fn notify(
         .project_config(
             &config,
             &project.slug,
-            &state.config,
+            &effective_names(state).await?,
             state
                 .notifications
                 .severity(Some(project.id))
@@ -273,7 +281,7 @@ async fn reconcile(
         .project_config(
             config,
             &project.slug,
-            &state.config,
+            &effective_names(state).await?,
             state
                 .notifications
                 .severity(Some(project.id))
@@ -389,7 +397,7 @@ pub async fn send_project_test(
         .project_config(
             &config,
             &project.slug,
-            &state.config,
+            &effective_names(state).await?,
             state
                 .notifications
                 .severity(Some(project.id))
@@ -428,7 +436,7 @@ pub async fn send_project_test(
     let mut config = config;
     config.labels.insert(
         "alertname".into(),
-        state.config.alertmanager_test_alert_kind.clone(),
+        effective_names(state).await?.project_test,
     );
     let mut alert = render_alert(&config, &vars, now)?;
     alert.labels.insert("test".into(), "true".into());

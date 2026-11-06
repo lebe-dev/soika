@@ -19,10 +19,10 @@ from the environment:
 | Default teams for new users | `DEFAULT_TEAM_IDS` | Empty list |
 | Alertmanager channel enabled | `NOTIFICATIONS_ALERTMANAGER_ENABLED` | `false` |
 | Skip Alertmanager TLS certificate verification | `ALERTMANAGER_SKIP_TLS` | `false` |
-| Critical alert name | `ALERTMANAGER_SEVERITY_CRITICAL` | `SoikaIssueCritical` |
-| Warning alert name | `ALERTMANAGER_SEVERITY_WARNING` | `SoikaIssueWarning` |
-| Info alert name | `ALERTMANAGER_SEVERITY_INFO` | `SoikaIssueInfo` |
-| Project test alert name | `ALERTMANAGER_TEST_ALERT_KIND` | `SoikaIssueCritical` (also for empty values) |
+| Critical alert name (env service mode) | `ALERTMANAGER_SEVERITY_CRITICAL` | `SoikaIssueCritical` |
+| Warning alert name (env service mode) | `ALERTMANAGER_SEVERITY_WARNING` | `SoikaIssueWarning` |
+| Info alert name (env service mode) | `ALERTMANAGER_SEVERITY_INFO` | `SoikaIssueInfo` |
+| Project test alert name (env service mode) | `ALERTMANAGER_TEST_ALERT_KIND` | `SoikaIssueCritical` (also for empty values) |
 | Alertmanager URL | `ALERTMANAGER_URL` | Empty |
 | Default Alertmanager refresh interval | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `60` seconds |
 | Default Alertmanager severity | `ALERTMANAGER_DEFAULT_SEVERITY` | `critical` (also for empty values) |

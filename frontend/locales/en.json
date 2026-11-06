@@ -615,5 +615,11 @@
   "alertmanager_default_severity_title": "Default Alertmanager severity",
   "alertmanager_default_severity_help": "Used for projects without an explicit severity. If unset, the notification label template applies.",
   "alertmanager_default_severity_template": "Use notification template (event level by default)",
-  "alertmanager_defaults_env": "Global defaults are managed through environment variables (SERVICE_MANAGEMENT_SOURCE)."
+  "alertmanager_defaults_env": "Global defaults are managed through environment variables (SERVICE_MANAGEMENT_SOURCE).",
+  "alertmanager_names_title": "Alert names",
+  "alertmanager_names_help": "Names sent to Alertmanager for each severity. Changes apply to active alerts after saving. The project test name is configured separately below.",
+  "alertmanager_name_critical": "Critical alert name",
+  "alertmanager_name_warning": "Warning alert name",
+  "alertmanager_name_info": "Info alert name",
+  "alertmanager_name_project_test": "Project test alert name"
 }

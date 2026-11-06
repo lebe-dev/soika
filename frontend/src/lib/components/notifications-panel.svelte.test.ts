@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { setLocale } from '$lib/i18n';
-import { api, ApiError, type NotificationView } from '$lib/api';
+import { api, notifications, ApiError, type NotificationView } from '$lib/api';
 import Panel from './notifications-panel.svelte';
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn() }));
 vi.mock('$lib/api', async () => {
@@ -17,6 +17,12 @@ vi.mock('$lib/components/ui/sonner', () => ({ toast: { success: vi.fn(), error: 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const view: NotificationView = {
+  names: {
+    critical: 'SoikaIssueCritical',
+    warning: 'SoikaIssueWarning',
+    info: 'SoikaIssueInfo',
+    project_test: 'SoikaIssueCritical'
+  },
   interval_source: 'ui',
   default_severity: null,
   interval: { interval_seconds: 60, effective_interval_seconds: 60 },
@@ -55,7 +61,12 @@ it('locks configuration in YAML mode while allowing a preview', () => {
   expect(target.querySelector<HTMLInputElement>('#alertmanager-url')!.disabled).toBe(true);
   expect(target.querySelector<HTMLTextAreaElement>('#alertmanager-labels')!.disabled).toBe(true);
   expect(
-    [...target.querySelectorAll('button')].some((b) => b.textContent?.includes('Save changes'))
+    [
+      ...target
+        .querySelector('#alertmanager-url')!
+        .closest('[data-slot=card]')!
+        .querySelectorAll('button')
+    ].some((b) => b.textContent?.includes('Save changes'))
   ).toBe(false);
 });
 it('localizes the form in Russian', () => {
@@ -185,9 +196,12 @@ it('locks notification settings while allowing testing in env mode', () => {
   render({
     ...view,
     source: 'env',
+    interval_source: 'env',
     config: { ...view.config, alertmanager: { ...view.config.alertmanager, enabled: true } }
   });
-  expect(target.textContent).not.toContain('environment variables');
+  expect(
+    target.querySelector('#alertmanager-url')!.closest('[data-slot=card]')!.textContent
+  ).not.toContain('environment variables');
   expect(target.querySelector<HTMLInputElement>('#alertmanager-url')!.disabled).toBe(true);
   expect(
     [...target.querySelectorAll('button')].find((b) => b.textContent?.includes('Send test alert'))!
@@ -206,4 +220,51 @@ it.each(['en', 'ru'] as const)('warns about disabled TLS verification in %s', (l
 it('hides the TLS warning when verification is enabled', () => {
   render();
   expect(target.textContent).not.toContain('ALERTMANAGER_SKIP_TLS=true');
+});
+
+it('saves alert names independently of notification template ownership', async () => {
+  const names = { ...view.names, critical: 'CustomCritical' };
+  const setNames = vi.spyOn(notifications, 'setNames').mockResolvedValue(names);
+  render({ ...view, source: 'yaml' });
+  const input = target.querySelector<HTMLInputElement>('#alertmanager-name-critical')!;
+  expect(input.disabled).toBe(false);
+  input.value = names.critical;
+  flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
+  const form = input.closest('form')!;
+  expect(form.querySelector<HTMLButtonElement>('button')!.disabled).toBe(false);
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(setNames).toHaveBeenCalledWith(names));
+  await vi.waitFor(() =>
+    expect(form.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true)
+  );
+});
+
+it('keeps all four alert names visible and disabled in env mode', () => {
+  render({ ...view, source: 'env', interval_source: 'env' });
+  for (const key of ['critical', 'warning', 'info', 'project_test'] as const) {
+    const input = target.querySelector<HTMLInputElement>('#alertmanager-name-' + key)!;
+    expect(input.value).toBe(view.names[key]);
+    expect(input.disabled).toBe(true);
+    expect(input.closest('form')!.hasAttribute('data-managed-readonly')).toBe(true);
+    expect(input.closest('form')!.querySelector('button')).toBeNull();
+  }
+});
+
+it('prevents saving empty alert names', () => {
+  render();
+  const input = target.querySelector<HTMLInputElement>('#alertmanager-name-warning')!;
+  input.value = '   ';
+  flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
+  expect(input.closest('form')!.querySelector<HTMLButtonElement>('button')!.disabled).toBe(true);
+});
+
+it('shows alert name save errors without losing edits', async () => {
+  vi.spyOn(notifications, 'setNames').mockRejectedValue(new ApiError(503, 'Database busy', null));
+  render();
+  const input = target.querySelector<HTMLInputElement>('#alertmanager-name-info')!;
+  input.value = 'CustomInfo';
+  flushSync(() => input.dispatchEvent(new Event('input', { bubbles: true })));
+  input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(input.closest('form')!.textContent).toContain('Database busy'));
+  expect(input.value).toBe('CustomInfo');
 });

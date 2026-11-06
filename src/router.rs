@@ -74,6 +74,10 @@ pub fn build(state: AppState) -> Router {
                 .put(api::notifications::update_project_interval),
         )
         .route(
+            "/settings/notifications/names",
+            axum::routing::put(api::notifications::update_names),
+        )
+        .route(
             "/settings/notifications/severity",
             axum::routing::put(api::notifications::update_default_severity),
         )

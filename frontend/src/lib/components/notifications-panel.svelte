@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
   import { Input } from '$lib/components/ui/input';
+  import AlertmanagerNamesControl from '$lib/components/alertmanager-names-control.svelte';
   import AlertmanagerSeverityControl from '$lib/components/alertmanager-severity-control.svelte';
   import AlertmanagerIntervalControl from '$lib/components/alertmanager-interval-control.svelte';
   import InfoTip from '$lib/components/info-tip.svelte';
@@ -239,6 +240,7 @@
 </Card.Root>
 
 {#if view.feature_enabled}
+  <AlertmanagerNamesControl names={view.names} readonly={view.interval_source !== 'ui'} />
   <AlertmanagerIntervalControl
     interval={view.interval}
     readonly={view.interval_source !== 'ui'}

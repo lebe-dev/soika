@@ -15,6 +15,32 @@ impl PgNotificationRepository {
 }
 #[async_trait]
 impl NotificationRepository for PgNotificationRepository {
+    async fn names(&self) -> Result<crate::domain::notifications::AlertmanagerNames> {
+        let value: String =
+            sqlx::query_scalar("SELECT alert_names FROM notification_settings WHERE id = 1")
+                .fetch_one(&self.db)
+                .await?;
+        Ok(serde_json::from_str(&value)?)
+    }
+    async fn set_names(
+        &self,
+        names: &crate::domain::notifications::AlertmanagerNames,
+    ) -> Result<()> {
+        let names = names.clone().normalized()?;
+        let value = serde_json::to_string(&names)?;
+        retry_write(
+            &WritePolicy::default(),
+            "set Alertmanager names",
+            || async {
+                sqlx::query("UPDATE notification_settings SET alert_names = $1 WHERE id = 1")
+                    .bind(&value)
+                    .execute(&self.db)
+                    .await?;
+                Ok(())
+            },
+        )
+        .await
+    }
     async fn severity(
         &self,
         project_id: Option<crate::domain::Id>,

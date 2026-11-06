@@ -573,7 +573,14 @@ export interface AlertmanagerInterval {
   interval_seconds: number | null;
   effective_interval_seconds: number;
 }
+export interface AlertmanagerNames {
+  critical: string;
+  warning: string;
+  info: string;
+  project_test: string;
+}
 export interface NotificationView {
+  names: AlertmanagerNames;
   interval_source: 'ui' | 'env';
   default_severity: AlertSeverity | null;
   interval: AlertmanagerInterval;
