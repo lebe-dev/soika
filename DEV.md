@@ -121,6 +121,18 @@ to `frontend/vendor/deepmerge`: the upstream 4.3.1 build dependency is locally
 patched for CVE-2026-93753. Keep the patch and its prototype-poisoning regression
 test until an upstream fix can replace it; see [the audit](docs/SECURITY_AUDIT.md).
 
+The production SPA loads all route code and styles in a single JS/CSS bundle
+at startup. This increases the first download but avoids route chunk requests
+during navigation. Fingerprinted assets use an immutable browser cache; the
+HTML shell is revalidated to pick up deployments. Link data and code preloading
+are disabled globally, so hovering or touching a link does not make requests.
+Shared session, dashboard and settings data come from `/api/config` once per
+page load and refresh after explicit invalidation (for example, after a mutation
+or sign-in). Detail pages and filters fetch their data when opened or changed.
+Keep resource details out of the bootstrap so startup cost does not grow with
+the number of events, issues or team members. The Vite dev server still serves
+individual modules; use `just dist` to check production request counts.
+
 SonarQube analysis runs with `just sonar-scan`; it regenerates both coverage
 reports before scanning; backend coverage combines SQLite and PostgreSQL
 test runs and requires Docker. The scanner also mounts Git metadata read-only so

@@ -12,6 +12,10 @@ const config = {
 
   version: { name: version },
 
+  // Load the SPA code and styles once at startup, rather than fetching route
+  // chunks while navigating. Fingerprinted assets are cached by the Rust server.
+  output: { bundleStrategy: 'single' },
+
   // The Rust binary embeds the built assets via rust-embed (#[folder = "web/dist"]).
   // adapter-static writes the SPA build (with a fallback document) into ../web/dist
   // so `cargo build` picks it up.
