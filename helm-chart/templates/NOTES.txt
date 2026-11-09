@@ -20,5 +20,6 @@ Supply configFile.content or configFile.existingConfigMap (key config.yaml).
 Secrets referenced by ${VAR} must be supplied through secrets.envs.
 
 Alertmanager global defaults follow SERVICE_MANAGEMENT_SOURCE=ui|env.
-Use ALERTMANAGER_DEFAULT_INTERVAL_SECONDS and ALERTMANAGER_DEFAULT_SEVERITY in env
-mode, or Admin -> Notifications in UI mode. YAML contains only project overrides.
+Use ALERTMANAGER_DEFAULT_INTERVAL_SECONDS, ALERTMANAGER_SEVERITY_MODE (fixed|event)
+and ALERTMANAGER_DEFAULT_SEVERITY in env mode, or Admin -> Notifications in UI mode.
+YAML contains only project overrides, including alertmanager_severity_mode.

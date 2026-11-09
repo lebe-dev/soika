@@ -200,11 +200,12 @@ state at startup, so no additional UI toggle is required.
 | --- | --- | --- |
 | `SERVICE_MANAGEMENT_SOURCE` | `"ui"` | Owns global defaults and channel settings: `ui` or `env` |
 | `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS` | `"60"` | Refresh cadence for projects without an override; range `10..86400` |
+| `ALERTMANAGER_SEVERITY_MODE` | `"fixed"` | Global severity mode in env service mode: `fixed` or `event`; UI mode uses saved admin settings |
 | `ALERTMANAGER_SEVERITY_CRITICAL` | `"SoikaIssueCritical"` | Alert name for regular critical alerts in env service mode; UI mode uses saved admin settings; empty values use the default |
 | `ALERTMANAGER_SEVERITY_WARNING` | `"SoikaIssueWarning"` | Alert name for regular warning alerts in env service mode; UI mode uses saved admin settings; empty values use the default |
 | `ALERTMANAGER_SEVERITY_INFO` | `"SoikaIssueInfo"` | Alert name for regular info alerts in env service mode; UI mode uses saved admin settings; empty values use the default |
 | `ALERTMANAGER_TEST_ALERT_KIND` | `"SoikaIssueCritical"` | Overrides `alertname` for project test alerts in env service mode; UI mode uses the saved project test name |
-| `ALERTMANAGER_DEFAULT_SEVERITY` | `"critical"` | Default class: `critical`, `warning`, `info`; empty/unset also selects `critical` in env mode |
+| `ALERTMANAGER_DEFAULT_SEVERITY` | `"critical"` | Fixed class or event-mode fallback: `critical`, `warning`, `info`; empty/unset also selects `critical` in env mode |
 | `PROJECT_MANAGEMENT_SOURCE` | `"ui"` | Owns project overrides: `ui` or `yaml` |
 
 In env mode, global defaults are applied on startup and read-only in the admin
@@ -214,6 +215,15 @@ and the environment defaults are ignored. Project
 admins manage overrides in **Project → Settings** when projects are UI-managed,
 or in `configFile.content.projects` with YAML project management. An explicit
 project severity overrides the global default, then notification label templates.
+
+Choose `ALERTMANAGER_SEVERITY_MODE="event"` in env mode to map SDK levels:
+`fatal`/`error` → `critical`, `warning` → `warning`, `info`/`debug` → `info`.
+An issue retains its highest mapped severity; issues without recognized levels
+use the project severity fallback, then the global default, then `critical`.
+Project YAML can select `alertmanager_severity_mode: fixed|event`. An explicit
+project severity without a mode selects fixed mode for compatibility. Omit both
+severity fields or set both to null to inherit the global mode and severity.
+See [severity modes](../docs/ALERTMANAGER.md#severity-mode) for lifecycle behavior.
 
 ### Environment defaults with YAML project overrides
 
@@ -237,6 +247,8 @@ envs:
     value: "http://alertmanager.monitoring:9093"
   - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
     value: "300"
+  - name: ALERTMANAGER_SEVERITY_MODE
+    value: "event" # Allowed: "fixed" or "event".
   - name: ALERTMANAGER_DEFAULT_SEVERITY
     value: "warning" # Allowed: "critical", "warning", "info"; empty/unset defaults to critical.
   - name: PROJECT_MANAGEMENT_SOURCE
@@ -256,11 +268,12 @@ configFile:
         name: API
         team: Platform
         alertmanager_interval_seconds: 120
+        alertmanager_severity_mode: fixed
         alertmanager_severity: critical
       - slug: frontend
         name: Frontend
         team: Platform
-        # Inherits 300 seconds and warning from env defaults.
+        # Inherits 300 seconds, event mode and a warning fallback from env defaults.
 ```
 
 Global defaults never belong in `configFile.content`. Remove the former root

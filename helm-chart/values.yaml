@@ -42,8 +42,14 @@ envs:
   # Refresh cadence in seconds: 10..86400. Projects can override it in UI/YAML.
   - name: ALERTMANAGER_DEFAULT_INTERVAL_SECONDS
     value: "60"
+  # Severity selection in env service mode: fixed (default) or event.
+  # event maps fatal/error -> critical, warning -> warning, info/debug -> info.
+  # Projects can override the mode in UI/YAML; issues retain their highest mapped severity.
+  - name: ALERTMANAGER_SEVERITY_MODE
+    value: "fixed"
   # Allowed values: "critical", "warning", or "info". Default: "critical".
   # Empty/unset also selects critical in env mode. In UI mode, admin changes persist.
+  # In event mode, this is the fallback when an issue has no recognized event levels.
   # A project's alertmanager_severity takes precedence over this default.
   - name: ALERTMANAGER_DEFAULT_SEVERITY
     value: "critical" # Allowed: "critical" | "warning" | "info".
@@ -390,8 +396,11 @@ configFile:
     #     name: API
     #     team: Platform
     #     alertmanager_interval_seconds: 120
+    #     alertmanager_severity_mode: event # fixed or event; omit/null inherits the global mode.
+    #     # In event mode, severity is the fallback for missing/unknown event levels.
     #     alertmanager_severity: critical
-    # Omit/null project values to inherit the global defaults.
+    # An explicit severity without a mode selects fixed mode for compatibility.
+    # Omit/set both severity fields to null to inherit the global mode and severity.
     notifications:
       alertmanager:
         # In env mode, extra labels are keyed by project slug. An explicit
