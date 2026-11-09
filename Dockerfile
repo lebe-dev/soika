@@ -76,7 +76,9 @@ FROM alpine:3.24 AS runtime
 WORKDIR /app
 
 # wget (busybox) backs the HEALTHCHECK; ca-certificates for outbound SMTP TLS.
+# Apply zlib security updates from the Alpine repositories.
 RUN apk add --no-cache ca-certificates wget \
+    && apk upgrade --no-cache zlib \
     && addgroup -g 10001 -S soika \
     && adduser -u 10001 -S -G soika -h /app soika \
     && mkdir -p /app/data \
