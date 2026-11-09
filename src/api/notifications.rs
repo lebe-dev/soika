@@ -15,6 +15,7 @@ pub struct NotificationView {
     pub source: ManagementSource,
     pub names: crate::domain::notifications::AlertmanagerNames,
     pub interval_source: ManagementSource,
+    pub severity_mode: crate::domain::notifications::SeverityMode,
     pub default_severity: Option<crate::domain::notifications::AlertSeverity>,
     pub interval: crate::domain::notifications::AlertmanagerInterval,
     pub feature_enabled: bool,
@@ -30,6 +31,11 @@ pub async fn get(
     Ok(Json(NotificationView {
         names: crate::alertmanager::effective_names(&state).await?,
         interval_source: state.config.management.service_source,
+        severity_mode: state
+            .notifications
+            .severity_mode(None)
+            .await?
+            .unwrap_or_default(),
         default_severity: state.notifications.severity(None).await?,
         interval: state.notifications.interval(None).await?,
         source: if state.config.management.service_source == ManagementSource::Env {
@@ -69,7 +75,7 @@ pub async fn preview(
 ) -> Result<Json<crate::domain::notifications::AlertmanagerAlert>, ApiError> {
     require_feature(&state)?;
     let mut config = config.effective(state.config.alertmanager_url.as_deref())?;
-    if let Some(severity) = state.notifications.severity(None).await? {
+    if let Some(severity) = crate::alertmanager::effective_severity(&state, None, None).await? {
         let names = crate::alertmanager::effective_names(&state).await?;
         config
             .alertmanager
@@ -199,6 +205,8 @@ pub async fn update_project_interval(
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SeverityRequest {
+    #[serde(default)]
+    pub mode: Option<crate::domain::notifications::SeverityMode>,
     pub severity: Option<crate::domain::notifications::AlertSeverity>,
 }
 
@@ -216,7 +224,10 @@ pub async fn project_severity(
         return response;
     }
     match state.notifications.severity(Some(project.id)).await {
-        Ok(severity) => Json(SeverityRequest { severity }).into_response(),
+        Ok(severity) => match state.notifications.severity_mode(Some(project.id)).await {
+            Ok(mode) => Json(SeverityRequest { severity, mode }).into_response(),
+            Err(error) => ApiError(error).into_response(),
+        },
         Err(error) => ApiError(error).into_response(),
     }
 }
@@ -232,7 +243,7 @@ pub async fn update_project_severity(
         Ok(Json(body)) => body,
         Err(_) => {
             return ApiError(Error::validation(
-                "severity must be critical, warning, info or null",
+                "severity must be critical, warning, info or null; mode must be fixed, event or null",
             ))
             .into_response();
         }
@@ -249,12 +260,18 @@ pub async fn update_project_severity(
     }
     if let Err(error) = state
         .notifications
-        .set_severity(Some(project.id), body.severity)
+        .set_severity_settings(
+            Some(project.id),
+            body.mode.or(body
+                .severity
+                .map(|_| crate::domain::notifications::SeverityMode::Fixed)),
+            body.severity,
+        )
         .await
     {
         return ApiError(error).into_response();
     }
-    tracing::info!(actor_id = %user.id, project_id = %project.id, severity = ?body.severity, "project alert severity updated");
+    tracing::info!(actor_id = %user.id, project_id = %project.id, severity = ?body.severity, mode = ?body.mode, "project alert severity updated");
     Json(body).into_response()
 }
 
@@ -287,12 +304,16 @@ pub async fn update_default_severity(
     body: Result<Json<SeverityRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<SeverityRequest>, ApiError> {
     require_ui_defaults(&state)?;
-    let Json(body) =
-        body.map_err(|_| Error::validation("severity must be critical, warning, info or null"))?;
+    let Json(mut body) = body.map_err(|_| {
+        Error::validation(
+            "severity must be critical, warning, info or null; mode must be fixed, event or null",
+        )
+    })?;
     state
         .notifications
-        .set_severity(None, body.severity)
+        .set_severity_settings(None, Some(body.mode.unwrap_or_default()), body.severity)
         .await?;
+    body.mode = Some(body.mode.unwrap_or_default());
     Ok(Json(body))
 }
 

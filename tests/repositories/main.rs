@@ -120,6 +120,7 @@ mod fixtures {
             alertmanager_severity_info: "SoikaIssueInfo".into(),
             alertmanager_test_alert_kind: "SoikaIssueCritical".into(),
             alertmanager_default_interval_seconds: 60,
+            alertmanager_severity_mode: Default::default(),
             alertmanager_default_severity: None,
             alertmanager_skip_tls: false,
             webhooks_enabled: false,

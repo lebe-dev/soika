@@ -565,8 +565,10 @@ export interface AlertmanagerConfig {
 export interface NotificationConfig {
   alertmanager: AlertmanagerConfig;
 }
+export type SeverityMode = 'fixed' | 'event';
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export interface ProjectAlertSeverity {
+  mode?: SeverityMode | null;
   severity: AlertSeverity | null;
 }
 export interface AlertmanagerInterval {
@@ -582,6 +584,7 @@ export interface AlertmanagerNames {
 export interface NotificationView {
   names: AlertmanagerNames;
   interval_source: 'ui' | 'env';
+  severity_mode?: SeverityMode;
   default_severity: AlertSeverity | null;
   interval: AlertmanagerInterval;
   alertmanager_skip_tls: boolean;

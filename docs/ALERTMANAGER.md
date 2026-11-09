@@ -121,6 +121,55 @@ Project admins can select a class in **Project → Settings** when
 value inherits the global default. A project override takes precedence over the
 global default and notification label templates.
 
+### Severity mode
+
+Choose **Fixed severity** (the default) or **From event level** in the global
+severity card under **Admin → Notifications**. A project can inherit the global
+mode or select either mode in **Project → Settings**.
+
+With `SERVICE_MANAGEMENT_SOURCE=env`, set `ALERTMANAGER_SEVERITY_MODE=fixed|event`
+and restart. With `PROJECT_MANAGEMENT_SOURCE=yaml`, set the project's
+`alertmanager_severity_mode: fixed|event` and restart. UI changes apply without
+a restart. Configuration-managed controls remain visible and read-only.
+
+```yaml
+projects:
+  - slug: api
+    name: API
+    team: Platform
+    alertmanager_severity_mode: event
+    alertmanager_severity: warning # Fallback for missing or unknown levels.
+```
+
+| SDK event level | Alertmanager severity |
+| --- | --- |
+| `fatal`, `error` | `critical` |
+| `warning` | `warning` |
+| `info`, `debug` | `info` |
+| Missing or unknown | Project fallback, then global default, then `critical` |
+
+The original SDK level is preserved. An issue stores the highest mapped severity
+observed over its lifetime; lower-level events never downgrade it. The peak
+survives event retention, resolution, regressions and fingerprint merges.
+At upgrade, existing issues initialize their peak from their saved issue level;
+previous historical events are not rescanned. Subsequent events update the peak
+in both modes, so switching modes uses the accumulated value.
+
+Alertmanager receives issue alerts under the existing notification and mute
+rules. Recurring events update the peak; the next lifecycle reconciliation
+(normally within ten seconds) resolves an alert whose severity changed and sends
+its replacement, independently of the project's refresh interval. Existing
+issues without tracked alerts do not receive retroactive notifications.
+Preview and project test alerts use a representative `error` level in event mode;
+project tests retain the configured test alert name.
+
+Existing configurations keep fixed severity. A project with an explicit severity
+and no mode selects fixed mode for compatibility. Omitting both project fields
+(or setting both to null) inherits the global mode and value. In event mode,
+`alertmanager_severity` / `ALERTMANAGER_DEFAULT_SEVERITY` only supply the fallback
+for an issue with no recognized levels. Fixed mode retains the legacy template
+fallback when the global severity is cleared and no project value is set.
+
 For regular issue alerts, the effective class also sets `alertname`, overriding
 the configured label template (including an existing `SoikaIssue` value):
 

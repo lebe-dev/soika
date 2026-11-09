@@ -65,6 +65,39 @@ pub async fn effective_names(state: &AppState) -> Result<AlertmanagerNames> {
     state.notifications.names().await
 }
 
+/// Resolve project inheritance, then map the persisted lifetime peak in event mode.
+/// Preview/test alerts use a representative error event.
+pub async fn effective_severity(
+    state: &AppState,
+    project_id: Option<crate::domain::Id>,
+    issue_id: Option<crate::domain::Id>,
+) -> Result<Option<AlertSeverity>> {
+    let global = state.notifications.severity(None).await?;
+    let (mode, fixed) = if let Some(id) = project_id {
+        let severity = state.notifications.severity(Some(id)).await?;
+        let mode = state
+            .notifications
+            .severity_mode(Some(id))
+            .await?
+            .or(severity.map(|_| SeverityMode::Fixed));
+        (mode, severity.or(global))
+    } else {
+        (None, global)
+    };
+    let mode = mode
+        .or(state.notifications.severity_mode(None).await?)
+        .unwrap_or_default();
+    if mode == SeverityMode::Event {
+        let mapped = if let Some(id) = issue_id {
+            state.notifications.event_severity(id).await?
+        } else {
+            Some(AlertSeverity::Critical)
+        };
+        return Ok(mapped.or(fixed).or(Some(AlertSeverity::Critical)));
+    }
+    Ok(fixed)
+}
+
 pub fn endpoint(config: &AlertmanagerConfig) -> String {
     format!("{}/api/v2/alerts", config.url.trim_end_matches('/'))
 }
@@ -168,11 +201,7 @@ pub async fn notify(
             &config,
             &project.slug,
             &effective_names(state).await?,
-            state
-                .notifications
-                .severity(Some(project.id))
-                .await?
-                .or(state.notifications.severity(None).await?),
+            effective_severity(state, Some(project.id), Some(issue.id)).await?,
         )
         .await;
     let mut alert = render_alert(
@@ -282,11 +311,7 @@ async fn reconcile(
             config,
             &project.slug,
             &effective_names(state).await?,
-            state
-                .notifications
-                .severity(Some(project.id))
-                .await?
-                .or(state.notifications.severity(None).await?),
+            effective_severity(state, Some(project.id), Some(issue.id)).await?,
         )
         .await;
     let mut alert = render_alert(
@@ -398,11 +423,7 @@ pub async fn send_project_test(
             &config,
             &project.slug,
             &effective_names(state).await?,
-            state
-                .notifications
-                .severity(Some(project.id))
-                .await?
-                .or(state.notifications.severity(None).await?),
+            effective_severity(state, Some(project.id), None).await?,
         )
         .await;
     let now = state.clock.now();

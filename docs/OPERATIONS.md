@@ -217,7 +217,11 @@ For readable messages, receiver templates and VictoriaMetrics rule examples, see
 `warning` or `info`) in env mode, or **Admin → Notifications** in UI mode. An
 unset/empty severity selects `critical` in env mode. UI database defaults also
 start at `critical`; later admin choices are preserved. Project overrides follow `PROJECT_MANAGEMENT_SOURCE=ui|yaml`.
-See [severity configuration](ALERTMANAGER.md#per-project-severity).
+Choose fixed severity or automatic mapping from SDK event levels. In env mode,
+`ALERTMANAGER_SEVERITY_MODE=fixed|event` selects the global mode (default `fixed`);
+YAML projects can override it with `alertmanager_severity_mode`. In event mode,
+issues retain their highest observed severity and unknown levels use the configured
+fallback. See [severity configuration](ALERTMANAGER.md#severity-mode).
 
 Outgoing email is disabled by default. Set `SMTP_ENABLED=true` and configure
 `SMTP_HOST` (plus any required SMTP credentials) to enable email notifications,

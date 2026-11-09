@@ -9,6 +9,7 @@ import type {
   AlertmanagerInterval,
   ProjectAlertSeverity,
   AlertSeverity,
+  SeverityMode,
   NotificationConfig,
   NotificationView,
   AlertmanagerAlert,
@@ -201,12 +202,16 @@ export const notifications = {
     http.get<{ enabled: boolean }>(`/projects/${id}/alertmanager-test`, { fetch: ctx?.fetch }),
   projectTest: (id: string, locale: 'en' | 'ru') =>
     http.post<{ ok: boolean }>(`/projects/${id}/alertmanager-test`, { body: { locale } }),
-  setDefaultSeverity: (severity: AlertSeverity | null) =>
-    http.put<ProjectAlertSeverity>('/settings/notifications/severity', { body: { severity } }),
+  setDefaultSeverity: (severity: AlertSeverity | null, mode?: SeverityMode | null) =>
+    http.put<ProjectAlertSeverity>('/settings/notifications/severity', {
+      body: { severity, mode }
+    }),
   projectSeverity: (id: string, ctx?: Ctx) =>
     http.get<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, { fetch: ctx?.fetch }),
-  setProjectSeverity: (id: string, severity: AlertSeverity | null) =>
-    http.put<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, { body: { severity } }),
+  setProjectSeverity: (id: string, severity: AlertSeverity | null, mode?: SeverityMode | null) =>
+    http.put<ProjectAlertSeverity>(`/projects/${id}/alertmanager-severity`, {
+      body: { severity, mode }
+    }),
   projectInterval: (id: string, ctx?: Ctx) =>
     http.get<AlertmanagerInterval>(`/projects/${id}/alertmanager-interval`, { fetch: ctx?.fetch }),
   setProjectInterval: (id: string, seconds: number | null) =>

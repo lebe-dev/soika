@@ -77,6 +77,7 @@ impl SqliteIssueRepository {
             // stay untouched — those keep the first-observed values by design.
             let update_sql = format!(
                 "UPDATE issues SET \
+                    max_event_severity = MAX(max_event_severity, ?), \
                     status = ?, \
                     title = ?, \
                     last_seen = ?, \
@@ -85,6 +86,9 @@ impl SqliteIssueRepository {
                  WHERE id = ? RETURNING {ISSUE_COLS}"
             );
             let updated_row = sqlx::query(sqlx::AssertSqlSafe(&*update_sql))
+                .bind(crate::domain::notifications::event_severity_rank(
+                    upsert.level.as_deref(),
+                ))
                 .bind(new_status.as_str())
                 .bind(&upsert.title)
                 .bind(&seen)
@@ -114,8 +118,8 @@ impl SqliteIssueRepository {
             "INSERT INTO issues \
                 (id, short_id, project_id, fingerprint, title, culprit, level, \
                  environment, release, status, \
-                 first_seen, last_seen, event_count, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unresolved', ?, ?, 1, ?, ?) \
+                 first_seen, last_seen, event_count, created_at, updated_at, max_event_severity) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unresolved', ?, ?, 1, ?, ?, ?) \
              RETURNING {ISSUE_COLS}"
         );
         let inserted = sqlx::query(sqlx::AssertSqlSafe(&*insert_sql))
@@ -132,6 +136,9 @@ impl SqliteIssueRepository {
             .bind(&seen)
             .bind(&seen)
             .bind(&seen)
+            .bind(crate::domain::notifications::event_severity_rank(
+                upsert.level.as_deref(),
+            ))
             .fetch_one(&mut *tx)
             .await?;
         let issue = row_to_issue(&inserted)?;
@@ -196,6 +203,9 @@ impl SqliteIssueRepository {
             let first_seen = target.first_seen.min(source.first_seen);
             let last_seen = target.last_seen.max(source.last_seen);
             let event_count = target.event_count + source.event_count;
+
+            sqlx::query("UPDATE issues SET max_event_severity = MAX(max_event_severity, (SELECT max_event_severity FROM issues WHERE id = ?)) WHERE id = ?")
+                .bind(source.id.to_string()).bind(target.id.to_string()).execute(&mut *tx).await?;
 
             // (a) Re-point the source's events onto the target FIRST, so the
             //     subsequent DELETE does not CASCADE-delete them.

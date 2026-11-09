@@ -76,8 +76,8 @@ impl PgIssueRepository {
             "INSERT INTO issues \
                 (id, short_id, project_id, fingerprint, title, culprit, level, \
                  environment, release, status, \
-                 first_seen, last_seen, event_count, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'unresolved', $10, $10, 1, $10, $10) \
+                 first_seen, last_seen, event_count, created_at, updated_at, max_event_severity) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'unresolved', $10, $10, 1, $10, $10, $11) \
              ON CONFLICT (project_id, fingerprint) DO NOTHING \
              RETURNING {ISSUE_COLS}"
         )))
@@ -91,6 +91,9 @@ impl PgIssueRepository {
         .bind(&upsert.environment)
         .bind(&upsert.release)
         .bind(seen)
+        .bind(crate::domain::notifications::event_severity_rank(
+            upsert.level.as_deref(),
+        ))
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -166,6 +169,9 @@ impl PgIssueRepository {
             let first_seen = target.first_seen.min(source.first_seen);
             let last_seen = target.last_seen.max(source.last_seen);
             let event_count = target.event_count + source.event_count;
+
+            sqlx::query("UPDATE issues SET max_event_severity = GREATEST(max_event_severity, (SELECT max_event_severity FROM issues WHERE id = $1)) WHERE id = $2")
+                .bind(source.id).bind(target.id).execute(&mut *tx).await?;
 
             // (a) Re-point the source's events onto the target FIRST, so the
             //     subsequent DELETE does not CASCADE-delete them.
@@ -320,6 +326,7 @@ async fn bump_existing(
     // by design.
     let updated = sqlx::query_as::<_, IssueRow>(AssertSqlSafe(format!(
         "UPDATE issues SET \
+            max_event_severity = GREATEST(max_event_severity, $5), \
             status = $1, \
             title = $2, \
             last_seen = $3, \
@@ -331,6 +338,9 @@ async fn bump_existing(
     .bind(&upsert.title)
     .bind(seen)
     .bind(current.id)
+    .bind(crate::domain::notifications::event_severity_rank(
+        upsert.level.as_deref(),
+    ))
     .fetch_one(&mut **tx)
     .await?;
     Ok(UpsertOutcome {

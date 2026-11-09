@@ -41,6 +41,57 @@ impl NotificationRepository for PgNotificationRepository {
         )
         .await
     }
+    async fn severity_mode(
+        &self,
+        project_id: Option<crate::domain::Id>,
+    ) -> Result<Option<crate::domain::notifications::SeverityMode>> {
+        let value: String = if let Some(id) = project_id {
+            sqlx::query_scalar("SELECT alertmanager_severity_mode FROM projects WHERE id = $1")
+                .bind(id)
+                .fetch_one(&self.db)
+                .await?
+        } else {
+            sqlx::query_scalar("SELECT severity_mode FROM notification_settings WHERE id = 1")
+                .fetch_one(&self.db)
+                .await?
+        };
+        if value.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(value.parse()?))
+        }
+    }
+    async fn set_severity_settings(
+        &self,
+        project_id: Option<crate::domain::Id>,
+        mode: Option<crate::domain::notifications::SeverityMode>,
+        severity: Option<crate::domain::notifications::AlertSeverity>,
+    ) -> Result<()> {
+        let mode = mode.map_or(if project_id.is_some() { "" } else { "fixed" }, |v| {
+            v.as_str()
+        });
+        let severity = severity.map_or("", |v| v.as_str());
+        retry_write(&WritePolicy::default(), "set alert severity policy", || async {
+            if let Some(id) = project_id {
+                sqlx::query("UPDATE projects SET alertmanager_severity_mode = $1, alertmanager_severity = $2 WHERE id = $3")
+                    .bind(mode).bind(severity).bind(id).execute(&self.db).await?;
+            } else {
+                sqlx::query("UPDATE notification_settings SET severity_mode = $1, default_severity = $2 WHERE id = 1")
+                    .bind(mode).bind(severity).execute(&self.db).await?;
+            }
+            Ok(())
+        }).await
+    }
+    async fn event_severity(
+        &self,
+        issue_id: crate::domain::Id,
+    ) -> Result<Option<crate::domain::notifications::AlertSeverity>> {
+        let rank: i32 = sqlx::query_scalar("SELECT max_event_severity FROM issues WHERE id = $1")
+            .bind(issue_id)
+            .fetch_one(&self.db)
+            .await?;
+        Ok(crate::domain::notifications::AlertSeverity::from_event_rank(rank))
+    }
     async fn severity(
         &self,
         project_id: Option<crate::domain::Id>,

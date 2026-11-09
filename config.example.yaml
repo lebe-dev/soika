@@ -52,9 +52,15 @@ projects:
     retention_days: 30 # Max event age in days; 0 or omitted falls back to DEFAULT_RETENTION_DAYS.
     # Refresh this project's active alerts every 120 seconds, overriding ALERTMANAGER_DEFAULT_INTERVAL_SECONDS.
     alertmanager_interval_seconds: 120
+    # Severity mode: fixed or event; omit/null inherits the global mode.
+    # Event mode maps fatal/error -> critical, warning -> warning, info/debug -> info.
+    # The issue retains its lifetime maximum, including across regressions.
+    # alertmanager_severity_mode: event
     # Alertmanager class: critical, warning or info. Overrides the severity label
     # from notification templates and project_labels; does not change event levels.
-    # Omit or set null to inherit ALERTMANAGER_DEFAULT_SEVERITY (or the label template).
+    # In event mode this is the fallback for missing/unknown levels.
+    # An explicit class without a mode selects fixed mode for compatibility.
+    # Omit both fields or set both null to inherit the global mode and severity.
     alertmanager_severity: critical
     # Outgoing webhook (http/https); omit to disable this channel.
     # webhook_url: ${BACKEND_WEBHOOK_URL}

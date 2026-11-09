@@ -141,7 +141,11 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
             .await?;
         state
             .notifications
-            .set_severity(None, state.config.alertmanager_default_severity)
+            .set_severity_settings(
+                None,
+                Some(state.config.alertmanager_severity_mode),
+                state.config.alertmanager_default_severity,
+            )
             .await?;
         let mut notifications = crate::domain::notifications::NotificationConfig::default();
         notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;

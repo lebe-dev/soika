@@ -111,3 +111,27 @@ fn project_alertmanager_severity_follows_yaml_ownership_and_rejects_unknown_clas
             .is_none()
     );
 }
+
+#[test]
+fn project_severity_mode_validates_yaml_and_respects_ownership() {
+    let mut settings = ManagementSettings::default();
+    let yaml = "version: 1\nprojects:\n  - {slug: api, name: API, team: platform, alertmanager_severity_mode: event}\n";
+    assert!(parse(yaml, &settings).unwrap().projects.is_none());
+    settings.project_source = ManagementSource::Yaml;
+    assert_eq!(
+        parse(yaml, &settings).unwrap().projects.unwrap()[0]
+            .alertmanager_severity_mode
+            .unwrap()
+            .as_str(),
+        "event"
+    );
+    assert!(parse(&yaml.replace(": event", ": invalid"), &settings).is_err());
+    assert!(
+        parse(&yaml.replace(": event", ": null"), &settings)
+            .unwrap()
+            .projects
+            .unwrap()[0]
+            .alertmanager_severity_mode
+            .is_none()
+    );
+}

@@ -407,6 +407,7 @@ pub struct Config {
     pub alertmanager_test_alert_kind: String,
     /// Env-managed global defaults for project Alertmanager delivery.
     pub alertmanager_default_interval_seconds: i64,
+    pub alertmanager_severity_mode: crate::domain::notifications::SeverityMode,
     pub alertmanager_default_severity: Option<crate::domain::notifications::AlertSeverity>,
     /// Disable TLS certificate verification for Alertmanager (default false).
     pub alertmanager_skip_tls: bool,
@@ -476,6 +477,10 @@ impl std::fmt::Debug for Config {
             .field(
                 "alertmanager_default_interval_seconds",
                 &self.alertmanager_default_interval_seconds,
+            )
+            .field(
+                "alertmanager_severity_mode",
+                &self.alertmanager_severity_mode,
             )
             .field(
                 "alertmanager_default_severity",
@@ -571,6 +576,9 @@ impl Config {
                     Error::validation("ALERTMANAGER_DEFAULT_INTERVAL_SECONDS must be an integer")
                 })?;
         crate::domain::notifications::validate_interval(alertmanager_default_interval_seconds)?;
+        let alertmanager_severity_mode = env_or("ALERTMANAGER_SEVERITY_MODE", "fixed")
+            .parse()
+            .map_err(|_| Error::validation("ALERTMANAGER_SEVERITY_MODE must be fixed or event"))?;
         let alertmanager_default_severity = std::env::var("ALERTMANAGER_DEFAULT_SEVERITY")
             .ok()
             .map(|value| value.trim().to_string())
@@ -619,6 +627,7 @@ impl Config {
             alertmanager_severity_info,
             alertmanager_test_alert_kind,
             alertmanager_default_interval_seconds,
+            alertmanager_severity_mode,
             alertmanager_default_severity,
             alertmanager_skip_tls,
             notifications_alertmanager_enabled,
@@ -2094,12 +2103,14 @@ mod tests {
             "SECRET_KEY",
             "ALERTMANAGER_DEFAULT_INTERVAL_SECONDS",
             "ALERTMANAGER_DEFAULT_SEVERITY",
+            "ALERTMANAGER_SEVERITY_MODE",
         ];
         let previous = keys.map(|key| (key, std::env::var_os(key)));
         unsafe {
             std::env::set_var("SECRET_KEY", "test-secret");
             std::env::remove_var(keys[1]);
             std::env::remove_var(keys[2]);
+            std::env::remove_var(keys[3]);
         }
         let config = Config::from_env().unwrap();
         assert_eq!(config.alertmanager_default_interval_seconds, 60);
@@ -2139,6 +2150,25 @@ mod tests {
         unsafe {
             std::env::set_var(keys[1], "60");
             std::env::set_var(keys[2], "urgent");
+        }
+        assert!(Config::from_env().is_err());
+        unsafe {
+            std::env::set_var(keys[2], "critical");
+        }
+        for (value, expected) in [("fixed", "fixed"), ("event", "event")] {
+            unsafe {
+                std::env::set_var(keys[3], value);
+            }
+            assert_eq!(
+                Config::from_env()
+                    .unwrap()
+                    .alertmanager_severity_mode
+                    .as_str(),
+                expected
+            );
+        }
+        unsafe {
+            std::env::set_var(keys[3], "invalid");
         }
         assert!(Config::from_env().is_err());
         for (key, value) in previous {

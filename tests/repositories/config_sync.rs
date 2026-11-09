@@ -785,3 +785,56 @@ async fn alertmanager_defaults_use_service_ownership_independently_of_project_so
         Some(AlertSeverity::Warning)
     );
 }
+
+#[tokio::test]
+async fn sync_event_severity_mode_follows_yaml_and_env_ownership() {
+    use soika::domain::notifications::{AlertSeverity, SeverityMode};
+    let mut db = test_db().await;
+    let mut file = desired();
+    file.projects.as_mut().unwrap()[0].alertmanager_severity_mode = Some(SeverityMode::Event);
+    file.projects.as_mut().unwrap()[0].alertmanager_severity = Some(AlertSeverity::Info);
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    let id = db.projects.find_by_slug("api").await.unwrap().unwrap().id;
+    assert_eq!(
+        db.notifications.severity_mode(Some(id)).await.unwrap(),
+        Some(SeverityMode::Event)
+    );
+    assert_eq!(
+        db.config_sync
+            .apply(&file, &settings(), 1000)
+            .await
+            .unwrap()
+            .unchanged,
+        2
+    );
+    file.projects.as_mut().unwrap()[0].alertmanager_severity_mode = None;
+    file.projects.as_mut().unwrap()[0].alertmanager_severity = None;
+    db.config_sync
+        .apply(&file, &settings(), 1000)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.notifications.severity_mode(Some(id)).await.unwrap(),
+        None
+    );
+    {
+        let config = std::sync::Arc::make_mut(&mut db.config);
+        config.alertmanager_severity_mode = SeverityMode::Event;
+    }
+    db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.notifications.severity_mode(None).await.unwrap(),
+        Some(SeverityMode::Fixed)
+    );
+    std::sync::Arc::make_mut(&mut db.config)
+        .management
+        .service_source = ManagementSource::Env;
+    db = soika::config_sync::synchronize(db).await.unwrap();
+    assert_eq!(
+        db.notifications.severity_mode(None).await.unwrap(),
+        Some(SeverityMode::Event)
+    );
+}

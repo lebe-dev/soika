@@ -608,12 +608,12 @@
   "alertmanager_interval_save": "Сохранить интервал",
   "alertmanager_interval_yaml": "Интервалы задаются через YAML (PROJECT_MANAGEMENT_SOURCE).",
   "alertmanager_severity_title": "Severity для Alertmanager",
-  "alertmanager_severity_help": "Класс всех алертов проекта. Переопределяет label severity, сохраняя исходный уровень события.",
+  "alertmanager_severity_help": "Наследуйте глобальный режим или выберите способ назначения severity для проекта.",
   "alertmanager_severity_default": "Использовать глобальный дефолт",
   "alertmanager_severity_save": "Сохранить severity",
   "alertmanager_severity_yaml": "Severity задаётся через YAML (PROJECT_MANAGEMENT_SOURCE).",
   "alertmanager_default_severity_title": "Severity по умолчанию для Alertmanager",
-  "alertmanager_default_severity_help": "Для проектов без собственной severity. Если не задана, используется шаблон label уведомлений.",
+  "alertmanager_default_severity_help": "Выберите фиксированный severity или автоматическое соответствие уровням событий для проектов, наследующих эту настройку.",
   "alertmanager_default_severity_template": "Из шаблона уведомлений (по умолчанию — уровень события)",
   "alertmanager_defaults_env": "Глобальные дефолты задаются через переменные окружения (SERVICE_MANAGEMENT_SOURCE).",
   "alertmanager_names_title": "Названия алертов",
@@ -621,5 +621,11 @@
   "alertmanager_name_critical": "Название критического алерта",
   "alertmanager_name_warning": "Название предупреждения",
   "alertmanager_name_info": "Название информационного алерта",
-  "alertmanager_name_project_test": "Название тестового алерта проекта"
+  "alertmanager_name_project_test": "Название тестового алерта проекта",
+  "alertmanager_severity_mode": "Режим severity",
+  "alertmanager_severity_mode_fixed": "Фиксированный severity",
+  "alertmanager_severity_mode_event": "По уровню события",
+  "alertmanager_severity_mapping": "fatal / error → critical; warning → warning; info / debug → info. Issue сохраняет максимальный severity, в том числе после решения и регрессии. Неизвестные уровни используют резервное значение.",
+  "alertmanager_severity_fallback": "Резервный severity",
+  "alertmanager_severity_fallback_critical": "critical (по умолчанию)"
 }

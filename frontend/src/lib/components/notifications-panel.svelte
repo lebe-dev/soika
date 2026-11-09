@@ -252,7 +252,7 @@
     managedBy="env"
   />
   <AlertmanagerSeverityControl
-    view={{ severity: view.default_severity }}
+    view={{ severity: view.default_severity, mode: view.severity_mode ?? 'fixed' }}
     readonly={view.interval_source !== 'ui'}
     managed={view.interval_source !== 'ui'}
   />

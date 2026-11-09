@@ -9,6 +9,21 @@ pub trait NotificationRepository: Send + Sync {
         &self,
         names: &crate::domain::notifications::AlertmanagerNames,
     ) -> Result<()>;
+    async fn severity_mode(
+        &self,
+        project_id: Option<crate::domain::Id>,
+    ) -> Result<Option<crate::domain::notifications::SeverityMode>>;
+    /// Atomically save mode and fixed severity (also used as the event-mode fallback).
+    async fn set_severity_settings(
+        &self,
+        project_id: Option<crate::domain::Id>,
+        mode: Option<crate::domain::notifications::SeverityMode>,
+        severity: Option<crate::domain::notifications::AlertSeverity>,
+    ) -> Result<()>;
+    async fn event_severity(
+        &self,
+        issue_id: crate::domain::Id,
+    ) -> Result<Option<crate::domain::notifications::AlertSeverity>>;
     async fn severity(
         &self,
         project_id: Option<crate::domain::Id>,

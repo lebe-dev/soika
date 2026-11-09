@@ -290,6 +290,43 @@ pub fn validate_interval(seconds: i64) -> Result<()> {
     Ok(())
 }
 
+/// How an alert's severity is selected. Project None inherits the global mode.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SeverityMode {
+    #[default]
+    Fixed,
+    Event,
+}
+impl SeverityMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fixed => "fixed",
+            Self::Event => "event",
+        }
+    }
+}
+impl std::str::FromStr for SeverityMode {
+    type Err = Error;
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "fixed" => Ok(Self::Fixed),
+            "event" => Ok(Self::Event),
+            _ => Err(Error::validation("severity mode must be fixed or event")),
+        }
+    }
+}
+
+/// Monotonic rank stored independently of the original SDK level. Zero is unknown.
+pub fn event_severity_rank(level: Option<&str>) -> i32 {
+    match level.unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "fatal" | "error" => 3,
+        "warning" => 2,
+        "info" | "debug" => 1,
+        _ => 0,
+    }
+}
+
 /// Project alert classes. Event levels remain unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -299,6 +336,15 @@ pub enum AlertSeverity {
     Info,
 }
 impl AlertSeverity {
+    pub fn from_event_rank(rank: i32) -> Option<Self> {
+        match rank {
+            3 => Some(Self::Critical),
+            2 => Some(Self::Warning),
+            1 => Some(Self::Info),
+            _ => None,
+        }
+    }
+
     pub fn alert_name(self) -> &'static str {
         match self {
             Self::Critical => "SoikaIssueCritical",

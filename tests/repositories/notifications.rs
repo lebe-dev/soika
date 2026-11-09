@@ -1467,3 +1467,273 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
         StatusCode::FORBIDDEN
     );
 }
+
+#[tokio::test]
+async fn event_severity_mode_maps_levels_and_keeps_peak_across_refresh() {
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, _) = setup(&db, &receiver.url).await;
+    db.notifications
+        .set_severity_settings(None, Some(SeverityMode::Event), Some(AlertSeverity::Info))
+        .await
+        .unwrap();
+    let mut input = IssueUpsert {
+        project_id: project.id,
+        fingerprint: "severity-peak".into(),
+        title: "Peak".into(),
+        culprit: None,
+        level: Some("warning".into()),
+        environment: None,
+        release: None,
+        seen_at: db.clock.now(),
+    };
+    let issue = db
+        .issues
+        .upsert_by_fingerprint(input.clone())
+        .await
+        .unwrap()
+        .issue;
+    alertmanager::notify(&db, &project, &issue, "new_issue")
+        .await
+        .unwrap();
+    assert_eq!(receiver.snapshot()[0].labels["severity"], "warning");
+    input.level = Some("error".into());
+    db.issues
+        .upsert_by_fingerprint(input.clone())
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    let alerts = receiver.snapshot();
+    assert_eq!(alerts.len(), 3);
+    assert!(alerts[1].ends_at <= db.clock.now());
+    assert_eq!(alerts[2].labels["severity"], "critical");
+    assert_eq!(alerts[2].labels["alertname"], "SoikaIssueCritical");
+    input.level = Some("debug".into());
+    db.issues.upsert_by_fingerprint(input).await.unwrap();
+    make_due(&db, issue.id).await;
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["severity"],
+        "critical"
+    );
+    db.notifications
+        .set_severity_settings(
+            Some(project.id),
+            Some(SeverityMode::Fixed),
+            Some(AlertSeverity::Info),
+        )
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["severity"],
+        "info"
+    );
+    db.notifications
+        .set_severity_settings(Some(project.id), None, None)
+        .await
+        .unwrap();
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(
+        receiver.snapshot().last().unwrap().labels["severity"],
+        "critical"
+    );
+}
+
+#[tokio::test]
+async fn event_severity_mode_api_validates_mode_and_ownership() {
+    let mut db = notification_db().await;
+    let uri = "/api/settings/notifications/severity";
+    let (status, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "PUT",
+        uri,
+        serde_json::json!({"mode": "event", "severity": "warning"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["mode"], "event");
+    assert_eq!(
+        db.notifications.severity_mode(None).await.unwrap(),
+        Some(SeverityMode::Event)
+    );
+    assert_eq!(
+        request(
+            &db,
+            InstanceRole::Owner,
+            "PUT",
+            uri,
+            serde_json::json!({"mode": "invalid", "severity": "warning"})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    assert_eq!(
+        request(
+            &db,
+            InstanceRole::Owner,
+            "PUT",
+            uri,
+            serde_json::json!({"mode": "fixed", "severity": "critical"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn event_severity_mode_covers_mapping_unknown_fallback_and_merge() {
+    let db = notification_db().await;
+    let project_id = seed_project(&db).await;
+    db.notifications
+        .set_severity_settings(
+            None,
+            Some(SeverityMode::Event),
+            Some(AlertSeverity::Warning),
+        )
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    for (index, (level, expected)) in [
+        (Some("fatal"), AlertSeverity::Critical),
+        (Some("error"), AlertSeverity::Critical),
+        (Some("warning"), AlertSeverity::Warning),
+        (Some("info"), AlertSeverity::Info),
+        (Some("debug"), AlertSeverity::Info),
+        (Some("unknown"), AlertSeverity::Warning),
+        (None, AlertSeverity::Warning),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let issue = db
+            .issues
+            .upsert_by_fingerprint(IssueUpsert {
+                project_id,
+                fingerprint: format!("mapped-{index}"),
+                title: "Mapped".into(),
+                culprit: None,
+                level: level.map(String::from),
+                environment: None,
+                release: None,
+                seen_at: db.clock.now(),
+            })
+            .await
+            .unwrap()
+            .issue;
+        assert_eq!(
+            alertmanager::effective_severity(&db, Some(project_id), Some(issue.id))
+                .await
+                .unwrap(),
+            Some(expected)
+        );
+        ids.push(issue.id);
+    }
+    db.notifications
+        .set_severity_settings(None, Some(SeverityMode::Event), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        alertmanager::effective_severity(&db, Some(project_id), Some(ids[6]))
+            .await
+            .unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+    // The info target inherits the critical source's peak when fingerprints merge.
+    let merged = db
+        .issues
+        .override_fingerprint(ids[3], "mapped-0".into())
+        .await
+        .unwrap();
+    assert_eq!(
+        merged.level.as_deref(),
+        Some("info"),
+        "preserve the original SDK level"
+    );
+    assert_eq!(
+        db.notifications.event_severity(merged.id).await.unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+    // Fixed overrides and clearing the override preserve global event-mode inheritance.
+    db.notifications
+        .set_severity_settings(
+            Some(project_id),
+            Some(SeverityMode::Fixed),
+            Some(AlertSeverity::Info),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        alertmanager::effective_severity(&db, Some(project_id), Some(merged.id))
+            .await
+            .unwrap(),
+        Some(AlertSeverity::Info)
+    );
+    db.notifications
+        .set_severity_settings(Some(project_id), None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        alertmanager::effective_severity(&db, Some(project_id), Some(merged.id))
+            .await
+            .unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+    db.issues
+        .set_status(merged.id, IssueStatus::Resolved)
+        .await
+        .unwrap();
+    let regression = db
+        .issues
+        .upsert_by_fingerprint(IssueUpsert {
+            project_id,
+            fingerprint: "mapped-0".into(),
+            title: "Regression".into(),
+            culprit: None,
+            level: Some("debug".into()),
+            environment: None,
+            release: None,
+            seen_at: db.clock.now(),
+        })
+        .await
+        .unwrap();
+    assert!(regression.is_regression);
+    assert_eq!(
+        db.notifications.event_severity(merged.id).await.unwrap(),
+        Some(AlertSeverity::Critical)
+    );
+}
+
+#[tokio::test]
+async fn project_event_severity_api_roundtrip_and_yaml_lock() {
+    let mut db = notification_db().await;
+    let id = seed_project(&db).await;
+    let slug = db.projects.find_by_id(id).await.unwrap().unwrap().slug;
+    let uri = format!("/api/projects/{slug}/alertmanager-severity");
+    let body = serde_json::json!({"mode": "event", "severity": "info"});
+    let (status, view) = request(&db, InstanceRole::Owner, "PUT", &uri, body.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view, body);
+    let (_, view) = request(
+        &db,
+        InstanceRole::Owner,
+        "GET",
+        &uri,
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(view, body);
+    Arc::make_mut(&mut db.config).management.project_source = ManagementSource::Yaml;
+    assert_eq!(
+        request(&db, InstanceRole::Owner, "PUT", &uri, body).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        db.notifications.severity_mode(Some(id)).await.unwrap(),
+        Some(SeverityMode::Event)
+    );
+}
