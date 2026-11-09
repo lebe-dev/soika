@@ -53,6 +53,7 @@ docker run -d \
 
 - [Installation and configuration](docs/OPERATIONS.md)
 - [Frequently asked questions](docs/FAQ.md)
+- [Android SDK integration and ProGuard/R8 mappings](docs/ANDROID.md)
 - [Outgoing webhooks](docs/WEBHOOKS.md)
 - [Alertmanager integration and VMRule examples](docs/ALERTMANAGER.md)
 - [Helm chart](helm-chart/README.md)
