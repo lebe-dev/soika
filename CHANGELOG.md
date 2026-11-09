@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.10.2
+
+### Added
+
+- Android Java/Kotlin error tracking with ProGuard/R8 deobfuscation. Upload a
+  build's mapping through the Sentry Gradle plugin or `sentry-cli`; matching
+  stack frames are deobfuscated before issue grouping.
+- Sentry-compatible mapping upload endpoints with ZIP and SHA-1 chunk support
+  and a 32 MiB upload limit. Uploads require a Soika session token belonging to
+  a project administrator or instance Owner/Manager, plus the owning team's
+  short ID and project slug.
+- An [Android integration guide](docs/ANDROID.md) covering SDK setup, release
+  mapping uploads, credentials, and troubleshooting.
+
+### Changed
+
+- Frontend route assets load once, and automatic link prefetching is disabled,
+  reducing duplicate resource requests and background navigation traffic.
+- Helm chart `0.3.8` documents every supported service environment variable with
+  a short English explanation. Optional settings and secrets have ready-to-use
+  commented YAML entries, including `TEMPLATES_DIR` and the legacy
+  `NOTIFICATION_MANAGEMENT_SOURCE` setting.
+
+### Upgrade notes
+
+- Database migrations run automatically on startup on SQLite and PostgreSQL and
+  add storage for Android debug mappings.
+- Upload each release's own mapping before sending events. Mappings are matched
+  by project and ProGuard UUID; uploads do not reprocess stored events. Renew
+  build-time upload tokens when their Soika session expires or is revoked.
+- Android support covers Java/Kotlin error events; native NDK symbolication,
+  performance, replay, and source bundle uploads are not supported.
+- Helm runtime defaults are unchanged. Helm replaces the entire `envs` list
+  when overridden; retain all entries required by your deployment.
+
+[Full changelog](https://github.com/lebe-dev/soika/compare/0.10.1...0.10.2)
+
 ## 0.10.1
 
 - Event ingestion responds faster: email, webhook and Alertmanager notifications

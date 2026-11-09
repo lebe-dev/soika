@@ -6,7 +6,7 @@ scheduler, ingestion rate limiter, and login lockout are per process. Configure
 `strategy` to change the Kubernetes Deployment strategy. A rolling update can
 briefly run multiple processes; use `maxSurge: 0` to avoid overlap. The application runs
 the selected database's migrations at startup; no migration Job is needed.
-Chart version: `0.3.6`. Default application image: `tinyops/soika:0.10.2`.
+Chart version: `0.3.8`. Default application image: `tinyops/soika:0.10.2`.
 
 ## Publishing
 
@@ -57,9 +57,10 @@ Alternatively, create a Kubernetes Secret with `SECRET_KEY` and set
 `secrets.create=false` and `secrets.existingSecret=<name>`. Other sensitive
 variables such as `SMTP_PASSWORD` and `OAUTH_CLIENT_SECRET` can go in the same
 Secret. List non-sensitive variables in `envs`; the full set is documented in
-the root `.env.example`. `values.yaml` lists the commonly used defaults and names the
-remaining optional variables in comments. Helm replaces the whole `envs` list when you
-override it, so copy the entries you want to keep.
+the root `.env.example`. `values.yaml` lists the commonly used defaults and provides
+commented YAML entries with short explanations for all remaining optional variables.
+Helm replaces the whole `envs` list when you override it, so copy the entries you
+want to keep.
 When using an existing Secret, restart the Deployment after changing its data;
 Helm can only trigger an automatic rollout for a Secret created by this chart.
 

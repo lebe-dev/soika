@@ -16,10 +16,13 @@ fullnameOverride: ""
 # Non-sensitive application settings. See .env.example for all available keys.
 # Set BASE_URL to the public URL used by users and Sentry SDKs.
 envs:
+  # Project settings source: ui or yaml.
   - name: PROJECT_MANAGEMENT_SOURCE
     value: "ui"
+  # Team membership source: ui or yaml.
   - name: TEAM_MANAGEMENT_SOURCE
     value: "ui"
+  # Enable Alertmanager delivery and refresh.
   - name: NOTIFICATIONS_ALERTMANAGER_ENABLED
     value: "false"
   # General service settings source: ui (default) or env (read-only in UI).
@@ -57,6 +60,7 @@ envs:
   # Disable certificate verification only for Alertmanager HTTPS requests.
   - name: ALERTMANAGER_SKIP_TLS
     value: "false"
+  # Mounted YAML configuration path.
   - name: CONFIG_PATH
     value: "/etc/soika/config.yaml"
   # delete permanently removes missing projects and their events.
@@ -65,16 +69,20 @@ envs:
   # delete fails if a missing team still owns projects.
   - name: TEAM_ORPHAN_POLICY
     value: "readonly"
+  # HTTP listening address inside the container.
   - name: BIND_ADDR
     value: "0.0.0.0:8080"
+  # Database connection URL; use secrets.envs if it contains credentials.
   - name: DATABASE_URL
     value: "sqlite:///app/data/soika.db?mode=rwc"
+  # Public service URL for DSNs, links and authentication.
   - name: BASE_URL
     value: "http://localhost:8080"
   # Full emails with effective Owner rights; comma-separated, case-insensitive.
   # Removing an email restores its stored role after the Helm-triggered rollout.
   - name: ADMIN_USERS
     value: ""
+  # Enable first-run administrator setup.
   - name: ADMIN_ENABLED
     value: "true"
   # Disable email/password sign-in for all users, including Owners.
@@ -83,19 +91,25 @@ envs:
   # Allow SSO users to edit their display name in the profile.
   - name: SSO_ALLOW_DISPLAY_NAME_CHANGE
     value: "false"
+  # Enable outgoing email notifications.
   - name: SMTP_ENABLED
     value: "false"
+  # Enable outgoing project webhooks.
   - name: WEBHOOKS_ENABLED
     value: "false"
+  # Organization display name.
   - name: ORGANIZATION_NAME
     value: "soika"
   # IANA timezone used by the UI to display timestamps; dates are stored in UTC.
   - name: TIMEZONE
     value: "UTC"
+  # Allow public account registration.
   - name: ALLOW_SIGNUP
     value: "false"
+  # Allow team invite links unless teams are managed by YAML.
   - name: ALLOW_INVITES
     value: "false"
+  # Default maximum stored events per project.
   - name: DEFAULT_EVENTS_RETENTION
     value: "1000"
   # Age-based pruning in days; 0 disables it.
@@ -104,46 +118,149 @@ envs:
   # Six-field cron (with seconds) for the retention cleanup job.
   - name: RETENTION_CRON
     value: "0 */15 * * * *"
+  # Enable OAuth/OIDC single sign-on.
   - name: OAUTH_ENABLED
     value: "false"
   # Passkeys cannot be enabled together with OAUTH_ENABLED.
   - name: PASSKEY_ENABLED
     value: "false"
+  # Enable password login brute-force protection.
   - name: LOGIN_LOCKOUT_ENABLED
     value: "true"
+  # Log filter; use info,soika=debug for application diagnostics.
   - name: RUST_LOG
     value: "info"
-  # Optional settings, uncomment and add to the list as needed (the list is
-  # replaced as a whole by an override). See .env.example for details.
-  # Link to the deployment configuration shown to instance managers (http/https):
-  #   SERVICE_DEPLOY_URL
-  # Comma-separated name=value pairs extending default Alertmanager labels (env mode):
-  #   ALERTMANAGER_DEFAULT_LABELS
-  # Comma-separated existing team UUIDs used as default teams (env mode):
-  #   DEFAULT_TEAM_IDS
-  # Database pool and write retries (SQLite and PostgreSQL):
-  #   DB_MAX_CONNECTIONS, DB_ACQUIRE_TIMEOUT_MS, DB_WRITE_MAX_RETRIES,
-  #   DB_WRITE_RETRY_BASE_MS, DB_WRITE_RETRY_MAX_MS, DB_DELETE_BATCH,
-  #   DB_BUSY_RETRY_AFTER_SECS
-  # SQLite only:
-  #   DB_BUSY_TIMEOUT_MS, DB_SYNCHRONOUS
-  # Login throttling:
-  #   LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_WINDOW_SECS, LOGIN_LOCKOUT_BASE_SECS,
-  #   LOGIN_LOCKOUT_MAX_SECS
-  # SMTP (SMTP_PASSWORD belongs in secrets.envs):
-  #   SMTP_HOST, SMTP_PORT, SMTP_TLS, SMTP_USERNAME, SMTP_FROM
-  # OAuth/OIDC (OAUTH_CLIENT_SECRET belongs in secrets.envs):
-  #   OAUTH_PROVIDER, OAUTH_ISSUER_URL, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URL,
-  #   OAUTH_SCOPES, OAUTH_PROVIDER_NAME, OAUTH_ALLOWED_EMAIL_DOMAINS,
-  #   OAUTH_REQUIRE_APPROVAL, OAUTH_GROUPS_CLAIM
-  # OAUTH_GROUPS_CLAIM is the claim field name (e.g. groups), not a group name.
-  # Put group names such as infra in configFile.content.teams[].sso_groups[].group.
-  # Passkeys:
-  #   PASSKEY_RP_ID, PASSKEY_RP_NAME, PASSKEY_RP_ORIGIN, PASSKEY_EXTRA_ORIGINS,
-  #   PASSKEY_ALLOW_SUBDOMAINS, PASSKEY_TIMEOUT_SECONDS,
-  #   PASSKEY_CHALLENGE_TTL_SECONDS, PASSKEY_MAX_PER_USER
-  # Soika's own error reporting (SENTRY_DSN belongs in secrets.envs):
-  #   SENTRY_ENVIRONMENT
+  # Optional settings: uncomment entries as needed. Helm replaces the whole envs list.
+  # Deployment and service defaults.
+  # Optional deployment configuration link shown to instance managers.
+  # - name: SERVICE_DEPLOY_URL
+  #   value: "https://git.example.com/ops/soika"
+  # Directory containing the email templates; must exist in the container.
+  # - name: TEMPLATES_DIR
+  #   value: "/app/templates"
+  # Comma-separated existing team UUIDs used as defaults in env mode.
+  # - name: DEFAULT_TEAM_IDS
+  #   value: ""
+  # Extra Alertmanager labels as comma-separated name=value pairs in env mode.
+  # - name: ALERTMANAGER_DEFAULT_LABELS
+  #   value: "team=platform"
+  # Legacy source: ui or yaml; remove SERVICE_MANAGEMENT_SOURCE to use it.
+  # - name: NOTIFICATION_MANAGEMENT_SOURCE
+  #   value: "ui"
+  # Database pool and write retries (both backends unless marked SQLite only).
+  # Maximum number of pooled database connections.
+  # - name: DB_MAX_CONNECTIONS
+  #   value: "8"
+  # Maximum wait for a pooled connection, in milliseconds.
+  # - name: DB_ACQUIRE_TIMEOUT_MS
+  #   value: "10000"
+  # SQLite only: wait for the write lock, in milliseconds.
+  # - name: DB_BUSY_TIMEOUT_MS
+  #   value: "5000"
+  # SQLite only: commit durability, normal or full.
+  # - name: DB_SYNCHRONOUS
+  #   value: "normal"
+  # Number of retries for transient write conflicts; 0 disables retries.
+  # - name: DB_WRITE_MAX_RETRIES
+  #   value: "5"
+  # Initial write retry delay in milliseconds; grows exponentially.
+  # - name: DB_WRITE_RETRY_BASE_MS
+  #   value: "20"
+  # Maximum write retry delay in milliseconds.
+  # - name: DB_WRITE_RETRY_MAX_MS
+  #   value: "500"
+  # Maximum rows per retention delete batch.
+  # - name: DB_DELETE_BATCH
+  #   value: "500"
+  # Retry-After seconds returned when ingestion exhausts write retries.
+  # - name: DB_BUSY_RETRY_AFTER_SECS
+  #   value: "2"
+  # Password login throttling.
+  # Failed attempts within the window that trigger a lockout.
+  # - name: LOGIN_MAX_ATTEMPTS
+  #   value: "5"
+  # Rolling window for failed attempts, in seconds.
+  # - name: LOGIN_LOCKOUT_WINDOW_SECS
+  #   value: "900"
+  # Initial lockout duration in seconds.
+  # - name: LOGIN_LOCKOUT_BASE_SECS
+  #   value: "60"
+  # Maximum lockout duration in seconds; must be at least the base.
+  # - name: LOGIN_LOCKOUT_MAX_SECS
+  #   value: "3600"
+  # SMTP (enable SMTP_ENABLED and put SMTP_PASSWORD in secrets.envs).
+  # SMTP server hostname; required for outgoing email.
+  # - name: SMTP_HOST
+  #   value: "smtp.example.com"
+  # SMTP server port.
+  # - name: SMTP_PORT
+  #   value: "587"
+  # Enable TLS for the SMTP connection.
+  # - name: SMTP_TLS
+  #   value: "true"
+  # Optional SMTP authentication username.
+  # - name: SMTP_USERNAME
+  #   value: ""
+  # Sender email address; defaults to soika@<smtp-host> when omitted.
+  # - name: SMTP_FROM
+  #   value: "soika@example.com"
+  # OAuth/OIDC (enable OAUTH_ENABLED and put OAUTH_CLIENT_SECRET in secrets.envs).
+  # Provider type: oidc or github.
+  # - name: OAUTH_PROVIDER
+  #   value: "oidc"
+  # OIDC issuer URL; GitHub defaults to https://github.com.
+  # - name: OAUTH_ISSUER_URL
+  #   value: "https://gitlab.com"
+  # OAuth application client ID; required when OAuth is enabled.
+  # - name: OAUTH_CLIENT_ID
+  #   value: ""
+  # Callback URL; defaults to BASE_URL/auth/oidc/callback.
+  # - name: OAUTH_REDIRECT_URL
+  #   value: "https://errors.example.com/auth/oidc/callback"
+  # Space-separated scopes; GitHub defaults to read:user user:email.
+  # - name: OAUTH_SCOPES
+  #   value: "openid email profile"
+  # Provider label displayed on the sign-in button.
+  # - name: OAUTH_PROVIDER_NAME
+  #   value: "SSO"
+  # Comma-separated allowed email domains; empty allows all domains.
+  # - name: OAUTH_ALLOWED_EMAIL_DOMAINS
+  #   value: ""
+  # Require administrator approval for new SSO accounts.
+  # - name: OAUTH_REQUIRE_APPROVAL
+  #   value: "false"
+  # Claim field containing groups; configure group names in configFile.content.teams.
+  # - name: OAUTH_GROUPS_CLAIM
+  #   value: "groups"
+  # Passkeys (enable PASSKEY_ENABLED with OAUTH_ENABLED=false).
+  # Credential domain; defaults to the BASE_URL host. Changing it invalidates passkeys.
+  # - name: PASSKEY_RP_ID
+  #   value: "errors.example.com"
+  # Authenticator display name; defaults to ORGANIZATION_NAME.
+  # - name: PASSKEY_RP_NAME
+  #   value: "soika"
+  # Accepted browser origin; defaults to BASE_URL.
+  # - name: PASSKEY_RP_ORIGIN
+  #   value: "https://errors.example.com"
+  # Additional accepted browser origins, comma-separated.
+  # - name: PASSKEY_EXTRA_ORIGINS
+  #   value: ""
+  # Accept origins on subdomains of PASSKEY_RP_ID.
+  # - name: PASSKEY_ALLOW_SUBDOMAINS
+  #   value: "false"
+  # Browser ceremony timeout in seconds.
+  # - name: PASSKEY_TIMEOUT_SECONDS
+  #   value: "60"
+  # Signed challenge cookie lifetime in seconds.
+  # - name: PASSKEY_CHALLENGE_TTL_SECONDS
+  #   value: "300"
+  # Maximum number of registered passkeys per user.
+  # - name: PASSKEY_MAX_PER_USER
+  #   value: "10"
+  # Self-reporting (put SENTRY_DSN in secrets.envs).
+  # Optional environment tag for Soika error reports.
+  # - name: SENTRY_ENVIRONMENT
+  #   value: "production"
 
 # Set SECRET_KEY before installing. An empty key causes Soika to reject startup.
 # Alternatively, set create: false and existingSecret to a Secret containing
@@ -155,8 +272,21 @@ secrets:
   # Sensitive optional variables go here too: SMTP_PASSWORD, OAUTH_CLIENT_SECRET,
   # SENTRY_DSN, and DATABASE_URL when it contains a password.
   envs:
+    # Required signing key for session cookies and invite tokens.
     - name: SECRET_KEY
       value: ""
+    # Optional SMTP authentication password.
+    # - name: SMTP_PASSWORD
+    #   value: ""
+    # Required OAuth application secret when OAUTH_ENABLED=true.
+    # - name: OAUTH_CLIENT_SECRET
+    #   value: ""
+    # DSN enabling Soika's own error reporting.
+    # - name: SENTRY_DSN
+    #   value: ""
+    # Database URL with credentials; remove DATABASE_URL from envs when using this.
+    # - name: DATABASE_URL
+    #   value: "postgres://soika:password@postgres.example.com:5432/soika?sslmode=require"
 
 serviceAccount:
   create: true
