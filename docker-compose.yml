@@ -1,7 +1,7 @@
 services:
   soika:
     container_name: soika
-    image: tinyops/soika:0.10.2
+    image: tinyops/soika:0.11.0
     restart: always
     environment:
       BIND_ADDR: "0.0.0.0:8080"
