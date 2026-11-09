@@ -281,6 +281,7 @@ async fn process_event(
     // Fill request-derived context (client IP, browser/OS) the SDK can't send,
     // before the payload is normalized for grouping and persisted.
     enrich(&mut payload, meta);
+    super::android::deobfuscate(state, project.id, &mut payload).await?;
 
     let event_id = event_id_from_payload(&payload).unwrap_or_else(new_event_id);
     let normalized = NormalizedEvent::from_value(&payload);

@@ -20,6 +20,7 @@ use webauthn_rs::Webauthn;
 /// Application state shared across all handlers (cheaply cloneable).
 #[derive(Clone)]
 pub struct AppState {
+    pub debug_files: Arc<dyn crate::ports::DebugFileRepository>,
     pub auth_challenges: Arc<dyn crate::ports::AuthChallengeRepository>,
     pub config: Arc<Config>,
     pub config_sync: Arc<dyn crate::ports::ConfigSync>,

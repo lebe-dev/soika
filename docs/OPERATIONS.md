@@ -766,3 +766,35 @@ in the UI and API for all roles. `ORGANIZATION_NAME` sets the organization name,
 UUIDs of existing teams assigned to new users (empty by default). Environment
 values apply at startup and replace saved settings. Project/team management,
 user administration and mute retain their existing permission rules.
+
+### Android ProGuard / R8 mappings
+
+Soika accepts ProGuard mappings uploaded by Sentry CLI and the Sentry Android
+Gradle plugin. Set `SENTRY_URL` to the Soika base URL, `SENTRY_ORG` to the owning
+team's short ID (from its URL), and `SENTRY_PROJECT` to the project's slug.
+`SENTRY_AUTH_TOKEN` must contain the signed value of an active `soika_session`
+cookie, without the cookie name or attributes. Treat it as a password: uploads
+require a team Admin or instance Owner/Manager, and expire with that session.
+Logout and session revocation also revoke upload access. Soika does not accept
+Sentry-issued authentication tokens.
+
+```sh
+sentry-cli upload-proguard --write-properties sentry-debug-meta.properties mapping.txt
+```
+
+The Android Gradle plugin normally generates and bundles the debug metadata for
+you. For manual builds, include the generated properties in the application
+assets so the SDK sends the ProGuard UUID in `debug_meta.images`. Upload the
+mapping before sending errors from that build.
+
+Both the legacy multipart ZIP endpoint (`files/dsyms/`) and the SHA-1 chunk
+upload / `files/difs/assemble/` protocol are supported. Mapping files are limited
+to 32 MiB per upload and are stored in the database until their project is
+deleted. Upload chunks expire after 24 hours and are reclaimed in small batches
+on subsequent uploads. Native Android NDK symbols and source bundles are not
+supported by these endpoints.
+
+Incoming events are matched by project and ProGuard UUID. Soika restores Java
+exception class names and exception/thread stack frames (including inline
+frames) before issue grouping. Events without a matching mapping remain intact;
+uploading a mapping later does not reprocess existing events.

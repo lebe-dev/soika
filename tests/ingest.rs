@@ -882,3 +882,182 @@ async fn tag_mute_rule_suppresses_notification_for_matching_event() {
         "non-matching event fires exactly one webhook"
     );
 }
+
+#[tokio::test]
+async fn android_mapping_chunk_protocol_and_deobfuscation() {
+    use soika::domain::{AuthProvider, InstanceRole, UserStatus};
+    let app = TestApp::spawn().await;
+    let user = app
+        .state
+        .users
+        .create(soika::ports::NewUser {
+            email: "android@example.com".into(),
+            display_name: "Uploader".into(),
+            password_hash: "unused".into(),
+            instance_role: InstanceRole::Manager,
+            auth_provider: AuthProvider::Local,
+            status: UserStatus::Active,
+        })
+        .await
+        .unwrap();
+    app.state
+        .sessions
+        .create(
+            "android-upload".into(),
+            user.id,
+            chrono::Utc::now() + chrono::Duration::hours(1),
+        )
+        .await
+        .unwrap();
+    let cookie =
+        soika::auth::build_session_cookie(&app.state.config.secret_key, "android-upload", false);
+    let token = cookie.split(';').next().unwrap().split_once('=').unwrap().1;
+    let team = app
+        .state
+        .teams
+        .find_by_id(app.project.team_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let base = format!("/api/0/organizations/{}/chunk-upload/", team.short_id);
+    let uri = format!(
+        "/api/0/projects/{}/{}/files/difs/assemble/",
+        team.short_id, app.project.slug
+    );
+    let mapping = "com.example.Crash -> a:\n    1:1:void crash():42:42 -> b\n";
+    let uuid = proguard::ProguardMapping::new(mapping.as_bytes()).uuid();
+    let hash = sha1_smol::Sha1::from(mapping).digest().to_string();
+    let assemble =
+        json!({hash.clone(): {"name":format!("/proguard/{uuid}.txt"),"chunks":[hash.clone()]}});
+    let request = |url: &str, body: String, content: &str| {
+        Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", content)
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let response = app
+        .router
+        .clone()
+        .oneshot(request(&uri, assemble.to_string(), "application/json"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(response[&hash]["state"], "not_found");
+    let multipart = format!(
+        "--boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{hash}\"\r\nContent-Type: application/octet-stream\r\n\r\n{mapping}\r\n--boundary--\r\n"
+    );
+    let response = app
+        .router
+        .clone()
+        .oneshot(request(
+            &base,
+            multipart,
+            "multipart/form-data; boundary=boundary",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .router
+        .clone()
+        .oneshot(request(&uri, assemble.to_string(), "application/json"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(response[&hash]["state"], "ok");
+    assert_eq!(response[&hash]["dif"]["sha1"], hash);
+    let mut event = json!({"debug_meta":{"images":[{"type":"proguard","uuid":uuid}]},"exception":{"values":[{"type":"a","stacktrace":{"frames":[{"module":"a","function":"b","lineno":1}]}}]}});
+    soika::ingest::android::deobfuscate(&app.state, app.project.id, &mut event)
+        .await
+        .unwrap();
+    assert_eq!(event["exception"]["values"][0]["type"], "com.example.Crash");
+    assert_eq!(
+        event
+            .pointer("/exception/values/0/stacktrace/frames/0/lineno")
+            .unwrap(),
+        42
+    );
+    let original = event.clone();
+    soika::ingest::android::deobfuscate(&app.state, uuid, &mut event)
+        .await
+        .unwrap();
+    assert_eq!(event, original, "mapping must be project scoped");
+    // Legacy CLI uploads a ZIP archive in the multipart file field.
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    zip.start_file(
+        format!("proguard/{uuid}.txt"),
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    zip.write_all(mapping.as_bytes()).unwrap();
+    let archive = zip.finish().unwrap().into_inner();
+    let mut body=b"--legacy\r\nContent-Disposition: form-data; name=\"file\"; filename=\"mappings.zip\"\r\nContent-Type: application/zip\r\n\r\n".to_vec();
+    body.extend(archive);
+    body.extend(b"\r\n--legacy--\r\n");
+    let legacy_uri = format!(
+        "/api/0/projects/{}/{}/files/dsyms/",
+        team.short_id, app.project.slug
+    );
+    let response = app
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&legacy_uri)
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "multipart/form-data; boundary=legacy")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let invalid = format!(
+        "--boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{hash}\"\r\n\r\nwrong bytes\r\n--boundary--\r\n"
+    );
+    let response = app
+        .router
+        .clone()
+        .oneshot(request(
+            &base,
+            invalid,
+            "multipart/form-data; boundary=boundary",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    app.state
+        .users
+        .set_instance_role(user.id, InstanceRole::Member)
+        .await
+        .unwrap();
+    let denied = app
+        .router
+        .clone()
+        .oneshot(request(&uri, assemble.to_string(), "application/json"))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let anonymous = app
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&uri)
+                .header("content-type", "application/json")
+                .body(Body::from(assemble.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+}

@@ -48,3 +48,6 @@ pub use auth_challenge::SqliteAuthChallengeRepository;
 
 mod notifications;
 pub use notifications::SqliteNotificationRepository;
+
+mod debug_file;
+pub use debug_file::SqliteDebugFileRepository;

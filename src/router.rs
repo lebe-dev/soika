@@ -49,6 +49,21 @@ pub fn build(state: AppState) -> Router {
         .route("/{project_id}/store/", post(ingest::store))
         .layer(ingest_cors);
 
+    let android_routes = Router::new()
+        .route(
+            "/0/projects/{org}/{project}/files/dsyms/",
+            post(ingest::android::legacy_upload),
+        )
+        .route(
+            "/0/organizations/{org}/chunk-upload/",
+            get(ingest::android::options).post(ingest::android::upload),
+        )
+        .route(
+            "/0/projects/{org}/{project}/files/difs/assemble/",
+            post(ingest::android::assemble),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024));
+
     let api_routes = Router::new()
         .route("/config", get(api::config::get))
         .route("/client-config", get(api::client_config::get))
@@ -190,7 +205,8 @@ pub fn build(state: AppState) -> Router {
             state.clone(),
             auth::csrf::protect,
         ))
-        .merge(ingest_routes);
+        .merge(ingest_routes)
+        .merge(android_routes);
 
     let auth_routes = Router::new()
         .route("/auth/login", post(auth::login))

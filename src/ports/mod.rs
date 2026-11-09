@@ -43,3 +43,6 @@ pub use notifications::NotificationRepository;
 
 mod alertmanager;
 pub use alertmanager::AlertmanagerClient;
+
+mod debug_file;
+pub use debug_file::DebugFileRepository;

@@ -46,3 +46,6 @@ pub use auth_challenge::PgAuthChallengeRepository;
 
 mod notifications;
 pub use notifications::PgNotificationRepository;
+
+mod debug_file;
+pub use debug_file::PgDebugFileRepository;
