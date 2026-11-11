@@ -85,11 +85,15 @@ notifications:
       chat: service-general-status
     annotations:
       summary: '{{ project_name }}: {{ title }}'
+      # Dates use the application's time zone (TZ or the system default).
+      # Without a filter, dates use %-d %B %Y, %H:%M with Russian month names.
+      # Customize with date('%d.%m.%Y %H:%M') for a numeric date instead.
       description: |-
         Ошибка: {{ title }}
         Место возникновения: {{ culprit }}
         Environment: {{ environment }}
         Release: {{ release }}
+        Last seen: {{ last_seen | date('%-d %B %Y, %H:%M') }}
 
         {{ issue_url }}
       issue_url: '{{ issue_url }}'
