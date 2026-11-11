@@ -552,7 +552,7 @@
   "notifications_labels": "Labels (JSON object)",
   "notifications_annotations": "Annotations (JSON object)",
   "notifications_variables": "Template variables",
-  "notifications_template_help": "Use double braces around a variable name. Values must be strings. Unknown variables are rejected; loops and filters are not supported. Preview uses sample data and sends no alerts.",
+  "notifications_template_help": "Use double braces around a variable name. Dates default to “1 ноября 2026, 13:27” in the application's time zone. Customize with {example}; the date filter also supports first_seen. Values must be strings. Unknown variables and invalid formats are rejected; loops are not supported. Preview uses sample data and sends no alerts.",
   "notifications_string_map": "Enter a JSON object whose values are strings.",
   "notifications_saved": "Notification settings saved",
   "notifications_preview": "Preview with sample data",

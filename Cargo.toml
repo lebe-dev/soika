@@ -115,7 +115,7 @@ openidconnect = { version = "4.0.1", default-features = false, features = ["reqw
 
 # Misc
 uuid = { version = "1.23.3", features = ["v4", "serde"] }
-chrono = { version = "0.4.45", features = ["serde"] }
+chrono = { version = "0.4.45", features = ["serde", "unstable-locales"] }
 base64 = "0.22.1"
 flate2 = "1.1.9"
 croner = "3.0.1"

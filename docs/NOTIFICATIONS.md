@@ -249,7 +249,7 @@ rather than the VMRule syntax `{{ $labels.issue_title }}`.
 Use `{{ variable }}` placeholders in label and annotation **values**. The UI
 accepts JSON objects with string values; YAML uses ordinary mappings. Substitution
 is literal and single-pass, then the complete payload is JSON encoded. There are
-no loops, filters, expressions or includes. Unknown placeholders are rejected.
+no loops, general expressions or includes. Only the date filter described below is supported. Unknown placeholders are rejected.
 Map keys must match `[A-Za-z_][A-Za-z0-9_]*`; each map accepts up to 64 entries,
 with keys up to 128 bytes and templates up to 8192 bytes.
 
@@ -264,10 +264,32 @@ with keys up to 128 bytes and templates up to 8192 bytes.
 | `level` | Sentry severity, falling back to `error` when absent |
 | `environment`, `release` | Issue environment and release |
 | `event_count` | Current issue event count |
-| `first_seen`, `last_seen` | RFC 3339 timestamps in UTC |
+| `first_seen`, `last_seen` | Local date and time, e.g. `1 ноября 2026, 13:27` |
 | `issue_url` | Public link using `BASE_URL` and short project/issue IDs |
 | `org_name` | Current organization display name from service settings |
 | `trigger` | `new_issue` or `regression`, retained for the alert lifetime |
+
+Dates use the application's system time zone (including the `TZ` environment
+variable), independently of the browser's time zone. Containers default to UTC;
+set `TZ=Europe/Moscow`, for example, to use Moscow time. The Docker image includes
+time zone data. Restart the application after changing its time zone.
+
+`{{ first_seen }}` and `{{ last_seen }}` default to `%-d %B %Y, %H:%M`, with
+Russian month names. Override the format in any template using a quoted strftime
+pattern, for example:
+
+```text
+{{ last_seen | date("%d.%m.%Y %H:%M") }}
+{{ first_seen | date('%Y-%m-%d %H:%M %:z') }}
+{{ last_seen | date('%+') }}
+```
+
+`%d` is the zero-padded day, `%-d` the unpadded day, `%m` the month number,
+`%B` the full Russian month name, `%Y` the year, `%H:%M` the 24-hour time,
+`%:z` the UTC offset, and `%+` an RFC 3339 timestamp in the application's time
+zone. The filter is restricted to `first_seen` and `last_seen`. Invalid formats
+are rejected when saving or previewing templates. Existing placeholders also
+use the new default format; Alertmanager protocol timestamps remain in UTC.
 
 Absent optional values render as empty strings. The preview uses representative
 sample values, rather than issue data.

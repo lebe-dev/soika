@@ -117,7 +117,6 @@ fn default_alert_description_includes_context_and_link_without_culprit() {
         "production",
         "1.0.0",
         "42",
-        "2026-01-01T12:00:00Z",
         vars["issue_url"].as_str(),
     ] {
         assert!(
@@ -127,4 +126,61 @@ fn default_alert_description_includes_context_and_link_without_culprit() {
     }
     assert_eq!(alert.annotations["service_name"], "Example project");
     assert_eq!(alert.annotations["issue_title"], "queue: claim pending");
+}
+
+#[test]
+fn dates_use_local_timezone_and_allow_custom_formats() {
+    use chrono::TimeZone;
+    let mut vars = sample_variables();
+    vars.insert(
+        "last_seen".into(),
+        chrono::Local
+            .with_ymd_and_hms(2026, 11, 1, 13, 27, 0)
+            .unwrap()
+            .to_rfc3339(),
+    );
+    assert_eq!(
+        render_template("{{ last_seen }}", &vars).unwrap(),
+        "1 ноября 2026, 13:27"
+    );
+    vars.insert("last_seen".into(), "2026-11-01T13:27:00+03:00".into());
+    let local = chrono::DateTime::parse_from_rfc3339(&vars["last_seen"])
+        .unwrap()
+        .with_timezone(&chrono::Local);
+    assert_eq!(
+        render_template("{{ last_seen }}", &vars).unwrap(),
+        local
+            .format_localized("%-d %B %Y, %H:%M", chrono::Locale::ru_RU)
+            .to_string()
+    );
+    assert_eq!(
+        render_template("{{ last_seen | date(\"%Y-%m-%d %H:%M %:z\") }}", &vars).unwrap(),
+        local.format("%Y-%m-%d %H:%M %:z").to_string()
+    );
+    assert_eq!(
+        render_template("{{ first_seen | date('%+') }}", &vars).unwrap(),
+        chrono::DateTime::parse_from_rfc3339(&vars["first_seen"])
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .to_rfc3339()
+    );
+}
+
+#[test]
+fn date_filters_reject_invalid_formats_and_non_date_variables() {
+    for template in [
+        "{{ title | date('%Y') }}",
+        "{{ last_seen | date('%Q') }}",
+        "{{ last_seen | date('%') }}",
+        "{{ last_seen | date(%Y) }}",
+        "{{ last_seen | date('%Y') | safe }}",
+    ] {
+        assert!(
+            render_template(template, &sample_variables()).is_err(),
+            "{template}"
+        );
+    }
+    let mut vars = sample_variables();
+    vars.insert("last_seen".into(), "invalid".into());
+    assert!(render_template("{{ last_seen }}", &vars).is_err());
 }

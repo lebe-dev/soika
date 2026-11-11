@@ -185,7 +185,7 @@ impl AlertmanagerConfig {
     }
 }
 
-/// No evaluation, loops, filters, escaping or recursive expansion. JSON encoding
+/// Only scalar substitution and a date format filter; no recursive expansion. JSON encoding
 /// happens after rendering, so issue data cannot inject additional payload fields.
 pub fn render_template(template: &str, variables: &BTreeMap<String, String>) -> Result<String> {
     if template.contains("{%") || template.contains("{#") {
@@ -205,17 +205,45 @@ pub fn render_template(template: &str, variables: &BTreeMap<String, String>) -> 
         let end = tail
             .find("}}")
             .ok_or_else(|| Error::validation("unclosed notification placeholder"))?;
-        let name = tail[..end].trim();
+        let expression = tail[..end].trim();
+        let (name, filter) = expression
+            .split_once('|')
+            .map_or((expression, None), |(name, filter)| {
+                (name.trim(), Some(filter.trim()))
+            });
         if !VARIABLES.contains(&name) {
             return Err(Error::validation(format!(
                 "unknown notification variable: {name}"
             )));
         }
-        out.push_str(
-            variables
-                .get(name)
-                .ok_or_else(|| Error::validation("missing notification variable"))?,
-        );
+        let value = variables
+            .get(name)
+            .ok_or_else(|| Error::validation("missing notification variable"))?;
+        if matches!(name, "first_seen" | "last_seen") {
+            let format = match filter {
+                None => "%-d %B %Y, %H:%M",
+                Some(filter) => date_format(filter)?,
+            };
+            let items: Vec<_> = chrono::format::StrftimeItems::new(format).collect();
+            if items.contains(&chrono::format::Item::Error) {
+                return Err(Error::validation("invalid notification date format"));
+            }
+            let date = chrono::DateTime::parse_from_rfc3339(value)
+                .map_err(|_| Error::validation("invalid notification timestamp"))?
+                .with_timezone(&chrono::Local);
+            out.push_str(
+                &date
+                    .format_localized_with_items(items.iter(), chrono::Locale::ru_RU)
+                    .to_string(),
+            );
+        } else {
+            if filter.is_some() {
+                return Err(Error::validation(
+                    "date filters require first_seen or last_seen",
+                ));
+            }
+            out.push_str(value);
+        }
         remaining = &tail[end + 2..];
     }
     if remaining.contains("}}") {
@@ -223,6 +251,24 @@ pub fn render_template(template: &str, variables: &BTreeMap<String, String>) -> 
     }
     out.push_str(remaining);
     Ok(out)
+}
+
+fn date_format(filter: &str) -> Result<&str> {
+    let argument = filter
+        .strip_prefix("date(")
+        .and_then(|s| s.strip_suffix(')'))
+        .map(str::trim)
+        .ok_or_else(|| Error::validation("expected date(\"format\") filter"))?;
+    for quote in ['\'', '"'] {
+        if let Some(format) = argument
+            .strip_prefix(quote)
+            .and_then(|s| s.strip_suffix(quote))
+            && !format.contains(quote)
+        {
+            return Ok(format);
+        }
+    }
+    Err(Error::validation("date format must be a quoted string"))
 }
 
 pub fn sample_variables() -> BTreeMap<String, String> {

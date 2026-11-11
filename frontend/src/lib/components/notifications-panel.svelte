@@ -209,7 +209,11 @@
       <details class="rounded-md border p-3">
         <summary class="cursor-pointer text-sm font-medium">{$t('notifications_variables')}</summary
         >
-        <p class="text-muted-foreground mt-2 text-sm">{$t('notifications_template_help')}</p>
+        <p class="text-muted-foreground mt-2 text-sm">
+          {$t('notifications_template_help', {
+            values: { example: "{{ last_seen | date('%d.%m.%Y %H:%M') }}" }
+          })}
+        </p>
         <div class="mt-2 flex flex-wrap gap-2">
           {#each view.variables as variable}<code class="bg-muted rounded px-2 py-1 text-xs"
               >{'{{ ' + variable + ' }}'}</code
