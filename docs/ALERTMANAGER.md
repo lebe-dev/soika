@@ -2,6 +2,9 @@
 
 Soika sends new issues and regressions directly to Alertmanager's
 `/api/v2/alerts` API and refreshes active alerts until they end.
+Manually reopening a resolved or muted issue also starts a new alert when the
+integration and channel are enabled and the project is not muted or orphaned.
+Repeatedly reopening an already unresolved issue does not restart its alert.
 
 ## Connect Soika to Alertmanager
 

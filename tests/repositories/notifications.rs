@@ -137,6 +137,68 @@ async fn notifications_lifecycle_refresh_resolve_and_regression() {
 }
 
 #[tokio::test]
+async fn manual_reopen_restarts_alertmanager_delivery() {
+    let db = notification_db().await;
+    let receiver = Receiver::start().await;
+    let (project, issue) = setup(&db, &receiver.url).await;
+    soika::notify::notify_new_issue(&db, &project, &issue)
+        .await
+        .unwrap();
+    let uri = |action| format!("/api/issues/{}/{action}", issue.short_id);
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "POST",
+        &uri("resolve"),
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    alertmanager::refresh(&db).await.unwrap();
+    assert!(
+        db.notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "POST",
+        &uri("unresolve"),
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let alerts = receiver.snapshot();
+    assert_eq!(alerts.len(), 3);
+    assert_eq!(alerts[2].annotations["trigger"], "regression");
+    assert!(alerts[2].ends_at > db.clock.now());
+    assert!(
+        db.notifications
+            .find_alert(issue.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    make_due(&db, issue.id).await;
+    alertmanager::refresh(&db).await.unwrap();
+    assert_eq!(receiver.snapshot().len(), 4);
+    // Repeating unresolve must not restart an already active alert.
+    let (status, _) = request(
+        &db,
+        InstanceRole::Owner,
+        "POST",
+        &uri("unresolve"),
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(receiver.snapshot().len(), 4);
+}
+
+#[tokio::test]
 async fn env_project_labels_apply_to_delivery_and_refresh_identity() {
     let mut db = notification_db().await;
     let receiver = Receiver::start().await;

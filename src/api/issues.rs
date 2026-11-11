@@ -499,8 +499,17 @@ async fn set_status(
         Err(resp) => return resp,
     };
 
+    let reopened = issue.status != IssueStatus::Unresolved && status == IssueStatus::Unresolved;
     match state.issues.set_status(issue.id, status).await {
         Ok(issue) => {
+            if reopened
+                && !project.muted
+                && project.orphaned_at.is_none()
+                && let Err(error) =
+                    crate::alertmanager::notify(&state, &project, &issue, "regression").await
+            {
+                tracing::warn!(error = %error, issue_id = %issue.id, channel = "alertmanager", "notification delivery failed");
+            }
             tracing::info!(issue_id = %issue.id, project_id = %issue.project_id, status = ?issue.status, "issue updated");
             Json(IssueView::from_issue(issue, project.slug)).into_response()
         }
