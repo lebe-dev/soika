@@ -108,14 +108,16 @@ At startup, `NOTIFICATIONS_ALERTMANAGER_ENABLED` sets the channel enabled state,
 UI mode starts with `critical` stored in the database and preserves later admin
 choices, including an explicit template fallback. Both defaults
 follow service ownership and are editable in **Admin → Notifications** in UI mode.
-YAML contains only project overrides; see [global and project defaults](ALERTMANAGER.md#global-and-per-project-refresh-intervals).
+YAML contains notification templates, routing labels and project overrides; see [global and project defaults](ALERTMANAGER.md#global-and-per-project-refresh-intervals).
 `ALERTMANAGER_DEFAULT_LABELS` adds or overrides labels using comma-separated `name=value`
 pairs, for example `team=platform,environment=production`. Values support the same
 templates as the UI, such as `service={{ project_slug }}`. Whitespace around names
 and values is trimmed; commas cannot be used in values. Duplicate names and invalid
 labels or templates prevent startup. Unspecified labels and annotations use built-in
-defaults. Existing database values are replaced.
-Project-specific labels can be set in `CONFIG_PATH`, keyed by project slug,
+defaults. YAML template overrides are applied before `ALERTMANAGER_DEFAULT_LABELS`,
+which takes precedence for matching label keys. Existing database values are replaced.
+Global `labels` and `annotations` templates and project-specific labels can be
+set in `CONFIG_PATH` (usually `config.yaml`). Project labels are keyed by slug,
 independently of whether projects are managed in the UI or YAML:
 
 ```yaml
@@ -134,9 +136,9 @@ Project labels override defaults with the same name. The global `ALERTMANAGER_DE
 the severity label from either map. An explicit project
 `alertmanager_severity` takes precedence over that global default; it follows
 `PROJECT_MANAGEMENT_SOURCE=ui|yaml`. See [project severity](ALERTMANAGER.md#per-project-severity). They are loaded at startup;
-restart to apply changes. A missing configuration file leaves project labels empty
-when projects and teams are managed in the UI. The `notifications` section's other
-fields are ignored in env mode.
+restart to apply changes. A missing configuration file uses built-in templates and leaves project labels
+empty when projects and teams are managed in the UI. Only `notifications.alertmanager.labels`, `annotations` and `project_labels`
+are read in env mode; connection and channel settings come from the environment.
 The UI shows “Configured through environment variables”; notification editing,
 and organization-name changes are blocked in the UI and API, including
 for Owners. Restart Soika to apply environment changes. `yaml` and `yml` are not
@@ -184,6 +186,63 @@ templates, so do not put credentials in template values.
 Switching back to UI preserves the last applied YAML configuration as editable
 settings. Switching to YAML replaces the stored configuration with the file's
 values on startup.
+
+## Issue message format
+
+Soika posts rendered alerts directly to Alertmanager. Configure the message here;
+VMRules do not transform alerts already sent by Soika. Receivers such as the
+Pachca middleware display the `summary` and `description` annotations.
+
+With `SERVICE_MANAGEMENT_SOURCE=ui`, open **Admin → Notifications** and edit
+**Annotations (JSON)**. For the compact service/issue format, use:
+
+```json
+{
+  "summary": "{{ project_name }}: {{ title }}",
+  "description": "Ошибка: {{ title }}\nМесто возникновения: {{ culprit }}\nEnvironment: {{ environment }}\nRelease: {{ release }}\n\n{{ issue_url }}",
+  "issue_url": "{{ issue_url }}"
+}
+```
+
+Use **Preview** to inspect the rendered payload, then **Save changes**. The UI
+saves each complete map; preserve any other annotation keys your receivers need.
+In **Labels (JSON)**, keep `alertname`, `project` and `severity` and add routing
+labels such as `group: soika` and `chat: service-general-status` as JSON strings.
+
+With `SERVICE_MANAGEMENT_SOURCE=env`, put the same templates in `config.yaml`:
+
+```yaml
+version: 1
+notifications:
+  alertmanager:
+    labels:
+      group: soika
+      chat: service-general-status
+    annotations:
+      summary: '{{ project_name }}: {{ title }}'
+      description: |-
+        Ошибка: {{ title }}
+        Место возникновения: {{ culprit }}
+        Environment: {{ environment }}
+        Release: {{ release }}
+
+        {{ issue_url }}
+      issue_url: '{{ issue_url }}'
+```
+
+Point `CONFIG_PATH` at this file and restart Soika. Enable delivery with
+`NOTIFICATIONS_ALERTMANAGER_ENABLED=true` and set `ALERTMANAGER_URL` in the
+environment. Template maps in env mode override built-in entries by key;
+omitted entries retain their defaults. An empty map adds no overrides.
+Removing an override restores its built-in value on restart. YAML templates
+are ignored in UI mode, so saved UI templates remain editable there. Switching
+from env mode to UI preserves the last applied templates in the database.
+
+The result matches the message structure in the VMRule example without requiring
+an issue metrics exporter. The actual title and location are substituted from the
+issue. Empty locations render as an empty field. Add `{{ event_count }}` or
+`{{ last_seen }}` to the description if needed. Use `{{ title }}` in Soika
+rather than the VMRule syntax `{{ $labels.issue_title }}`.
 
 ## Templates and variables
 

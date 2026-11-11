@@ -388,7 +388,7 @@ configFile:
     version: 1
     projects: []
     teams: []
-    # Only project overrides belong in this file. Global defaults belong in envs
+    # Templates and project overrides belong in this file. Global defaults belong in envs
     # (SERVICE_MANAGEMENT_SOURCE=env) or Admin -> Notifications (ui).
     # Example project entry (requires an existing or file-defined Platform team):
     # projects:
@@ -403,6 +403,15 @@ configFile:
     # Omit/set both severity fields to null to inherit the global mode and severity.
     notifications:
       alertmanager:
+        # Env mode: override built-in labels/annotations by key in config.yaml.
+        # UI mode: edit templates in Admin -> Notifications; these maps are ignored.
+        # See docs/NOTIFICATIONS.md for the compact issue message example.
+        # labels:
+        #   group: soika
+        #   chat: service-general-status
+        # annotations:
+        #   summary: '{{ project_name }}: {{ title }}'
+        #   description: '{{ title }} — {{ issue_url }}'
         # In env mode, extra labels are keyed by project slug. An explicit
         # project severity, then the global default severity, override this map.
         # Values support literal {{ variable }} placeholders; Helm does not use tpl.

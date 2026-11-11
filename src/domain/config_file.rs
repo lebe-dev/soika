@@ -52,6 +52,16 @@ pub struct ConfigFile {
     pub teams: Option<Vec<TeamConfig>>,
     #[serde(skip)]
     pub alertmanager_project_labels: BTreeMap<String, BTreeMap<String, String>>,
+    #[serde(skip)]
+    pub alertmanager_templates: AlertmanagerTemplates,
+}
+
+/// Optional template overrides supplied by YAML in env service management mode.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct AlertmanagerTemplates {
+    pub labels: BTreeMap<String, String>,
+    pub annotations: BTreeMap<String, String>,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,33 +101,43 @@ pub fn parse(text: &str, settings: &ManagementSettings) -> Result<ConfigFile> {
         Error::validation("invalid configuration YAML (duplicate key or invalid value)")
     })?;
     discard_ui_sections(&mut value, settings);
-    let project_labels = if settings.service_source == ManagementSource::Env {
+    let env_notifications = if settings.service_source == ManagementSource::Env {
         let notifications = value
             .as_mapping_mut()
             .and_then(|m| m.remove(serde_yaml_ng::Value::String("notifications".into())));
         match notifications {
             Some(v) => {
                 serde_yaml_ng::from_value::<EnvNotifications>(v)
-                    .map_err(|_| Error::validation("invalid Alertmanager project labels"))?
+                    .map_err(|_| {
+                        Error::validation("invalid Alertmanager templates or project labels")
+                    })?
                     .alertmanager
-                    .project_labels
             }
-            None => BTreeMap::new(),
+            None => EnvAlertmanager::default(),
         }
     } else {
-        BTreeMap::new()
+        EnvAlertmanager::default()
     };
     let mut file: ConfigFile = serde_yaml_ng::from_value(value).map_err(|_| {
         Error::validation("invalid configuration YAML (unknown field or invalid value)")
     })?;
-    file.alertmanager_project_labels = project_labels;
+    file.alertmanager_project_labels = env_notifications.project_labels;
+    file.alertmanager_templates = env_notifications.templates;
+    let mut template_config = super::notifications::AlertmanagerConfig::default();
+    template_config
+        .labels
+        .extend(file.alertmanager_templates.labels.clone());
+    template_config
+        .annotations
+        .extend(file.alertmanager_templates.annotations.clone());
+    template_config.validate()?;
     for (slug, labels) in &file.alertmanager_project_labels {
         if let Err(reason) = super::validate_slug(slug) {
             return Err(Error::validation(format!(
                 "invalid project slug {slug:?} in Alertmanager labels: {reason}"
             )));
         }
-        let mut config = super::notifications::AlertmanagerConfig::default();
+        let mut config = template_config.clone();
         config.labels.extend(labels.clone());
         config.validate()?;
     }
@@ -153,6 +173,8 @@ struct EnvNotifications {
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct EnvAlertmanager {
+    #[serde(flatten)]
+    templates: AlertmanagerTemplates,
     project_labels: BTreeMap<String, BTreeMap<String, String>>,
 }
 
@@ -371,7 +393,12 @@ pub fn discard_ui_sections(value: &mut serde_yaml_ng::Value, settings: &Manageme
                     notifications.get_mut(serde_yaml_ng::Value::String("alertmanager".into()))
                     && let Some(alertmanager) = alertmanager.as_mapping_mut()
                 {
-                    alertmanager.retain(|key, _| key.as_str() == Some("project_labels"));
+                    alertmanager.retain(|key, _| {
+                        matches!(
+                            key.as_str(),
+                            Some("project_labels" | "labels" | "annotations")
+                        )
+                    });
                 }
             }
         } else if settings.notification_source != ManagementSource::Yaml {

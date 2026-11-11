@@ -233,9 +233,10 @@ them in **Admin → Notifications** or the YAML configuration. For example:
 }
 ```
 
-Custom annotations require UI management or the supported legacy YAML mode;
-there is no environment variable for custom annotations. Env mode uses the
-built-in annotation defaults. See [notification configuration](NOTIFICATIONS.md#ui-or-yaml-configuration).
+Custom annotations can be edited in the UI or supplied through
+`notifications.alertmanager.annotations` in `CONFIG_PATH` when
+`SERVICE_MANAGEMENT_SOURCE=env`. YAML entries override built-in annotations by key.
+See [message templates and matching UI/YAML examples](NOTIFICATIONS.md#issue-message-format).
 
 Soika always adds `issue_id` and `project_id` labels. Keep changing values such
 as titles, counts and timestamps in annotations. See

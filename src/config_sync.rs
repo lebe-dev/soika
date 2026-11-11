@@ -150,6 +150,14 @@ pub async fn synchronize(mut state: AppState) -> Result<AppState> {
         let mut notifications = crate::domain::notifications::NotificationConfig::default();
         notifications.alertmanager.enabled = state.config.notifications_alertmanager_enabled;
         notifications.alertmanager.url = state.config.alertmanager_url.clone().unwrap_or_default();
+        notifications
+            .alertmanager
+            .labels
+            .extend(desired.alertmanager_templates.labels.clone());
+        notifications
+            .alertmanager
+            .annotations
+            .extend(desired.alertmanager_templates.annotations.clone());
         if let Ok(labels) = std::env::var("ALERTMANAGER_DEFAULT_LABELS") {
             apply_alertmanager_labels(&mut notifications.alertmanager, &labels)?;
         }

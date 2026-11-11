@@ -211,7 +211,10 @@ annotation templates. Choose UI or environment ownership with
 `SERVICE_MANAGEMENT_SOURCE=ui|env` (default `ui`), independently of projects
 and teams. See [notification configuration, lifecycle and template variables](NOTIFICATIONS.md).
 For readable messages, receiver templates and VictoriaMetrics rule examples, see
-[Alertmanager integration](ALERTMANAGER.md). Global defaults follow
+[Alertmanager integration](ALERTMANAGER.md). Edit message templates in the UI, or
+set `notifications.alertmanager.labels` and `annotations` in `CONFIG_PATH` with
+`SERVICE_MANAGEMENT_SOURCE=env`; see [matching examples](NOTIFICATIONS.md#issue-message-format).
+Global defaults follow
 `SERVICE_MANAGEMENT_SOURCE=ui|env`: use `ALERTMANAGER_DEFAULT_INTERVAL_SECONDS`
 (default `60`) and `ALERTMANAGER_DEFAULT_SEVERITY` (default `critical`; also
 `warning` or `info`) in env mode, or **Admin → Notifications** in UI mode. An

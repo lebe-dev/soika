@@ -225,6 +225,12 @@ project severity without a mode selects fixed mode for compatibility. Omit both
 severity fields or set both to null to inherit the global mode and severity.
 See [severity modes](../docs/ALERTMANAGER.md#severity-mode) for lifecycle behavior.
 
+In env mode, message templates can be configured in
+`configFile.content.notifications.alertmanager.labels` and `annotations`.
+Entries override built-in templates by key; `ALERTMANAGER_DEFAULT_LABELS` then
+overrides matching label keys. In UI mode, edit the complete JSON maps in
+**Admin → Notifications**. See [matching UI/YAML examples and template variables](../docs/NOTIFICATIONS.md#issue-message-format).
+
 ### Environment defaults with YAML project overrides
 
 Helm replaces the complete `envs` list. The following example includes the base

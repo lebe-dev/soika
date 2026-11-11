@@ -73,10 +73,26 @@ projects:
     # alertmanager_interval_seconds: null
     # alertmanager_severity: null
 
-# Notifications. With SERVICE_MANAGEMENT_SOURCE=env only
-# alertmanager.project_labels is read; with ui the section is ignored.
+# Notification templates and routing in SERVICE_MANAGEMENT_SOURCE=env mode.
+# With ui, edit these maps in Admin -> Notifications instead; YAML is ignored.
+# See docs/NOTIFICATIONS.md for template variables and the matching UI example.
 notifications:
   alertmanager:
+    # Override individual built-in entries; omitted entries keep their defaults.
+    # ALERTMANAGER_DEFAULT_LABELS overrides this labels map by key.
+    labels:
+      group: soika
+      chat: service-general-status
+    annotations:
+      summary: '{{ project_name }}: {{ title }}'
+      description: |-
+        Ошибка: {{ title }}
+        Место возникновения: {{ culprit }}
+        Environment: {{ environment }}
+        Release: {{ release }}
+
+        {{ issue_url }}
+      issue_url: '{{ issue_url }}'
     # Extra Alertmanager labels per project slug; they override default labels
     # with the same name. Values accept templates such as {{ level }}.
     # An explicit projects[].alertmanager_severity takes precedence over severity

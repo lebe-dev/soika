@@ -69,6 +69,29 @@ fn env_project_labels_are_validated_even_for_ui_projects() {
 }
 
 #[test]
+fn env_notification_templates_are_validated_and_ignored_in_ui_mode() {
+    let settings = ManagementSettings {
+        service_source: ManagementSource::Env,
+        ..Default::default()
+    };
+    let yaml = "version: 1\nnotifications:\n  alertmanager:\n    labels: {chat: service-general-status}\n    annotations: {summary: '{{ project_name }}: {{ title }}', description: 'Ошибка: {{ title }}'}\n";
+    let file = parse(yaml, &settings).unwrap();
+    let templates = file.alertmanager_templates;
+    assert_eq!(templates.labels["chat"], "service-general-status");
+    assert_eq!(templates.annotations["description"], "Ошибка: {{ title }}");
+    for invalid in [
+        yaml.replace("{{ title }}", "{{ secret }}"),
+        yaml.replace("chat: service-general-status", "issue_id: custom"),
+        yaml.replace("chat: service-general-status", "bad-name: custom"),
+    ] {
+        assert!(parse(&invalid, &settings).is_err());
+        let file = parse(&invalid, &ManagementSettings::default()).unwrap();
+        assert!(file.alertmanager_templates.labels.is_empty());
+        assert!(file.alertmanager_templates.annotations.is_empty());
+    }
+}
+
+#[test]
 fn alertmanager_intervals_follow_project_yaml_ownership() {
     let mut settings = ManagementSettings::default();
     let invalid = "version: 1\nalertmanager_interval_seconds: 300\nprojects: []\n";

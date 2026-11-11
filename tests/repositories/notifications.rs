@@ -211,7 +211,7 @@ async fn env_project_labels_apply_to_delivery_and_refresh_identity() {
     let path = std::env::temp_dir().join(format!("soika-labels-{}.yaml", Id::new_v4()));
     let yaml = |team: &str| {
         format!(
-            "version: 1\nnotifications:\n  alertmanager:\n    project_labels:\n      p: {{team: {team}, severity: warning}}\n"
+            "version: 1\nnotifications:\n  alertmanager:\n    labels: {{group: soika, chat: service-general-status}}\n    annotations:\n      summary: '{{{{ project_name }}}}: {{{{ title }}}}'\n      description: |-\n        Ошибка: {{{{ title }}}}\n        Место возникновения: {{{{ culprit }}}}\n        Environment: {{{{ environment }}}}\n        Release: {{{{ release }}}}\n\n        {{{{ issue_url }}}}\n    project_labels:\n      p: {{team: {team}, severity: warning}}\n"
         )
     };
     std::fs::write(&path, yaml("first")).unwrap();
@@ -226,13 +226,43 @@ async fn env_project_labels_apply_to_delivery_and_refresh_identity() {
     assert_eq!(first.labels["team"], "first");
     assert_eq!(first.labels["severity"], "warning");
     assert_eq!(first.labels["project"], "p");
+    assert_eq!(first.labels["group"], "soika");
+    assert_eq!(first.labels["chat"], "service-general-status");
+    assert_eq!(
+        first.annotations["summary"],
+        format!("{}: {}", project.name, issue.title)
+    );
+    assert_eq!(
+        first.annotations["description"],
+        format!(
+            "Ошибка: {}\nМесто возникновения: \nEnvironment: \nRelease: \n\n{}",
+            issue.title, first.generator_url
+        )
+    );
+    assert_eq!(first.annotations["trigger"], "new_issue");
     std::fs::write(&path, yaml("second")).unwrap();
-    let db = soika::config_sync::synchronize(db).await.unwrap();
+    let mut db = soika::config_sync::synchronize(db).await.unwrap();
     alertmanager::refresh(&db).await.unwrap();
     let alerts = receiver.snapshot();
     assert_eq!(alerts[1].labels, first.labels);
     assert!(alerts[1].ends_at <= chrono::Utc::now());
     assert_eq!(alerts[2].labels["team"], "second");
+    // UI mode preserves the applied templates and ignores subsequent YAML changes.
+    std::fs::write(&path, "version: 1\n").unwrap();
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Ui;
+    let mut db = soika::config_sync::synchronize(db).await.unwrap();
+    let config = db.notifications.get().await.unwrap();
+    assert_eq!(config.alertmanager.labels["chat"], "service-general-status");
+    assert!(config.alertmanager.annotations["description"].starts_with("Ошибка:"));
+    // Removing env-mode overrides restores built-in templates on the next startup.
+    Arc::make_mut(&mut db.config).management.service_source = ManagementSource::Env;
+    let db = soika::config_sync::synchronize(db).await.unwrap();
+    let config = db.notifications.get().await.unwrap();
+    assert!(!config.alertmanager.labels.contains_key("chat"));
+    assert_eq!(
+        config.alertmanager.annotations,
+        AlertmanagerConfig::default().annotations
+    );
     std::fs::remove_file(path).unwrap();
 }
 #[tokio::test]

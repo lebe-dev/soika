@@ -594,7 +594,7 @@
   "tip_am_enabled": "Turns sending issue alerts to Alertmanager on or off for every project.",
   "tip_am_url": "Address of the Alertmanager API, for example http://alertmanager:9093. If empty, the default from the server configuration is used.",
   "tip_am_labels": "Labels identify an alert: alerts with identical labels are treated as one. Keep values that change on every occurrence in annotations.",
-  "tip_am_annotations": "Free-form details attached to the alert, such as a summary or a link. They can change without creating a new alert.",
+  "tip_am_annotations": "Message templates sent directly to Alertmanager. summary sets the heading; description sets the body. Use project_name and title for the heading and issue_url for a link. Keep changing details here rather than in labels.",
   "auth_invites": "Team invites",
   "tip_auth_invites": "Whether team admins can create invite links. Always off while teams are managed by the configuration file.",
   "invites_unavailable_yaml_teams": "Teams are managed in the configuration file, so invites are unavailable.",
