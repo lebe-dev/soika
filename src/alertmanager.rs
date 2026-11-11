@@ -428,8 +428,8 @@ pub async fn send_project_test(
         .await;
     let now = state.clock.now();
     let title = match locale {
-        crate::domain::Locale::En => format!("Test alert: {}", project.name),
-        crate::domain::Locale::Ru => format!("Тестовый алерт: {}", project.name),
+        crate::domain::Locale::En => "Test alert".to_string(),
+        crate::domain::Locale::Ru => "Тестовый алерт".to_string(),
     };
     let mut vars = sample_variables();
     vars.extend(BTreeMap::from([

@@ -107,7 +107,12 @@ async fn notifications_lifecycle_refresh_resolve_and_regression() {
         .await
         .unwrap();
     let first = receiver.snapshot()[0].clone();
-    assert_eq!(first.annotations["summary"], issue.title);
+    assert_eq!(
+        first.annotations["summary"],
+        format!("{}: {}", project.name, issue.title)
+    );
+    assert!(first.annotations["description"].contains(&first.generator_url));
+    assert!(first.annotations["description"].contains(&issue.title));
     assert_eq!(first.labels["issue_id"], issue.id.to_string());
     assert!(first.ends_at > first.starts_at);
     alertmanager::refresh(&db).await.unwrap();
@@ -390,7 +395,7 @@ async fn notifications_api_authorization_yaml_guard_validation_and_preview() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         preview["annotations"]["summary"],
-        "ValueError: example error"
+        "Example project: ValueError: example error"
     );
     assert!(db.notifications.active("", 10).await.unwrap().is_empty());
 }
@@ -1442,7 +1447,7 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
     assert_eq!(alert.labels["alertname"], "SoikaIssueCritical");
     assert_eq!(
         alert.annotations["summary"],
-        format!("Test alert: {}", project.name)
+        format!("{}: Test alert", project.name)
     );
     assert_eq!(alert.annotations["trigger"], "test");
     db.notifications
@@ -1469,7 +1474,7 @@ async fn notifications_project_test_uses_project_context_and_enforces_gates() {
     assert_eq!(inherited.labels["severity"], "info");
     assert_eq!(
         inherited.annotations["summary"],
-        format!("Тестовый алерт: {}", project.name)
+        format!("{}: Тестовый алерт", project.name)
     );
     assert!(
         alert

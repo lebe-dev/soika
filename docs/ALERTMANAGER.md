@@ -212,8 +212,15 @@ Changing severity resolves the old alert identity and sends a replacement.
 
 ## Issue metadata sent by Soika
 
-In **Admin → Notifications**, the following annotations produce a title of
-`<service name>: <Soika issue title>` and retain the issue details:
+Built-in annotations use `<project name>: <issue title>` as the summary. The
+description includes the error title, location, environment, release, event count,
+last-seen timestamp and issue URL. It remains useful when the event has no culprit.
+The URL is included in the description for webhook receivers that display only
+`summary` and `description`, such as the Pachca middleware.
+
+Env-managed deployments receive these defaults on startup. Existing UI-managed
+or YAML-managed annotation maps are preserved; to use the richer format, update
+them in **Admin → Notifications** or the YAML configuration. For example:
 
 ```json
 {

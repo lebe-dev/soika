@@ -158,8 +158,16 @@ notifications:
       severity: '{{ level }}'
       service: backend
     annotations:
-      summary: '{{ title }}'
-      description: '{{ project_name }}: {{ culprit }}'
+      summary: '{{ project_name }}: {{ title }}'
+      description: |-
+        Error: {{ title }}
+        Location: {{ culprit }}
+        Environment: {{ environment }}
+        Release: {{ release }}
+        Events: {{ event_count }}
+        Last seen: {{ last_seen }}
+
+        Soika: {{ issue_url }}
       issue_url: '{{ issue_url }}'
       trigger: '{{ trigger }}'
       environment: '{{ environment }}'

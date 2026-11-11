@@ -92,8 +92,13 @@ impl Default for AlertmanagerConfig {
                 ("severity".into(), "{{ level }}".into()),
             ]),
             annotations: BTreeMap::from([
-                ("summary".into(), "{{ title }}".into()),
-                ("description".into(), "{{ culprit }}".into()),
+                ("service_name".into(), "{{ project_name }}".into()),
+                ("issue_title".into(), "{{ title }}".into()),
+                ("summary".into(), "{{ project_name }}: {{ title }}".into()),
+                (
+                    "description".into(),
+                    "Error: {{ title }}\nLocation: {{ culprit }}\nEnvironment: {{ environment }}\nRelease: {{ release }}\nEvents: {{ event_count }}\nLast seen: {{ last_seen }}\n\nSoika: {{ issue_url }}".into(),
+                ),
                 ("issue_url".into(), "{{ issue_url }}".into()),
                 ("trigger".into(), "{{ trigger }}".into()),
                 ("environment".into(), "{{ environment }}".into()),

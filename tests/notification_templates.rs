@@ -95,3 +95,36 @@ fn environment_url_is_a_default_and_explicit_settings_take_precedence() {
         "http://override:9093"
     );
 }
+
+#[test]
+fn default_alert_description_includes_context_and_link_without_culprit() {
+    let mut vars = sample_variables();
+    vars.insert("culprit".into(), String::new());
+    vars.insert("title".into(), "queue: claim pending".into());
+    let alert = soika::alertmanager::render_alert(
+        &AlertmanagerConfig::default(),
+        &vars,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    assert_eq!(
+        alert.annotations["summary"],
+        "Example project: queue: claim pending"
+    );
+    let description = &alert.annotations["description"];
+    for expected in [
+        "queue: claim pending",
+        "production",
+        "1.0.0",
+        "42",
+        "2026-01-01T12:00:00Z",
+        vars["issue_url"].as_str(),
+    ] {
+        assert!(
+            description.contains(expected),
+            "missing {expected}: {description}"
+        );
+    }
+    assert_eq!(alert.annotations["service_name"], "Example project");
+    assert_eq!(alert.annotations["issue_title"], "queue: claim pending");
+}
