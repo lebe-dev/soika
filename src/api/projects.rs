@@ -47,6 +47,60 @@ impl FromRequestParts<AppState> for CurrentUser {
     }
 }
 
+/// Reject every project-scoped API write while a project is disabled.
+/// Reads and ingestion keep their own authorization and availability rules.
+pub async fn protect_disabled_projects(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    use axum::http::Method;
+    if matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    ) {
+        return next.run(request).await;
+    }
+    let path = request.uri().path().trim_start_matches('/');
+    let path = path.strip_prefix("api/").unwrap_or(path);
+    let mut segments = path.split('/');
+    let resource = segments.next().unwrap_or_default();
+    let Some(id) = segments.next() else {
+        return next.run(request).await;
+    };
+    if !matches!(resource, "projects" | "issues") {
+        return next.run(request).await;
+    }
+    let user = match crate::auth::session::authenticate_user(&state, request.headers()).await {
+        Ok(user) => user,
+        Err(err) => return error_response(err),
+    };
+    let project = if resource == "projects" {
+        resolve_project(&state, id).await
+    } else {
+        match state.issues.find_by_short_id(id).await {
+            Ok(Some(issue)) => match state.projects.find_by_id(issue.project_id).await {
+                Ok(Some(project)) => Ok(project),
+                Ok(None) => Err(json_error(StatusCode::NOT_FOUND, "project not found")),
+                Err(err) => Err(error_response(err)),
+            },
+            Ok(None) => Err(json_error(StatusCode::NOT_FOUND, "issue not found")),
+            Err(err) => Err(error_response(err)),
+        }
+    };
+    let project = match project {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    if let Err(response) = require_member(&state, &user, project.id).await {
+        return response;
+    }
+    if project.orphaned_at.is_some() {
+        return json_error(StatusCode::FORBIDDEN, "disabled projects are read-only");
+    }
+    next.run(request).await
+}
+
 /// Shape of every JSON error body returned by the API.
 #[derive(Debug, Serialize)]
 struct ErrorBody {

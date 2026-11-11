@@ -654,7 +654,10 @@ corresponding YAML section, including entities previously created in the UI.
 
 For projects, `readonly` preserves data and retention but rejects both Sentry
 store and envelope ingestion with HTTP 403 (`project is read-only`). Restoring
-the same slug in the file restores ingestion with the same DSN. For teams,
+the same slug in the file restores ingestion with the same DSN. Disabled projects
+remain available for viewing, but all project and issue API writes return HTTP
+403, including status changes, mute rules, settings, DSN rotation, favorites,
+and test notifications. For teams,
 `readonly` preserves membership and access. `delete` permanently deletes missing
 projects and their data; missing teams can be deleted only after all their
 projects have been moved or deleted. A team never cascades project deletion.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDisabledProject } from '$lib/dashboard';
   import { t } from '$lib/i18n';
   import { untrack } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
@@ -32,13 +33,14 @@
   // The project comes from the parent layout load; mutations call
   // `invalidateAll()`, which re-runs that load and flows back through here.
   const project = $derived(data.project);
+  const disabled = $derived(isDisabledProject(project));
 
   // The caller administers this project when their effective role is `admin`
   // (instance Owner/Manager, or a Team Admin of the owning team). Resolved in
   // the layout load; the API enforces the real check on every write.
   const projectsManaged = $derived(data.telemetry?.project_management_source === 'yaml');
   const isAdmin = $derived(data.effectiveRole === 'admin');
-  const canEdit = $derived(isAdmin && !projectsManaged);
+  const canEdit = $derived(isAdmin && !projectsManaged && !disabled);
   const webhooksEnabled = $derived(data.telemetry?.webhooks_enabled ?? false);
 
   // --- General: name + retention -----------------------------------------
@@ -227,7 +229,7 @@
         />
         <AlertmanagerTest
           projectId={project.id}
-          enabled={data.alertmanagerTest.enabled && isAdmin}
+          enabled={data.alertmanagerTest.enabled && isAdmin && !disabled}
         />
       </Card.Root>
     {/key}
@@ -311,7 +313,7 @@
               role="switch"
               aria-checked={!project.muted}
               aria-label={project.muted ? $t('unmute_project') : $t('mute_project')}
-              disabled={mutating}
+              disabled={mutating || disabled}
               onclick={toggleMute}
               class={cn(
                 'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors',
@@ -379,6 +381,7 @@
           <Button
             variant="outline"
             class="gap-2 whitespace-nowrap"
+            {disabled}
             onclick={() => (ruleDialogOpen = true)}
           >
             <Plus class="size-4" />
@@ -409,7 +412,7 @@
                   variant="ghost"
                   size="icon"
                   aria-label={$t('remove_rule')}
-                  disabled={deletingRule === rule.id}
+                  disabled={disabled || deletingRule === rule.id}
                   onclick={() => deleteRule(rule.id)}
                 >
                   <Trash2 class="size-4" />
@@ -436,7 +439,7 @@
             <NativeSelect
               id="owning-team"
               bind:value={selectedTeamId}
-              disabled={movingTeam}
+              disabled={movingTeam || disabled}
               class="w-full"
             >
               {#each teamOptions as team (team.id)}
@@ -445,7 +448,7 @@
             </NativeSelect>
           </Card.Content>
           <Card.Footer>
-            <Button type="submit" variant="outline" disabled={movingTeam || !teamDirty}>
+            <Button type="submit" variant="outline" disabled={disabled || movingTeam || !teamDirty}>
               {movingTeam ? $t('moving') : $t('move_project')}
             </Button>
           </Card.Footer>

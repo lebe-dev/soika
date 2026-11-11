@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDisabledProject } from '$lib/dashboard';
   import { t } from '$lib/i18n';
   import { untrack } from 'svelte';
   import * as Card from '$lib/components/ui/card';
@@ -28,7 +29,9 @@
 
   // Rotating the DSN is a project-admin action (team Admin or instance
   // Owner/Manager); the backend enforces the same rule.
-  const canRegenerate = $derived(data.effectiveRole === 'admin');
+  const canRegenerate = $derived(
+    data.effectiveRole === 'admin' && !isDisabledProject(data.project)
+  );
   let regenerateOpen = $state(false);
   let regenerating = $state(false);
 

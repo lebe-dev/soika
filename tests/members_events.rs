@@ -34,6 +34,7 @@ const PASSWORD: &str = "correct-horse-battery";
 const PROJECT_B_DSN: &str = "project-b-public-key";
 
 struct Fixture {
+    pool: soika::DbPool,
     router: Router,
     state: AppState,
 }
@@ -41,8 +42,9 @@ struct Fixture {
 impl Fixture {
     async fn spawn() -> Fixture {
         let pool = common::test_db().await;
-        let state = build_state(pool, test_config()).unwrap();
+        let state = build_state(pool.clone(), test_config()).unwrap();
         Fixture {
+            pool,
             router: router::build(state.clone()),
             state,
         }
@@ -557,4 +559,66 @@ async fn concurrent_owner_demotions_preserve_one_owner() {
     let error = first.err().or_else(|| second.err()).unwrap();
     assert!(matches!(error, soika::Error::Conflict(_)), "{error:?}");
     assert_eq!(app.state.users.count_owners().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn disabled_projects_reject_all_api_writes_but_allow_reads() {
+    let f = Fixture::spawn().await;
+    let _owner = f.create_user("readonly@example.com", true).await;
+    let team = f.state.teams.create("Readonly".into()).await.unwrap();
+    let (id, public_id) = f.create_project(team.id, "readonly", PROJECT_B_DSN).await;
+    f.ingest_event(id, PROJECT_B_DSN, "11223344556677889900112233445566")
+        .await;
+    let issues = f.state.issues.list(id, Default::default()).await.unwrap();
+    let issue_id = &issues[0].short_id;
+    let cookie = f.login("readonly@example.com").await;
+    let soika::DbPool::Sqlite(pool) = &f.pool else {
+        return;
+    };
+    sqlx::query("UPDATE projects SET orphaned_at = '2026-11-11T00:00:00Z' WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await
+        .unwrap();
+    for (method, suffix) in [
+        ("PATCH", ""),
+        ("DELETE", ""),
+        ("PATCH", "/team"),
+        ("POST", "/mute"),
+        ("POST", "/favorite"),
+        ("POST", "/regenerate-dsn"),
+        ("POST", "/mute-rules"),
+        ("DELETE", "/mute-rules/00000000-0000-0000-0000-000000000000"),
+        ("PUT", "/alertmanager-severity"),
+        ("PUT", "/alertmanager-interval"),
+        ("POST", "/alertmanager-test"),
+    ] {
+        let uri = format!("/api/projects/{public_id}{suffix}");
+        let (status, body) = f.send(method, &uri, &cookie, Body::empty()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body}");
+        assert_eq!(body["error"], "disabled projects are read-only");
+    }
+    for (method, suffix) in [
+        ("POST", "resolve"),
+        ("POST", "unresolve"),
+        ("POST", "mute"),
+        ("PATCH", "fingerprint"),
+    ] {
+        let (status, _) = f
+            .send(
+                method,
+                &format!("/api/issues/{issue_id}/{suffix}"),
+                &cookie,
+                Body::empty(),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{suffix}");
+    }
+    for uri in [
+        format!("/api/projects/{public_id}"),
+        format!("/api/projects/{public_id}/issues"),
+        format!("/api/issues/{issue_id}"),
+    ] {
+        assert_eq!(f.get(&uri, &cookie).await.0, StatusCode::OK);
+    }
 }

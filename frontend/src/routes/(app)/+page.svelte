@@ -387,6 +387,7 @@
                   />
                 {/if}
                 <button
+                  {disabled}
                   onclick={(e) => toggleFavorite(e, project.id)}
                   aria-label={favoritedIds.has(project.id)
                     ? $t('remove_from_favorites')

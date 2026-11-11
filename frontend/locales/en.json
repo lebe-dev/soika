@@ -473,7 +473,7 @@
   "select_team": "Select a team",
   "administrator_sign_in": "Administrator sign-in",
   "managed_by_configuration": "Managed by the configuration file",
-  "orphaned_project": "It was removed from the deployment configuration, so new events are rejected. Existing issues stay available.",
+  "orphaned_project": "It was removed from the deployment configuration, so new events are rejected. The project is read-only. Existing issues stay available for viewing.",
   "project_disabled": "Disabled",
   "project_disabled_title": "Project disabled",
   "project_events_rejected": "Not accepting events",

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isDisabledProject } from '$lib/dashboard';
   import { t, locale } from '$lib/i18n';
   import { goto, invalidateAll } from '$app/navigation';
   import {
@@ -43,6 +44,7 @@
   // actions. Members and admins may both resolve/mute.
   let { data }: { data: PageData } = $props();
 
+  const disabled = $derived(isDisabledProject(data.project));
   const timezone = $derived(data.telemetry?.timezone ?? null);
   const projectId = $derived(data.issue.project_id);
 
@@ -224,19 +226,29 @@
 
         <div class="flex shrink-0 gap-2">
           {#if issue.status === 'resolved'}
-            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={acting || disabled}
+              onclick={() => run('unresolve')}
+            >
               <RotateCcw class="size-4" />
               {$t('reopen')}
             </Button>
           {:else}
-            <Button size="sm" disabled={acting} onclick={() => run('resolve')}>
+            <Button size="sm" disabled={acting || disabled} onclick={() => run('resolve')}>
               <CheckCircle2 class="size-4" />
               {$t('resolve')}
             </Button>
           {/if}
 
           {#if issue.status === 'muted'}
-            <Button variant="outline" size="sm" disabled={acting} onclick={() => run('unresolve')}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={acting || disabled}
+              onclick={() => run('unresolve')}
+            >
               <VolumeX class="size-4" />
               {$t('unmute')}
             </Button>
@@ -247,19 +259,19 @@
                 variant="outline"
                 size="sm"
                 class="rounded-r-none border-r-0"
-                disabled={acting}
+                disabled={acting || disabled}
                 onclick={() => mute()}
               >
                 <VolumeX class="size-4" />
                 {$t('mute')}
               </Button>
               <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
+                <DropdownMenu.Trigger {disabled}>
                   <Button
                     variant="outline"
                     size="sm"
                     class="rounded-l-none px-2"
-                    disabled={acting}
+                    disabled={acting || disabled}
                     aria-label={$t('mute_for_until')}
                   >
                     <ChevronDown class="size-4" />
@@ -272,6 +284,7 @@
                   <DropdownMenu.Separator />
                   {#each muteOptions as opt (opt.label)}
                     <DropdownMenu.Item
+                      {disabled}
                       onclick={() => mute(opt.body, opt.label)}
                       class="font-medium"
                     >
@@ -279,7 +292,7 @@
                     </DropdownMenu.Item>
                   {/each}
                   <DropdownMenu.Separator />
-                  <DropdownMenu.Item onclick={() => (muteByTagsOpen = true)}>
+                  <DropdownMenu.Item {disabled} onclick={() => (muteByTagsOpen = true)}>
                     <Tag class="size-4" />
                     {$t('mute_by_tags_4deade')}
                   </DropdownMenu.Item>
@@ -346,18 +359,18 @@
             <Input
               class="h-7 font-mono text-xs"
               bind:value={fpDraft}
-              disabled={acting}
+              disabled={acting || disabled}
               aria-label={$t('new_fingerprint')}
               onkeydown={(e) => e.key === 'Enter' && saveFingerprint()}
             />
-            <Button size="sm" class="h-7" disabled={acting} onclick={saveFingerprint}
+            <Button size="sm" class="h-7" disabled={acting || disabled} onclick={saveFingerprint}
               >{$t('save')}</Button
             >
             <Button
               variant="ghost"
               size="sm"
               class="h-7"
-              disabled={acting}
+              disabled={acting || disabled}
               onclick={() => (editingFp = false)}>{$t('cancel')}</Button
             >
           </div>
@@ -372,7 +385,7 @@
             variant="outline"
             size="sm"
             class="h-7"
-            disabled={acting}
+            disabled={acting || disabled}
             onclick={openFingerprintEditor}>{$t('merge_edit')}</Button
           >
         {/if}

@@ -45,7 +45,7 @@
   const path = $derived(page.url.pathname);
 </script>
 
-<div class="space-y-6">
+<div class="project-area space-y-6" data-managed-readonly={disabled || undefined}>
   <EntityHeader
     title={project.name}
     avatarId={project.id}
@@ -103,3 +103,13 @@
 
   {@render children()}
 </div>
+
+<style>
+  .project-area[data-managed-readonly] :global(:disabled) {
+    pointer-events: auto;
+  }
+  .project-area[data-managed-readonly]:has(:global(:disabled:hover)) [data-project-disabled] {
+    border-color: var(--primary);
+    background-color: color-mix(in oklab, var(--primary) 8%, var(--card));
+  }
+</style>

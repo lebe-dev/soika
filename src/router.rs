@@ -203,6 +203,10 @@ pub fn build(state: AppState) -> Router {
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
+            api::projects::protect_disabled_projects,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
             auth::csrf::protect,
         ))
         .merge(ingest_routes)
