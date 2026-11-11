@@ -61,12 +61,9 @@
   const urlEnvironment = $derived(page.url.searchParams.get('environment') ?? '');
   const urlRelease = $derived(page.url.searchParams.get('release') ?? '');
 
-  // Filters persist per project (environment/release values don't generalize
-  // across projects) so leaving and returning to the Issues tab restores the
-  // last view. The URL stays the source of truth once any filter param is
-  // present — a shared link is never silently overridden by local storage.
+  // Field filters and sorting persist per project. Status starts at unresolved
+  // unless explicitly supplied in the URL; shared links remain authoritative.
   interface StoredIssueFilters {
-    status: Filter;
     sort: Sort;
     level: Level;
     environment: string;
@@ -87,10 +84,6 @@
     const stored = readJson<Partial<StoredIssueFilters>>(filtersStorageKey(id));
     if (!stored) return;
 
-    const status: Filter =
-      stored.status && filters.some((f) => f.value === stored.status)
-        ? stored.status
-        : 'unresolved';
     const sort: Sort =
       stored.sort && sorts.some((s) => s.value === stored.sort) ? stored.sort : 'last_seen';
     const level: Level =
@@ -98,18 +91,11 @@
     const environment = typeof stored.environment === 'string' ? stored.environment : '';
     const release = typeof stored.release === 'string' ? stored.release : '';
 
-    if (
-      status === 'unresolved' &&
-      sort === 'last_seen' &&
-      level === 'all' &&
-      environment === '' &&
-      release === ''
-    ) {
+    if (sort === 'last_seen' && level === 'all' && environment === '' && release === '') {
       return;
     }
 
     const next = new URL(url.href);
-    if (status !== 'unresolved') next.searchParams.set('status', status);
     if (sort !== 'last_seen') next.searchParams.set('sort', sort);
     if (level !== 'all') next.searchParams.set('level', level);
     if (environment !== '') next.searchParams.set('environment', environment);
@@ -194,7 +180,6 @@
     goto(url, { replace: true, reset: false });
 
     writeJson<StoredIssueFilters>(filtersStorageKey(projectId), {
-      status: (url.searchParams.get('status') as Filter | null) ?? 'unresolved',
       sort: (url.searchParams.get('sort') as Sort | null) ?? 'last_seen',
       level: (url.searchParams.get('level') as Level | null) ?? 'all',
       environment: url.searchParams.get('environment') ?? '',
